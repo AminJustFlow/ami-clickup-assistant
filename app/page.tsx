@@ -43,10 +43,10 @@ export default async function Home() {
     clientRows.set(task.client.slug, row);
   }
 
-  const employeeRows = new Map<string, { total: number; waiting: number; needsAmi: number }>();
+  const employeeRows = new Map<string, { id: number; total: number; waiting: number; needsAmi: number }>();
   for (const task of tasks) {
     for (const { employee } of task.assignees) {
-      const row = employeeRows.get(employee.name) ?? { total: 0, waiting: 0, needsAmi: 0 };
+      const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0 };
       row.total += 1;
       if (task.intelligence && waitingStates.includes(task.intelligence.agentState)) row.waiting += 1;
       if (task.intelligence?.needsAmi) row.needsAmi += 1;
@@ -132,7 +132,7 @@ export default async function Home() {
           <div className="summary-row summary-head"><span>Client</span><span>Ami</span><span>Waiting</span><span>Active</span></div>
           {[...clientRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([slug, row]) =>
             <div className="summary-row" key={slug}>
-              <span><strong>{row.name}</strong><small>{row.total} analyzed</small></span>
+              <span><a className="row-link" href={`/clients/${slug}`}><strong>{row.name}</strong></a><small>{row.total} analyzed</small></span>
               <span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.active}</span>
             </div>
           )}
@@ -145,7 +145,7 @@ export default async function Home() {
           <div className="summary-row summary-head"><span>Employee</span><span>Ami</span><span>Waiting</span><span>Owned</span></div>
           {[...employeeRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([name, row]) =>
             <div className="summary-row" key={name}>
-              <span><strong>{name}</strong></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.total}</span>
+              <span><a className="row-link" href={`/employees/${row.id}`}><strong>{name}</strong></a></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.total}</span>
             </div>
           )}
         </div>
