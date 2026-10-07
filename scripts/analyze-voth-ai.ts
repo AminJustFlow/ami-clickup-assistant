@@ -2,6 +2,7 @@ import { loadEnvConfig } from '@next/env';
 import { prisma } from '../lib/db/prisma';
 import { buildTaskContext } from '../lib/intelligence/context';
 import { analyzeWithAI } from '../lib/intelligence/ai';
+import { analyzeWithRules } from '../lib/intelligence/engine';
 
 function readLimit(): number {
   const raw = process.env.AI_ANALYSIS_LIMIT ?? '10';
@@ -35,7 +36,9 @@ async function main(): Promise<void> {
   let fallbackCount = 0;
 
   for (const task of tasks) {
-    const result = await analyzeWithAI(buildTaskContext(task));
+    const context = buildTaskContext(task);
+    const rules = analyzeWithRules(context);
+    const result = await analyzeWithAI(context);
     counts.set(result.agentState, (counts.get(result.agentState) ?? 0) + 1);
     if (result.needsAmi) needsAmi += 1;
     if (result.source === 'AI') aiCount += 1;
@@ -64,6 +67,10 @@ async function main(): Promise<void> {
     });
 
     console.log(`[${result.source}] ${task.name}`);
+    if (rules.agentState !== result.agentState || rules.needsAmi !== result.needsAmi || rules.waitingOnType !== result.waitingOnType) {
+      console.log(`  CHANGE rules: ${rules.agentState} / Ami=${rules.needsAmi} / ${rules.waitingOnType}`);
+      console.log(`          AI: ${result.agentState} / Ami=${result.needsAmi} / ${result.waitingOnType}`);
+    }
     console.log(`  ${result.agentState} | Needs Ami: ${result.needsAmi ? 'YES' : 'no'} | Waiting: ${result.waitingOnType}${result.waitingOnName ? ` (${result.waitingOnName})` : ''}`);
     console.log(`  ${result.currentSummary}`);
     if (result.amiAction) console.log(`  Ami action: ${result.amiAction}`);
