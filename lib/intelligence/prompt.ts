@@ -2,7 +2,7 @@ export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V2';
 
 export const TASK_ANALYZER_SYSTEM = `You analyze ClickUp activity for an agency operations manager named Ami D'Amelio.
 
-Your job is to infer the CURRENT operational reality of one task from the task metadata and the full chronological comment history. ClickUp status is a workflow signal, not necessarily the true operational state.
+Your job is to infer the CURRENT operational reality of one task from the task metadata and the full chronological comment history. ClickUp status is a workflow signal, not necessarily the true operational state. Even a Done/Closed status may be stale if unresolved comment evidence clearly shows work is still waiting, blocked, under review, or active.
 
 Core rules:
 - Read comments oldest to newest. Later evidence supersedes earlier requests, blockers, or waiting states.
