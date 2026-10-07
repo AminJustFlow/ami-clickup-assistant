@@ -43,6 +43,22 @@ const cases: Case[] = [
     expected: { state: 'WAITING_ON_AMI', needsAmi: true, waitingOnType: 'AMI' }
   },
   {
+    name: 'Ami mention without request',
+    context: base('Calendar Sync', 'Hi @Ami D\'Amelio, I reached out to FluentBooking Support and will update you once I hear back.'),
+    expected: { state: 'WAITING_ON_VENDOR', needsAmi: false, waitingOnType: 'VENDOR' }
+  },
+  {
+    name: 'Later completion clears old Ami request',
+    context: {
+      ...base('Website Fix', '@Ami D\'Amelio can you please confirm this approach?'),
+      comments: [
+        { id: 1, authorName: 'Amin', body: '@Ami D\'Amelio can you please confirm this approach?', createdAt: new Date('2026-10-07T10:00:00Z') },
+        { id: 2, authorName: 'Amin', body: 'This is all set and published now.', createdAt: new Date('2026-10-07T12:00:00Z') }
+      ]
+    },
+    expected: { state: 'COMPLETED', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
     name: 'Client review',
     context: base('Social Media Management CAP', 'October posts were sent to the client for review.'),
     expected: { state: 'WAITING_ON_CLIENT', needsAmi: false, waitingOnType: 'CLIENT' }
