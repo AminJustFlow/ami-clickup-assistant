@@ -27,15 +27,6 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
   let waitingOnType = ai.waiting_on_type as WaitingOnType;
   let waitingOnName = ai.waiting_on_name;
 
-  const clickupDone = ['done', 'closed', 'complete', 'completed'].includes(context.status?.toLowerCase() ?? '');
-  if (clickupDone) {
-    agentState = 'COMPLETED';
-    needsAmi = false;
-    amiAction = null;
-    waitingOnType = 'NONE';
-    waitingOnName = null;
-  }
-
   const latestComment = context.comments.at(-1);
   if (needsAmi && latestComment && isAmiAuthor(latestComment.authorName)) {
     needsAmi = false;
