@@ -1,7 +1,7 @@
 import { loadEnvConfig } from '@next/env';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/db/prisma';
-import { ClickUpApiError, getFolderLists, getTaskComments, getTasks } from '../lib/clickup/client';
+import { ClickUpApiError, getFolderLists, getTaskComments, getCommentReplies, getTasks } from '../lib/clickup/client';
 import { resolveClientFolder } from '../lib/clickup/discovery';
 import { clickupDate, commentPlainText, isClosedTask } from '../lib/clickup/raw';
 
@@ -43,7 +43,10 @@ async function getAllComments(taskId: string): Promise<Record<string, any>[]> {
 async function syncComments(task: { id: number; clickupTaskId: string; name: string }, stats: SyncStats): Promise<void> {
   try {
     const comments = await getAllComments(task.clickupTaskId);
-    for (const raw of comments) {
+    for (const parent of comments) {
+      const replies = await getCommentReplies(String(parent.id));
+      const thread = [parent, ...(replies.comments ?? [])];
+      for (const raw of thread) {
       const user = raw.user && typeof raw.user === 'object' ? raw.user as Record<string, unknown> : {};
       const data = {
         taskId: task.id,
@@ -60,6 +63,7 @@ async function syncComments(task: { id: number; clickupTaskId: string; name: str
         create: { clickupCommentId: String(raw.id), ...data }
       });
       stats.comments += 1;
+      }
     }
     stats.successfulCommentImports += 1;
   } catch (error) {
