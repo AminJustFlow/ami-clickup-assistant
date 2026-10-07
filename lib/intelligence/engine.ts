@@ -31,10 +31,10 @@ const issue = /\b(error|issue|problem|broken|not working|still (?:not|asking|fai
 const explicitClientReview = /\b(?:sent|submitted|forwarded)\b.{0,45}\b(?:client|cap|capstone|christen|stephanie|erika|rayshonda|caitlin)\b.{0,35}\b(?:for review|for approval|to review|to approve)\b|\b(?:client|cap|capstone|christen|stephanie|erika|rayshonda|caitlin)\b.{0,35}\b(?:review|approval|approve)\b/i;
 const explicitWait = /\b(?:waiting|still waiting) (?:to hear|on|for)\b|\b(?:hear|get) back\b|\bonce i hear back\b|\bpending (?:with|from)\b/i;
 const reachedOut = /\b(?:reached out|followed up|left .{0,20}(?:voicemail|message)|emailed|contacted)\b/i;
-const vendorHandoff = /\b(?:sent|submitted|forwarded) (?:this|it|one)?\s*(?:over )?to (fluentbooking|eaglenet|spectrum|google|microsoft|meta|paypal|rent manager|engrain)\b/i;
+const vendorHandoff = /\b(?:sent|submitted|forwarded)\s+(?:(?:this|it)(?:\s+one)?|one)?\s*(?:over\s+)?to\s+(fluentbooking|eaglenet|spectrum|google|microsoft|meta|paypal|rent manager|engrain)\b/i;
 const vendorDependency = /\b(?:waiting|pending|hear back|get back|reached out|followed up)\b.{0,100}\b(fluentbooking|eaglenet|spectrum|google|microsoft|meta|paypal|rent manager|engrain|support|web team)\b|\b(fluentbooking|eaglenet|spectrum|google|microsoft|meta|paypal|rent manager|engrain|support|web team)\b.{0,100}\b(?:waiting|pending|hear back|get back|reached out|followed up)\b/i;
 const clientDependency = /\b(?:waiting|pending|hear back|get back|reached out|followed up|voicemail|emailed)\b.{0,100}\b(client|customer|cap|capstone|christen|stephanie|erika|rayshonda|caitlin|kristen)\b|\b(client|customer|cap|capstone|christen|stephanie|erika|rayshonda|caitlin|kristen)\b.{0,100}\b(?:waiting|pending|hear back|get back|reached out|followed up|voicemail|emailed)\b/i;
-const amiDirectRequest = /(?:@ami\s+d['’]?amelio|\bami\s+d['’]?amelio\b).{0,90}\b(can you|could you|please|what do you think|what are your thoughts|your thoughts|let me know|confirm|approve|review|take a look|do you want|would you like)\b|\b(can you|could you|please|what do you think|what are your thoughts|your thoughts|let me know|confirm|approve|review|take a look|do you want|would you like)\b.{0,90}(?:@ami\s+d['’]?amelio|\bami\s+d['’]?amelio\b)/i;
+const amiMention = /@ami(?:\s+d['’]amelio)?\b|\bami\s+d['’]amelio\b/i;\nconst requestLanguage = /\b(can you|could you|please|what do you think|what are your thoughts|your thoughts|let me know|confirm|approve|review|take a look|do you want|would you like)\b/i;
 
 function clean(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -153,7 +153,6 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
     state === 'COMPLETED' ? 'Work appears complete' :
     state === 'ISSUE' ? 'Issue needs attention' :
     state === 'BLOCKED' ? 'Waiting on an external dependency' :
-    state === 'UNKNOWN' ? 'Operational state is unclear' :
     'Work is active';
 
   return {
