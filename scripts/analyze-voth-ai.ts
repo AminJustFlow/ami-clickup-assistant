@@ -67,6 +67,7 @@ async function main(): Promise<void> {
     });
 
     console.log(`[${result.source}] ${task.name}`);
+    console.log(`  ClickUp: ${task.clickupStatus ?? 'unknown'} | AI confidence: ${result.confidence.toFixed(2)}`);
     if (rules.agentState !== result.agentState || rules.needsAmi !== result.needsAmi || rules.waitingOnType !== result.waitingOnType) {
       console.log(`  CHANGE rules: ${rules.agentState} / Ami=${rules.needsAmi} / ${rules.waitingOnType}`);
       console.log(`          AI: ${result.agentState} / Ami=${result.needsAmi} / ${result.waitingOnType}`);
