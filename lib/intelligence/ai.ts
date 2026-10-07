@@ -20,6 +20,28 @@ function isAmiAuthor(name: string | null): boolean {
   return normalized === "ami d'amelio" || normalized === 'ami';
 }
 
+function normalizedPerson(name: string | null): string {
+  return name?.toLowerCase().replace(/’/g, "'").trim() ?? '';
+}
+
+function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: string | null): string | null {
+  if (type === 'NONE') return null;
+  if (type === 'AMI') return 'Ami';
+
+  const normalizedName = normalizedPerson(name);
+  const internalNames = new Set(context.assignees.map(normalizedPerson));
+  for (const comment of context.comments) {
+    if (comment.authorName) internalNames.add(normalizedPerson(comment.authorName));
+  }
+  internalNames.add("ami d'amelio");
+  internalNames.add('ami');
+
+  if (type === 'CLIENT' && normalizedName && internalNames.has(normalizedName)) return 'Client';
+  if (type === 'VENDOR' && normalizedName && internalNames.has(normalizedName)) return 'Vendor';
+  if (type === 'TEAM' && (!normalizedName || normalizedName === 'client' || normalizedName === 'vendor')) return 'Team';
+  return name;
+}
+
 function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date): HybridIntelligence {
   let agentState = ai.agent_state as AgentState;
   let needsAmi = ai.needs_ami;
@@ -48,6 +70,8 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
     waitingOnName = null;
     amiAction = null;
   }
+
+  waitingOnName = normalizeWaitingName(context, waitingOnType, waitingOnName);
 
   const blocked = ['BLOCKED', 'ISSUE', 'WAITING_ON_VENDOR', 'WAITING_ON_CLIENT'].includes(agentState);
   const scores = scoreRules({
