@@ -118,7 +118,9 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
     const normalizedText = text.toLowerCase().replace(/’/g, "'");
     const mentionsAmi = normalizedText.includes("@ami d'amelio") || normalizedText.includes('ami d\'amelio') || normalizedText.includes('@ami ');
     const hasAmiRequest = mentionsAmi && requestLanguage.test(text);
-    if (hasAmiRequest && comment.authorName?.toLowerCase().includes('ami') !== true) {
+    const normalizedAuthor = comment.authorName?.toLowerCase().replace(/’/g, "'").trim() ?? '';
+    const authoredByAmi = normalizedAuthor === "ami d'amelio" || normalizedAuthor === 'ami';
+    if (hasAmiRequest && !authoredByAmi) {
       needsAmi = true;
       state = 'WAITING_ON_AMI';
       waitingOnType = 'AMI';
