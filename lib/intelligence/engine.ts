@@ -115,7 +115,8 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
       confidence = Math.max(confidence, 0.74);
     }
 
-    const hasAmiRequest = amiMention.test(text) && requestLanguage.test(text);\n    if (hasAmiRequest && comment.authorName?.toLowerCase().includes('ami') !== true) {
+    const hasAmiRequest = amiMention.test(text) && requestLanguage.test(text);
+    if (hasAmiRequest && comment.authorName?.toLowerCase().includes('ami') !== true) {
       needsAmi = true;
       state = 'WAITING_ON_AMI';
       waitingOnType = 'AMI';
