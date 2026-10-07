@@ -29,7 +29,7 @@ export type RuleIntelligence = {
 const completion = /\b(all set|completed?|done|published|live|fixed|resolved|good to go|finished)\b/i;
 const issue = /\b(error|issue|problem|broken|not working|still (?:not|asking|failing)|blocked|can't|cannot|unable)\b/i;
 const review = /\b(sent .{0,30} for review|for review|please review|needs review|review and approve|approval)\b/i;
-const externalWait = /\b(reached out|followed up|sent (?:this|it|one)?\s*to|waiting (?:to hear|on|for)|hear back|once i hear back|pending (?:with|from))\b/i;
+const externalWait = /\b(reached out|followed up|sent (?:.{0,40} )?to|waiting (?:to hear|on|for)|hear back|once i hear back|pending (?:with|from))\b/i;
 const amiRequest = /(?:@ami\b|\bami\b).{0,120}\b(can you|could you|please|what do you think|confirm|approve|review|let me know|do you want)\b|\b(can you|could you|please|what do you think|confirm|approve|review)\b.{0,120}(?:@ami\b|\bami\b)/i;
 const clientWait = /\b(client|customer|capstone|christen|stephanie|erika|rayshonda|caitlin)\b/i;
 const vendorWait = /\b(support|vendor|fluentbooking|eaglenet|spectrum|google|microsoft|meta|paypal)\b/i;
@@ -66,6 +66,8 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
       state = 'COMPLETED';
       waitingOnType = 'NONE';
       waitingOnName = null;
+      needsAmi = false;
+      amiAction = null;
       evidence.push({ kind: 'completion', commentId: comment.id, text });
       meaningful = true;
       confidence = Math.max(confidence, 0.86);
@@ -76,6 +78,8 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
       state = type === 'VENDOR' ? 'WAITING_ON_VENDOR' : type === 'CLIENT' ? 'WAITING_ON_CLIENT' : 'BLOCKED';
       waitingOnType = type;
       waitingOnName = waitingName(text, type);
+      needsAmi = false;
+      amiAction = null;
       evidence.push({ kind: 'waiting', commentId: comment.id, text });
       meaningful = true;
       confidence = Math.max(confidence, type === 'OTHER' ? 0.74 : 0.88);
@@ -85,6 +89,8 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
       state = clientWait.test(text) ? 'WAITING_ON_CLIENT' : 'NEEDS_REVIEW';
       waitingOnType = clientWait.test(text) ? 'CLIENT' : 'OTHER';
       waitingOnName = waitingName(text, waitingOnType);
+      needsAmi = false;
+      amiAction = null;
       evidence.push({ kind: 'review', commentId: comment.id, text });
       meaningful = true;
     }
