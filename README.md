@@ -128,3 +128,32 @@ UNKNOWN
 ```
 
 `needs_ami` and `waiting_on` are separate dimensions. Importance and Ami-attention are also separate scores.
+
+
+## Phase 2 intelligence shadow mode
+
+Phase 2 adds a deterministic intelligence pass before live model analysis. This gives us explainable baseline behavior and a regression suite for real VOTH patterns.
+
+Run the fixture evaluation:
+
+```bash
+npm run intelligence:evaluate
+```
+
+Analyze the VOTH tasks already stored in PostgreSQL:
+
+```bash
+npm run intelligence:analyze:voth
+```
+
+Then start the app and open:
+
+```text
+/debug/voth/intelligence
+```
+
+The shadow view shows inferred operational state, Needs Ami, waiting party, importance, Ami attention, risk, confidence, the latest meaningful change, and the underlying ClickUp evidence.
+
+Important: an Ami mention alone does not mean Ami needs to act. Direct requests to Ami do. Comments are processed chronologically so newer operational evidence can supersede an older state.
+
+This rule engine is the baseline for the structured OpenAI analyzer. We will evaluate the model against the same cases and merge rule + model evidence rather than replacing deterministic signals.
