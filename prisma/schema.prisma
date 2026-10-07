@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ListType {
+  AMI
+  NOTIFICATION
+  OTHER
+}
+
+enum AgentState {
+  NOT_STARTED
+  ACTIVE
+  COMPLETED
+  WAITING_ON_AMI
+  WAITING_ON_TEAM
+  WAITING_ON_CLIENT
+  WAITING_ON_VENDOR
+  NEEDS_REVIEW
+  BLOCKED
+  ISSUE
+  UNKNOWN
+}
+
+enum WaitingOnType {
+  NONE
+  AMI
+  TEAM
+  CLIENT
+  VENDOR
+  OTHER
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Client {
+  id              Int           @id @default(autoincrement())
+  name            String
+  slug            String        @unique
+  clickupFolderId String        @unique
+  clickupSpaceId  String
+  space           Space         @relation(fields: [clickupSpaceId], references: [clickupSpaceId])
+  active          Boolean       @default(true)
+  lastSyncedAt    DateTime?
+  lists           ClickUpList[]
+  tasks           Task[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Workspace {
+  id                 Int      @id @default(autoincrement())
+  clickupWorkspaceId String   @unique
+  name               String
+  spaces             Space[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Space {
+  id                 Int       @id @default(autoincrement())
+  clickupSpaceId     String    @unique
+  workspaceId        Int
+  workspace          Workspace @relation(fields: [workspaceId], references: [id])
+  name               String
+  clients            Client[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model ClickUpList {
+  id            Int       @id @default(autoincrement())
+  clickupListId String    @unique
+  clientId      Int
+  client        Client    @relation(fields: [clientId], references: [id])
+  name          String
+  type          ListType?
+  active        Boolean   @default(true)
+  tasks         Task[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Employee {
+  id            Int              @id @default(autoincrement())
+  clickupUserId String           @unique
+  name          String
+  email         String?
+  active        Boolean          @default(true)
+  assignments   TaskAssignee[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model Task {
+  id               Int                @id @default(autoincrement())
+  clickupTaskId    String             @unique
+  clientId         Int
+  listId           Int
+  client           Client             @relation(fields: [clientId], references: [id])
+  list             ClickUpList        @relation(fields: [listId], references: [id])
+  name             String
+  description      String?
+  clickupStatus    String?
+  clickupPriority  String?
+  dueDate          DateTime?
+  clickupCreatedAt DateTime?
+  clickupUpdatedAt DateTime?
+  clickupUrl       String?
+  deleted          Boolean            @default(false)
+  rawPayload       Json
+  assignees        TaskAssignee[]
+  comments         Comment[]
+  events           TaskEvent[]
+  intelligence     TaskIntelligence?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model TaskAssignee {
+  taskId     Int
+  employeeId Int
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  @@id([taskId, employeeId])
+}
+
+model Comment {
+  id               Int      @id @default(autoincrement())
+  clickupCommentId String   @unique
+  taskId           Int
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorClickupId  String?
+  authorName       String?
+  body             String
+  clickupCreatedAt DateTime?
+  clickupUpdatedAt DateTime?
+  rawPayload       Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TaskEvent {
+  id             Int      @id @default(autoincrement())
+  eventKey       String?  @unique
+  taskId         Int?
+  task           Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  eventType      String
+  actorClickupId String?
+  actorName      String?
+  beforeValue    Json?
+  afterValue     Json?
+  occurredAt     DateTime?
+  rawPayload     Json
+  processedAt    DateTime?
+  createdAt      DateTime @default(now())
+}
+
+model TaskIntelligence {
+  id                       Int           @id @default(autoincrement())
+  taskId                   Int           @unique
+  task                     Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentState               AgentState    @default(UNKNOWN)
+  headline                 String?
+  currentSummary           String?
+  needsAmi                 Boolean       @default(false)
+  amiAction                String?
+  waitingOnType            WaitingOnType @default(NONE)
+  waitingOnName            String?
+  importanceScore          Int           @default(0)
+  amiAttentionScore        Int           @default(0)
+  riskLevel                RiskLevel     @default(LOW)
+  lastMeaningfulChange     String?
+  lastMeaningfulChangeAt   DateTime?
+  confidence               Float?
+  promptVersion            String?
+  analyzedAt               DateTime?
+  updatedAt                DateTime      @updatedAt
+}

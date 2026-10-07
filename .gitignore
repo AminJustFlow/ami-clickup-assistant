@@ -1,0 +1,7 @@
+node_modules
+.next
+.env
+.env.local
+*.log
+prisma/dev.db
+data/clickup-discovery.json

@@ -1,0 +1,3 @@
+export default function Home() {
+  return <main><h1>Ami Assistant</h1><p className="muted">ClickUp operations intelligence foundation</p><div className="grid"><div className="card"><div className="metric">Clients</div><p>Client-level operational intelligence and drill-down.</p></div><div className="card"><div className="metric">Employees</div><p>Meaningful employee activity by date and client.</p></div><div className="card"><div className="metric">Needs Ami</div><p>Items requiring Ami's review, approval, or decision.</p></div><div className="card"><div className="metric">Ask AI</div><p>Grounded questions over ClickUp intelligence.</p></div></div><div className="nav"><a href="/debug/tasks">Raw Data Debug</a></div></main>;
+}
