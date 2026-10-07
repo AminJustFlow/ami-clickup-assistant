@@ -43,6 +43,11 @@ const cases: Case[] = [
     expected: { state: 'WAITING_ON_AMI', needsAmi: true, waitingOnType: 'AMI' }
   },
   {
+    name: 'Amin is not mistaken for Ami',
+    context: base('Decision Request', "@Ami D'Amelio can you please confirm this approach?"),
+    expected: { state: 'WAITING_ON_AMI', needsAmi: true, waitingOnType: 'AMI' }
+  },
+  {
     name: 'Ami mention without request',
     context: base('Calendar Sync', 'Hi @Ami D\'Amelio, I reached out to FluentBooking Support and will update you once I hear back.'),
     expected: { state: 'WAITING_ON_VENDOR', needsAmi: false, waitingOnType: 'VENDOR' }
