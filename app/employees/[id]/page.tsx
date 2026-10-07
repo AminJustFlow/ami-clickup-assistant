@@ -1,3 +1,4 @@
+import { isStaleActive } from '@/lib/intelligence/staleness';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 
@@ -18,21 +19,24 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
 
   const tasks = await prisma.task.findMany({
     where: { deleted: false, intelligence: { isNot: null }, assignees: { some: { employeeId } } },
-    include: { client: true, intelligence: true, list: true, assignees: { include: { employee: true } } },
+    include: { client: true, intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } }, assignees: { include: { employee: true } } },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
   const waiting = tasks.filter(t => t.intelligence?.waitingOnType !== 'NONE' && !t.intelligence?.needsAmi);
   const active = tasks.filter(t => t.intelligence?.agentState === 'ACTIVE');
+  const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
+  const recentActive = active.filter(t => !stale.includes(t));
 
   return <main className="ops-shell">
     <a className="back-link" href="/">← Ami Intelligence</a>
-    <header className="detail-header"><p className="eyebrow">EMPLOYEE INTELLIGENCE</p><h1>{employee.name}</h1><p className="muted">{tasks.length} owned tasks · {waiting.length} waiting · {active.length} active</p></header>
+    <header className="detail-header"><p className="eyebrow">EMPLOYEE INTELLIGENCE</p><h1>{employee.name}</h1><p className="muted">{tasks.length} owned tasks · {waiting.length} waiting · {recentActive.length} recently active · {stale.length} stale</p></header>
     {!!needsAmi.length && <section className="attention-section"><div className="section-heading"><h2>Needs Ami</h2><span className="count-badge attention-count">{needsAmi.length}</span></div>{needsAmi.map(t => <TaskCard key={t.id} task={t} />)}</section>}
     <section className="detail-grid">
       <div className="ops-section"><div className="section-heading"><h2>Waiting</h2><span className="count-badge">{waiting.length}</span></div>{waiting.map(t => <TaskCard key={t.id} task={t} />)}</div>
-      <div className="ops-section"><div className="section-heading"><h2>Active</h2><span className="count-badge">{active.length}</span></div>{active.slice(0,20).map(t => <TaskCard key={t.id} task={t} compact />)}{active.length > 20 && <p className="muted">+ {active.length - 20} more active tasks</p>}</div>
+      <div className="ops-section"><div className="section-heading"><h2>Active</h2><span className="count-badge">{recentActive.length}</span></div>{recentActive.slice(0,20).map(t => <TaskCard key={t.id} task={t} compact />)}{recentActive.length > 20 && <p className="muted">+ {recentActive.length - 20} more active tasks</p>}</div>
     </section>
+    <section className="ops-section" style={{ marginTop: 18 }}><div className="section-heading"><div><p className="eyebrow">REVIEW SIGNAL · 30 DAYS</p><h2>Stale active tasks</h2></div><span className="count-badge">{stale.length}</span></div><p className="muted">Still marked active, but no task or comment activity recorded in the last 30 days. These may be waiting, completed, or simply not updated in ClickUp.</p>{stale.map(t => <TaskCard key={t.id} task={t} compact />)}</section>
   </main>;
 }
 
