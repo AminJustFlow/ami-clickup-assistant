@@ -82,6 +82,19 @@ const cases: Case[] = [
     expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }
   },
   {
+    name: 'Open task without decisive comments stays active',
+    context: {
+      ...base('Routine open task', 'Working through the remaining items.'),
+      comments: []
+    },
+    expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
+    name: 'This one vendor handoff wording',
+    context: base('Sign', "I've sent this one to Spectrum."),
+    expected: { state: 'WAITING_ON_VENDOR', needsAmi: false, waitingOnType: 'VENDOR' }
+  },
+  {
     name: 'Client review',
     context: base('Social Media Management CAP', 'October posts were sent to the client for review.'),
     expected: { state: 'WAITING_ON_CLIENT', needsAmi: false, waitingOnType: 'CLIENT' }
