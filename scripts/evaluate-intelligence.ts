@@ -59,6 +59,29 @@ const cases: Case[] = [
     expected: { state: 'COMPLETED', needsAmi: false, waitingOnType: 'NONE' }
   },
   {
+    name: 'Internal team instruction is not client waiting',
+    context: base('Magical Tour', 'Hi @Matt MacDonald @Amin Hcinet @Monica Murray Derr @Rayanne Pruitt - Please record your time and upload your assets. Does 11:35am-1:40pm sound right?'),
+    expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
+    name: 'Ami authored request to teammate is not Needs Ami',
+    context: {
+      ...base('Proposal', 'placeholder'),
+      comments: [{ id: 1, authorName: "Ami D'Amelio", body: '@Rayanne Pruitt can you please start the proposal shell for this client?', createdAt: new Date('2026-10-07T12:00:00Z') }]
+    },
+    expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
+    name: 'Vendor name alone does not define dependency',
+    context: base('Bus Dev', 'Please include Meta Ads and website development in the estimate. We are still waiting on credentials for Engrain integration options.'),
+    expected: { state: 'WAITING_ON_VENDOR', needsAmi: false, waitingOnType: 'VENDOR' }
+  },
+  {
+    name: 'Sent recommendation to client is not generic blocked',
+    context: base('Domain Registration', 'Sent recommendations to CAP for how to use vanity domains.'),
+    expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
     name: 'Client review',
     context: base('Social Media Management CAP', 'October posts were sent to the client for review.'),
     expected: { state: 'WAITING_ON_CLIENT', needsAmi: false, waitingOnType: 'CLIENT' }
