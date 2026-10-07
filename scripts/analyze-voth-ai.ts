@@ -5,7 +5,7 @@ import { analyzeWithAI } from '../lib/intelligence/ai';
 import { analyzeWithRules } from '../lib/intelligence/engine';
 
 function readLimit(): number {
-  const raw = process.env.AI_ANALYSIS_LIMIT ?? '10';
+  const raw = process.env.AI_ANALYSIS_LIMIT ?? '30';
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value) || value < 1) throw new Error('AI_ANALYSIS_LIMIT must be a positive integer.');
   return value;
