@@ -4,12 +4,24 @@ export const dynamic = 'force-dynamic';
 
 const waitingStates = ['WAITING_ON_AMI', 'WAITING_ON_TEAM', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'BLOCKED', 'ISSUE'];
 
+const stateLabel: Record<string, string> = {
+  WAITING_ON_AMI: 'Waiting on Ami',
+  WAITING_ON_TEAM: 'Waiting on team',
+  WAITING_ON_CLIENT: 'Waiting on client',
+  WAITING_ON_VENDOR: 'Waiting on vendor',
+  BLOCKED: 'Blocked',
+  ISSUE: 'Issue',
+  ACTIVE: 'Active',
+  COMPLETED: 'Completed'
+};
+
+const waitOrder = ['WAITING_ON_TEAM', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'BLOCKED', 'ISSUE'];
+
 export default async function Home() {
   const tasks = await prisma.task.findMany({
     where: { deleted: false, intelligence: { isNot: null } },
     include: {
       client: true,
-      list: true,
       intelligence: true,
       assignees: { include: { employee: true } }
     },
@@ -19,6 +31,7 @@ export default async function Home() {
   const needsAmi = tasks.filter((task) => task.intelligence?.needsAmi);
   const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
   const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
+  const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
   const clientRows = new Map<string, { name: string; total: number; needsAmi: number; waiting: number; active: number }>();
   for (const task of tasks) {
@@ -41,67 +54,102 @@ export default async function Home() {
     }
   }
 
-  const card: React.CSSProperties = { border: '1px solid #d7dce2', borderRadius: 10, padding: 18, background: '#fff' };
-  const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 };
-  const rowStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(220px, 2fr) repeat(3, minmax(70px, 1fr))', gap: 12, padding: '10px 0', borderTop: '1px solid #e5e7eb', alignItems: 'center' };
+  const waitingGroups = waitOrder
+    .map((state) => ({ state, tasks: waiting.filter((task) => task.intelligence?.agentState === state) }))
+    .filter((group) => group.tasks.length);
 
-  return <main style={{ maxWidth: 1250, margin: '0 auto', padding: 24 }}>
-    <div style={{ marginBottom: 24 }}>
-      <h1 style={{ marginBottom: 4 }}>Ami Operations Intelligence</h1>
-      <p className="muted">Current operational reality derived from ClickUp activity. ClickUp remains the source of truth.</p>
-    </div>
+  return <main className="ops-shell">
+    <header className="ops-header">
+      <div>
+        <p className="eyebrow">JUST FLOW · OPERATIONS</p>
+        <h1>Ami Intelligence</h1>
+        <p className="muted">What needs attention now, what is waiting, and where work stands.</p>
+      </div>
+      <a className="secondary-link" href="/debug/voth/intelligence">Evidence view</a>
+    </header>
 
-    <section style={grid}>
-      <div style={card}><strong>Needs Ami</strong><div style={{ fontSize: 34, fontWeight: 700 }}>{needsAmi.length}</div><small>Concrete decisions or actions</small></div>
-      <div style={card}><strong>Waiting / Blocked</strong><div style={{ fontSize: 34, fontWeight: 700 }}>{waiting.length}</div><small>Team, client, vendor, or issue</small></div>
-      <div style={card}><strong>Active</strong><div style={{ fontSize: 34, fontWeight: 700 }}>{active.length}</div><small>Work currently moving</small></div>
-      <div style={card}><strong>Analyzed Tasks</strong><div style={{ fontSize: 34, fontWeight: 700 }}>{tasks.length}</div><small>Stored intelligence records</small></div>
-    </section>
+    <section className="attention-section">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">PRIORITY</p>
+          <h2>Needs your attention</h2>
+        </div>
+        <span className="count-badge attention-count">{needsAmi.length}</span>
+      </div>
 
-    <section style={{ ...card, marginTop: 22 }}>
-      <h2>Needs Ami</h2>
-      {!needsAmi.length && <p className="muted">Nothing currently requires Ami&apos;s action.</p>}
-      {needsAmi.slice(0, 12).map((task) => {
+      {!needsAmi.length && <div className="empty-state">Nothing currently requires your decision or action.</div>}
+      {needsAmi.map((task) => {
         const intel = task.intelligence!;
-        return <article key={task.id} style={{ borderTop: '1px solid #e5e7eb', padding: '14px 0' }}>
-          <strong>{task.client.name} · {task.name}</strong>
-          <p style={{ margin: '6px 0' }}>{intel.amiAction ?? intel.currentSummary}</p>
-          <small>{intel.headline} · attention {intel.amiAttentionScore}/100 · confidence {intel.confidence == null ? '—' : Math.round(intel.confidence * 100) + '%'}</small>
-          {task.clickupUrl && <> · <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open ClickUp</a></>}
+        return <article className="attention-card" key={task.id}>
+          <div className="task-kicker">{task.client.name}</div>
+          <h3>{task.name}</h3>
+          <p className="action-copy">{intel.amiAction ?? intel.currentSummary}</p>
+          <div className="task-meta">
+            <span>{Math.round((intel.confidence ?? 0) * 100)}% confidence</span>
+            {task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp →</a>}
+          </div>
         </article>;
       })}
     </section>
 
-    <div style={{ ...grid, marginTop: 22 }}>
-      <section style={card}>
-        <h2>Clients</h2>
-        <div style={{ ...rowStyle, fontWeight: 700 }}><span>Client</span><span>Ami</span><span>Waiting</span><span>Active</span></div>
-        {[...clientRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([slug, row]) =>
-          <div key={slug} style={rowStyle}><span><strong>{row.name}</strong><br/><small>{row.total} analyzed</small></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.active}</span></div>
-        )}
-      </section>
-
-      <section style={card}>
-        <h2>Employees</h2>
-        <div style={{ ...rowStyle, fontWeight: 700 }}><span>Employee</span><span>Ami</span><span>Waiting</span><span>Owned</span></div>
-        {[...employeeRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([name, row]) =>
-          <div key={name} style={rowStyle}><span><strong>{name}</strong></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.total}</span></div>
-        )}
-      </section>
-    </div>
-
-    <section style={{ ...card, marginTop: 22 }}>
-      <h2>Waiting and Blocked</h2>
-      {waiting.slice(0, 20).map((task) => {
-        const intel = task.intelligence!;
-        return <article key={task.id} style={{ borderTop: '1px solid #e5e7eb', padding: '12px 0' }}>
-          <strong>{task.client.name} · {task.name}</strong>
-          <div>{intel.agentState}{intel.waitingOnName ? ` · ${intel.waitingOnName}` : ''}</div>
-          <small>{intel.currentSummary}</small>
-        </article>;
-      })}
+    <section className="metric-grid">
+      <div className="metric-card"><span>Waiting</span><strong>{waiting.length}</strong><small>External or team dependencies</small></div>
+      <div className="metric-card"><span>Active</span><strong>{active.length}</strong><small>Currently moving</small></div>
+      <div className="metric-card"><span>Completed</span><strong>{completed.length}</strong><small>Operationally complete</small></div>
+      <div className="metric-card"><span>Analyzed</span><strong>{tasks.length}</strong><small>Tasks with current intelligence</small></div>
     </section>
 
-    <p style={{ marginTop: 22 }}><a href="/debug/voth/intelligence">Open VOTH intelligence evidence view</a></p>
+    <section className="ops-section">
+      <div className="section-heading">
+        <div><p className="eyebrow">DEPENDENCIES</p><h2>What we&apos;re waiting on</h2></div>
+        <span className="count-badge">{waiting.filter((task) => !task.intelligence?.needsAmi).length}</span>
+      </div>
+
+      <div className="waiting-grid">
+        {waitingGroups.map((group) => <div className="waiting-group" key={group.state}>
+          <div className="waiting-group-title">
+            <h3>{stateLabel[group.state] ?? group.state}</h3>
+            <span>{group.tasks.length}</span>
+          </div>
+          {group.tasks.slice(0, 6).map((task) => {
+            const intel = task.intelligence!;
+            return <article className="compact-task" key={task.id}>
+              <div className="task-kicker">{task.client.name}</div>
+              <strong>{task.name}</strong>
+              <p>{intel.currentSummary}</p>
+              <small>{intel.waitingOnName ? `Waiting on ${intel.waitingOnName}` : stateLabel[intel.agentState]}</small>
+            </article>;
+          })}
+          {group.tasks.length > 6 && <div className="more-row">+ {group.tasks.length - 6} more</div>}
+        </div>)}
+      </div>
+    </section>
+
+    <section className="split-grid">
+      <div className="ops-section">
+        <div className="section-heading"><div><p className="eyebrow">CLIENTS</p><h2>Client overview</h2></div></div>
+        <div className="summary-table">
+          <div className="summary-row summary-head"><span>Client</span><span>Ami</span><span>Waiting</span><span>Active</span></div>
+          {[...clientRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([slug, row]) =>
+            <div className="summary-row" key={slug}>
+              <span><strong>{row.name}</strong><small>{row.total} analyzed</small></span>
+              <span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.active}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="ops-section">
+        <div className="section-heading"><div><p className="eyebrow">TEAM</p><h2>Employee overview</h2></div></div>
+        <div className="summary-table">
+          <div className="summary-row summary-head"><span>Employee</span><span>Ami</span><span>Waiting</span><span>Owned</span></div>
+          {[...employeeRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([name, row]) =>
+            <div className="summary-row" key={name}>
+              <span><strong>{name}</strong></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.total}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   </main>;
 }
