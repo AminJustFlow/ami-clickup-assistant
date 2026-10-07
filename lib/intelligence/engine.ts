@@ -52,7 +52,7 @@ function clearAmi() {
 export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIntelligence {
   const evidence: IntelligenceEvidence[] = [];
   const clickupDone = ['done', 'closed', 'complete', 'completed'].includes(context.status?.toLowerCase() ?? '');
-  let state: AgentState = clickupDone ? 'COMPLETED' : context.comments.length ? 'ACTIVE' : 'UNKNOWN';
+  let state: AgentState = clickupDone ? 'COMPLETED' : 'ACTIVE';
   let waitingOnType: WaitingOnType = 'NONE';
   let waitingOnName: string | null = null;
   let needsAmi = false;
@@ -115,7 +115,7 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
       confidence = Math.max(confidence, 0.74);
     }
 
-    if (amiDirectRequest.test(text) && comment.authorName?.toLowerCase().includes('ami') !== true) {
+    const hasAmiRequest = amiMention.test(text) && requestLanguage.test(text);\n    if (hasAmiRequest && comment.authorName?.toLowerCase().includes('ami') !== true) {
       needsAmi = true;
       state = 'WAITING_ON_AMI';
       waitingOnType = 'AMI';
