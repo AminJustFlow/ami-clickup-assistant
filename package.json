@@ -16,7 +16,8 @@
     "intelligence:analyze:voth": "tsx scripts/analyze-voth.ts",
     "intelligence:evaluate": "tsx scripts/evaluate-intelligence.ts",
     "intelligence:diagnose:voth": "tsx scripts/diagnose-voth-intelligence.ts",
-    "intelligence:analyze:voth:ai": "tsx scripts/analyze-voth-ai.ts"
+    "intelligence:analyze:voth:ai": "tsx scripts/analyze-voth-ai.ts",
+    "intelligence:refresh:voth": "npm run clickup:sync:voth && npm run intelligence:analyze:voth && npm run intelligence:analyze:voth:ai"
   },
   "dependencies": {
     "@next/env": "^16.4.0",
