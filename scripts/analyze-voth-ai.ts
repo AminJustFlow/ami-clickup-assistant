@@ -4,13 +4,6 @@ import { buildTaskContext } from '../lib/intelligence/context';
 import { analyzeWithAI } from '../lib/intelligence/ai';
 import { analyzeWithRules } from '../lib/intelligence/engine';
 
-function readLimit(): number {
-  const raw = process.env.AI_ANALYSIS_LIMIT ?? '30';
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isFinite(value) || value < 1) throw new Error('AI_ANALYSIS_LIMIT must be a positive integer.');
-  return value;
-}
-
 async function main(): Promise<void> {
   loadEnvConfig(process.cwd());
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing. Add it to .env before running AI analysis.');
@@ -18,7 +11,6 @@ async function main(): Promise<void> {
   const client = await prisma.client.findUnique({ where: { slug: 'voth' } });
   if (!client) throw new Error('VOTH not found. Run npm run clickup:sync:voth first.');
 
-  const limit = readLimit();
   const tasks = await prisma.task.findMany({
     where: { clientId: client.id, deleted: false, comments: { some: {} } },
     include: {
@@ -26,8 +18,7 @@ async function main(): Promise<void> {
       assignees: { include: { employee: true } },
       comments: { orderBy: { clickupCreatedAt: 'asc' } }
     },
-    orderBy: { clickupUpdatedAt: 'desc' },
-    take: limit
+    orderBy: { clickupUpdatedAt: 'desc' }
   });
 
   const counts = new Map<string, number>();
@@ -77,7 +68,7 @@ async function main(): Promise<void> {
     if (result.amiAction) console.log(`  Ami action: ${result.amiAction}`);
   }
 
-  console.log(`\nAI shadow analyzed ${tasks.length} VOTH tasks with comments (limit ${limit}).`);
+  console.log(`\nAI analyzed ${tasks.length} VOTH tasks with comments.`);
   console.log(`AI results: ${aiCount}; rule fallbacks: ${fallbackCount}; Needs Ami: ${needsAmi}`);
   for (const [state, count] of [...counts].sort()) console.log(`  ${state}: ${count}`);
 }
