@@ -81,3 +81,6 @@ export const getTaskComments = (taskId: string, cursor?: { start: string; startI
   const query = cursor ? `?start=${encodeURIComponent(cursor.start)}&start_id=${encodeURIComponent(cursor.startId)}` : '';
   return clickup<{ comments: any[] }>(`/task/${taskId}/comment${query}`);
 };
+
+export const getCommentReplies = (commentId: string) =>
+  clickup<{ comments: any[] }>(`/comment/${encodeURIComponent(commentId)}/reply`);
