@@ -61,10 +61,16 @@ export default async function Home() {
 
 
   const externalWaiting = waiting.filter(t => t.intelligence?.agentState !== 'WAITING_ON_AMI');
-  const teamWaiting = externalWaiting.filter(t => t.intelligence?.agentState === 'WAITING_ON_TEAM');
-  const clientWaiting = externalWaiting.filter(t => t.intelligence?.agentState === 'WAITING_ON_CLIENT');
-  const vendorWaiting = externalWaiting.filter(t => t.intelligence?.agentState === 'WAITING_ON_VENDOR');
-  const otherWaiting = externalWaiting.filter(t => !['WAITING_ON_TEAM','WAITING_ON_CLIENT','WAITING_ON_VENDOR'].includes(t.intelligence?.agentState ?? ''));
+  const waitingGroups = new Map<string, typeof externalWaiting>();
+  for (const task of externalWaiting) {
+    const kind = task.intelligence?.waitingOnType ?? 'OTHER';
+    const name = task.intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
+    const key = kind + ':' + name.toLowerCase();
+    const group = waitingGroups.get(key) ?? [];
+    group.push(task);
+    waitingGroups.set(key, group);
+  }
+  const groupedWaiting = [...waitingGroups.entries()].sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   const orderedClients = [...clientRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
 
@@ -90,7 +96,7 @@ export default async function Home() {
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
             <div className="clean-task-list">{needsAmi.map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
-              <h3>{task.name}</h3><p>{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
+              <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
               {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
             </article>)}</div>}
         </section>
@@ -98,12 +104,18 @@ export default async function Home() {
         <section className="clean-panel" aria-labelledby="waiting-title">
           <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
-            <div className="clean-task-list">{[...teamWaiting, ...clientWaiting, ...vendorWaiting, ...otherWaiting].slice(0,8).map(task => <article className="clean-task" key={task.id}>
-              <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{task.intelligence?.waitingOnName || stateLabel[task.intelligence!.agentState] || 'Waiting'}</span></div>
-              <h3>{task.name}</h3><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>{task.intelligence?.needsAmi && <span className="secondary-dependency action-dependency">Also needs Ami's decision</span>}
-              <div className="task-footer"><span>{task.intelligence?.waitingOnName ? 'With ' + task.intelligence.waitingOnName : 'Awaiting next step'}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open task ↗</a>}</div>
-            </article>)}
-            {externalWaiting.length > 8 && <p className="list-footnote">Showing 8 of {externalWaiting.length} waiting tasks. Open a client below to see more.</p>}</div>}
+            <div className="waiting-groups">{groupedWaiting.map(([key, group]) => {
+              const kind = group[0].intelligence?.waitingOnType ?? 'OTHER';
+              const name = group[0].intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
+              return <details className="waiting-person" key={key} open={groupedWaiting.length <= 3 ? true : undefined}>
+                <summary><span className="waiting-person-title"><strong>{name}</strong><small>{kind === 'TEAM' ? 'Team' : kind === 'CLIENT' ? 'Client' : kind === 'VENDOR' ? 'Vendor' : 'Other dependency'}</small></span><span className="panel-count">{group.length}</span></summary>
+                <div className="clean-task-list">{group.map(task => <article className="clean-task" key={task.id}>
+                  <div className="task-topline"><span>{task.client.name}</span>{task.intelligence?.needsAmi && <span className="status-pill attention-pill">Also needs Ami</span>}</div>
+                  <h3>{task.name}</h3><p className="next-step-label">What we're waiting for</p><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>
+                  {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}
+                </article>)}</div>
+              </details>;
+            })}</div>}
         </section>
       </div>
 
