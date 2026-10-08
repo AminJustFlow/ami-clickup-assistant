@@ -1,4 +1,4 @@
-import { isStaleActive } from '@/lib/intelligence/staleness';
+import { isStaleActive, activityLabel } from '@/lib/intelligence/staleness';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 
@@ -34,7 +34,7 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
     {!!needsAmi.length && <section className="attention-section"><div className="section-heading"><h2>Needs Ami</h2><span className="count-badge attention-count">{needsAmi.length}</span></div>{needsAmi.map(t => <TaskCard key={t.id} task={t} />)}</section>}
     <section className="detail-grid">
       <div className="ops-section"><div className="section-heading"><h2>Waiting</h2><span className="count-badge">{waiting.length}</span></div>{waiting.map(t => <TaskCard key={t.id} task={t} />)}</div>
-      <div className="ops-section"><div className="section-heading"><h2>Active</h2><span className="count-badge">{recentActive.length}</span></div>{recentActive.slice(0,20).map(t => <TaskCard key={t.id} task={t} compact />)}{recentActive.length > 20 && <p className="muted">+ {recentActive.length - 20} more active tasks</p>}</div>
+      <div className="ops-section"><div className="section-heading"><h2>Recently active</h2><span className="count-badge">{recentActive.length}</span></div>{recentActive.slice(0,20).map(t => <TaskCard key={t.id} task={t} compact />)}{recentActive.length > 20 && <p className="muted">+ {recentActive.length - 20} more active tasks</p>}</div>
     </section>
     <section className="ops-section" style={{ marginTop: 18 }}><div className="section-heading"><div><p className="eyebrow">REVIEW SIGNAL · 30 DAYS</p><h2>Stale active tasks</h2></div><span className="count-badge">{stale.length}</span></div><p className="muted">Still marked active, but no task or comment activity recorded in the last 30 days. These may be waiting, completed, or simply not updated in ClickUp.</p>{stale.map(t => <TaskCard key={t.id} task={t} compact />)}</section>
   </main>;
@@ -42,5 +42,5 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
 
 function TaskCard({ task, compact=false }: { task: any; compact?: boolean }) {
   const intel = task.intelligence;
-  return <article className="detail-task"><div className="task-kicker">{task.client.name} · {label[intel.agentState] ?? intel.agentState}</div><strong>{task.name}</strong>{!compact && <p>{intel.currentSummary}</p>}<div className="task-meta">{intel.waitingOnName && <span>Waiting on {intel.waitingOnName}</span>}{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</div></article>;
+  return <article className="detail-task"><div className="task-kicker">{task.client.name} · {label[intel.agentState] ?? intel.agentState}</div><strong>{task.name}</strong>{!compact && <p>{intel.currentSummary}</p>}<div className="task-meta"><span>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span>{intel.waitingOnName && <span>Waiting on {intel.waitingOnName}</span>}{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</div></article>;
 }
