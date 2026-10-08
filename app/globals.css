@@ -168,3 +168,33 @@ html{scroll-behavior:smooth}
 .digest-button:hover,.clean-filters button:hover{background:var(--jf-primary-hover)}
 .app-nav-links a:hover,.app-nav-links a[aria-current=page]{background:var(--jf-primary-soft)}
 .task-decision{border-left-color:var(--jf-accent)}
+
+
+/* Official Just Flow identity */
+:root{
+  --jf-primary:#038CC6;
+  --jf-primary-hover:#0277a8;
+  --jf-primary-soft:#eaf7fc;
+  --jf-accent:#038CC6;
+  --jf-ink:#58585A;
+  --jf-background:#f7f9fa;
+  --jf-border:#e2e5e7;
+}
+body{background:var(--jf-background);color:#414448}
+.app-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-logo{height:46px;width:auto;max-width:190px;object-fit:contain}
+.brand-product{font-size:12px;font-weight:700;color:#58585A;border-left:1px solid #d6dadd;padding-left:12px;letter-spacing:.02em}
+.app-nav-links a[aria-current=page]{color:#038CC6;border-color:#038CC6}
+.app-nav-links a:hover{color:#0277a8}
+.digest-button,.clean-filters button,.filter-bar button{background:#038CC6;color:white;border-color:#038CC6}
+.digest-button:hover,.clean-filters button:hover,.filter-bar button:hover{background:#0277a8;border-color:#0277a8}
+.primary-stat{background:#038CC6;color:#fff}
+.task-action,.clean-task a,.entity-row:hover .entity-copy strong{color:#038CC6}
+.task-decision{border-left-color:#038CC6;background:#eff9fd}
+.task-decision strong{color:#0277a8}
+.task-decision p{color:#4c606a}
+.action-dependency{background:#eaf7fc;color:#0277a8}
+.secondary-dependency{background:#f1f3f4;color:#58585A}
+.clean-filters input[type=search]:focus{border-color:#038CC6;outline-color:#bde9f9}
+.activity-comment,.activity-status,.activity-assignment{background:#038CC6}
+@media(max-width:640px){.brand-logo{height:35px;max-width:135px}.brand-product{font-size:11px;padding-left:8px}}
