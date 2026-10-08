@@ -8,6 +8,7 @@ export function progressSignal(input: {
   comments: { body: string; clickupCreatedAt: Date | null }[];
   lastMeaningfulChangeAt: Date | null;
   lastMeaningfulChange: string | null;
+  events?: { eventType: string; occurredAt: Date | null; beforeValue: unknown; afterValue: unknown }[];
 }, now = new Date()): { label: string; detail: string; kind: 'confirmed' | 'followup' | 'unknown' } {
   const recent = (date: Date | null) => date !== null && Number.isFinite(date.getTime()) &&
     date.getTime() <= now.getTime() && date.getTime() >= now.getTime() - 30 * 86400000;
@@ -16,6 +17,13 @@ export function progressSignal(input: {
   }
   if (input.agentState.startsWith('WAITING_') || input.agentState === 'BLOCKED' || input.agentState === 'ISSUE') {
     return { kind: 'followup', label: 'Needs follow-up', detail: 'An unresolved dependency or issue is recorded.' };
+  }
+  const statusTransition = input.events?.filter(e => e.eventType === 'OBSERVED_STATUS_CHANGE' && recent(e.occurredAt))
+    .sort((a,b) => (b.occurredAt?.getTime() ?? 0) - (a.occurredAt?.getTime() ?? 0))[0];
+  if (statusTransition) {
+    const before = (statusTransition.beforeValue as { value?: unknown } | null)?.value;
+    const after = (statusTransition.afterValue as { value?: unknown } | null)?.value;
+    return { kind: 'confirmed', label: 'Status transition observed', detail: `Sync detected status change: ${String(before ?? 'unknown')} → ${String(after ?? 'unknown')}. Exact edit time and actor unknown; this does not prove work completion.` };
   }
   const latest = [...input.comments].filter(c => recent(c.clickupCreatedAt))
     .sort((a,b) => (b.clickupCreatedAt?.getTime() ?? 0) - (a.clickupCreatedAt?.getTime() ?? 0))[0];
