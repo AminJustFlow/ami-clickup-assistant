@@ -72,7 +72,7 @@ export default async function Home() {
         <h1>Ami Intelligence</h1>
         <p className="muted">What needs attention now, what is waiting, and where work stands.</p>
       </div>
-      <a className="secondary-link" href="/debug/voth/intelligence">Evidence view</a>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}><a className="secondary-link" href="/review">AI Review</a><a className="secondary-link" href="/debug/voth/intelligence">Evidence view</a></div>
     </header>
 
     <section className="attention-section">
