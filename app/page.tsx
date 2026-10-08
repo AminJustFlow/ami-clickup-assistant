@@ -1,5 +1,6 @@
 import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
+import { AppNav } from './components/app-nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,11 +65,7 @@ export default async function Home() {
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
 
   return <main className="ops-shell dashboard-shell">
-    <nav className="app-nav" aria-label="Main navigation">
-      <a className="app-brand" href="/"><span className="brand-mark">JF</span><span>Just Flow <small>Intelligence</small></span></a>
-      <div className="app-nav-links"><a href="/" aria-current="page">Overview</a><a href="/changes">Activity</a><a href="#clients">Clients</a><a href="#team">Team</a></div>
-      <details className="tools-menu"><summary>Tools</summary><div><a href="/review">AI quality review</a><a href="/debug/voth/intelligence">Evidence explorer</a></div></details>
-    </nav>
+    <AppNav current="overview" />
 
     <header className="dashboard-hero">
       <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>Good overview, fewer surprises.</h1><p>See what needs a decision, what is moving, and what is waiting.</p></div>
