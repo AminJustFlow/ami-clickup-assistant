@@ -19,6 +19,12 @@ const stateLabel: Record<string, string> = {
 };
 
 export default async function Home() {
+  const syncStatus = await prisma.client.findMany({ where: { active: true }, select: { name: true, lastSyncedAt: true } });
+  const latestSync = syncStatus.map(c => c.lastSyncedAt).filter((d): d is Date => d !== null).sort((a,b) => b.getTime()-a.getTime())[0];
+  const oldestSync = syncStatus.map(c => c.lastSyncedAt).filter((d): d is Date => d !== null).sort((a,b) => a.getTime()-b.getTime())[0];
+  const unsyncedClients = syncStatus.filter(c => !c.lastSyncedAt).length;
+  const staleSync = !oldestSync || Date.now() - oldestSync.getTime() > 15 * 60 * 1000 || unsyncedClients > 0;
+  const syncLabel = latestSync ? latestSync.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET' : 'Not yet synced';
   const tasks = await prisma.task.findMany({
     where: { deleted: false, intelligence: { isNot: null } },
     include: {
@@ -82,6 +88,8 @@ export default async function Home() {
       <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>What needs attention today?</h1><p>Decisions to make, people to follow up with, and client progress — all in one place.</p></div>
       <a className="quiet-action" href="/changes">See recent activity <span aria-hidden="true">↗</span></a>
     </header>
+
+    <div className={"sync-status " + (staleSync ? "sync-status-warning" : "sync-status-current")} role="status"><span aria-hidden="true">{staleSync ? "◷" : "✓"}</span><span>{staleSync ? "Sync may be out of date" : "ClickUp data synced"} · Last successful sync: {syncLabel}</span></div>
 
     <section className="dashboard-metrics" aria-label="Work summary">
       <a href="#attention-title" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Decisions or actions for Ami ↓</small></a>
