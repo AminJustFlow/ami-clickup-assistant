@@ -1,6 +1,6 @@
 import { loadEnvConfig } from '@next/env';
 import { prisma } from '../lib/db/prisma';
-import { saveIntelligenceChange } from '../lib/intelligence/change-history';
+import { saveTaskIntelligence } from '../lib/intelligence/change-history';
 import { buildTaskContext } from '../lib/intelligence/context';
 import { analyzeWithRules } from '../lib/intelligence/engine';
 
@@ -25,12 +25,7 @@ async function main(): Promise<void> {
     counts.set(result.agentState, (counts.get(result.agentState) ?? 0) + 1);
     if (result.needsAmi) needsAmi += 1;
 
-    await saveIntelligenceChange(task.id, result);
-    await prisma.taskIntelligence.upsert({
-      where: { taskId: task.id },
-      create: {
-        taskId: task.id,
-        agentState: result.agentState,
+    await saveTaskIntelligence(task.id, {agentState: result.agentState,
         headline: result.headline,
         currentSummary: result.currentSummary,
         needsAmi: result.needsAmi,
@@ -45,24 +40,6 @@ async function main(): Promise<void> {
         confidence: result.confidence,
         promptVersion: 'RULE_ENGINE_V1',
         analyzedAt: new Date()
-      },
-      update: {
-        agentState: result.agentState,
-        headline: result.headline,
-        currentSummary: result.currentSummary,
-        needsAmi: result.needsAmi,
-        amiAction: result.amiAction,
-        waitingOnType: result.waitingOnType,
-        waitingOnName: result.waitingOnName,
-        importanceScore: result.importanceScore,
-        amiAttentionScore: result.amiAttentionScore,
-        riskLevel: result.riskLevel,
-        lastMeaningfulChange: result.lastMeaningfulChange,
-        lastMeaningfulChangeAt: result.lastMeaningfulChangeAt,
-        confidence: result.confidence,
-        promptVersion: 'RULE_ENGINE_V1',
-        analyzedAt: new Date()
-      }
     });
   }
 
