@@ -28,7 +28,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const assigneeOptions = [...new Map(tasks.flatMap(t => t.assignees.map(a => [String(a.employee.id), { id: String(a.employee.id), name: a.employee.name }] as const))).values()].sort((a,b) => a.name.localeCompare(b.name));
   const matches = (t: typeof tasks[number]) => {
     if (filters.assignee && !t.assignees.some(a => String(a.employee.id) === filters.assignee)) return false;
-    if (filters.status && t.status.toLowerCase() !== filters.status.toLowerCase()) return false;
+    if (filters.status && (t.clickupStatus ?? '').toLowerCase() !== filters.status.toLowerCase()) return false;
     if (filters.age === '30' && !isStaleActive({ state: t.intelligence?.agentState ?? '', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) })) return false;
     if (filters.age === 'recent' && isStaleActive({ state: t.intelligence?.agentState ?? '', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) })) return false;
     return true;
@@ -40,7 +40,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
   const visibleRecent = recentActive.filter(matches);
   const visibleStale = stale.filter(matches);
-  const statusOptions = [...new Set(tasks.map(t => t.status))].sort();
+  const statusOptions = [...new Set(tasks.map(t => t.clickupStatus).filter((s): s is string => Boolean(s)))].sort();
 
   return <main className="ops-shell">
     <a className="back-link" href="/">← Ami Intelligence</a>
