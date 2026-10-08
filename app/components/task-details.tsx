@@ -45,6 +45,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
   const [task, setTask] = useState<TaskDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [mounted, setMounted] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -66,7 +67,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
       .catch(() => { if (!controller.signal.aborted) setError('Unable to load task details. Please try again.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [open, taskId]);
+  }, [open, taskId, retryCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +105,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
           </header>
           <div className="task-drawer-body">
             {loading && <p role="status" className="task-drawer-message">Loading task details…</p>}
-            {error && <div role="alert" className="task-drawer-message"><p>{error}</p><button type="button" onClick={() => { setOpen(false); requestAnimationFrame(() => setOpen(true)); }}>Try again</button></div>}
+            {error && <div role="alert" className="task-drawer-message"><p>{error}</p><button type="button" onClick={() => setRetryCount(count => count + 1)}>Try again</button></div>}
             {task && <>
               <div className="task-drawer-title">
                 <span className="status-pill">{stateLabel(task.intelligence?.agentState)}</span>
