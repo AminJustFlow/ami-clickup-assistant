@@ -50,27 +50,23 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
   let waitingOnType = ai.waiting_on_type as WaitingOnType;
   let waitingOnName = ai.waiting_on_name;
 
-  const latestComment = context.comments.at(-1);
-  if (needsAmi && latestComment && isAmiAuthor(latestComment.authorName)) {
+  // Ami can have a pending decision even while the overall deliverable waits on
+  // another teammate. Do not collapse two independent dependencies into one.
+  // The model must resolve whether the request was answered using chronology.
+  if (needsAmi && !amiAction?.trim()) {
     needsAmi = false;
     amiAction = null;
-    if (agentState === 'WAITING_ON_AMI') agentState = 'ACTIVE';
-    if (waitingOnType === 'AMI') {
-      waitingOnType = 'NONE';
-      waitingOnName = null;
-    }
   }
-
-  if (needsAmi) {
-    agentState = 'WAITING_ON_AMI';
+  if (needsAmi && agentState === 'WAITING_ON_AMI') {
     waitingOnType = 'AMI';
     waitingOnName = 'Ami';
   } else if (agentState === 'WAITING_ON_AMI') {
+    // A decision is needed, but the model did not supply a valid action.
     agentState = 'ACTIVE';
     waitingOnType = 'NONE';
     waitingOnName = null;
-    amiAction = null;
   }
+  if (!needsAmi) amiAction = null;
 
   if (waitingOnName && [...context.assignees, ...teamNames].some(n => normalizedPerson(n) === normalizedPerson(waitingOnName)) && (waitingOnType === 'CLIENT' || waitingOnType === 'VENDOR')) {
     waitingOnType = 'TEAM';
