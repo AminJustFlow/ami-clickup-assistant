@@ -323,3 +323,10 @@ body{background:var(--jf-background);color:#414448}
 .task-drawer-secondary{border:1px solid #d9e1e5;background:#fff;color:#5a6870}
 .task-drawer-message{font-size:14px;color:#596973;line-height:1.6}
 @media(max-width:640px){.task-drawer-header,.task-drawer-body,.task-drawer-footer{padding:17px}.task-drawer-title h2{font-size:21px}.task-drawer-facts>div{grid-template-columns:90px 1fr}}
+
+
+/* Read-only automatic ClickUp refresh indicator */
+.sync-status{display:flex;align-items:center;gap:8px;font-size:12px;padding:9px 12px;border:1px solid #dce6e9;border-radius:9px;background:#f9fbfc;color:#596970;margin:0 0 18px}
+.sync-status-current{border-color:#c8e5d9;color:#3c7158}
+.sync-status-warning{border-color:#f0d5a6;color:#916b30;background:#fffaf0}
+.sync-status span:first-child{font-size:15px;font-weight:800}
