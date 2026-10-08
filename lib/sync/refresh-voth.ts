@@ -163,6 +163,13 @@ export async function refreshVoth(): Promise<RefreshResult> {
           stats.refreshed++;
         } catch (error) {
           failedIds.add(id);
+          // Persist a retry marker so an unchanged ClickUp timestamp cannot hide
+          // a partially imported task on the next polling cycle.
+          await prisma.taskEvent.upsert({
+            where: { eventKey: 'sync-retry:' + id + ':' + String(raw.date_updated ?? 'none') },
+            create: { eventKey: 'sync-retry:' + id + ':' + String(raw.date_updated ?? 'none'), eventType: 'refreshRetry', rawPayload: { task_id: id } },
+            update: { processedAt: null }
+          });
           stats.failed++;
           stats.errors.push('Task ' + id + ': ' + (error instanceof Error ? error.message : String(error)));
         }
