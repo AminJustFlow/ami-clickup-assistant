@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import type { AgentState, RiskLevel, WaitingOnType } from '@prisma/client';
 import { contextText, type TaskContext } from './context';
+import { relatedEvidenceText, type RelatedEvidence } from './related';
 import { analyzeWithRules, type RuleIntelligence } from './engine';
 import { TASK_ANALYZER_PROMPT_VERSION, TASK_ANALYZER_SYSTEM } from './prompt';
 import { taskIntelligenceSchema, type TaskIntelligenceOutput } from './schema';
@@ -110,7 +111,7 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
 
 export async function analyzeWithAI(
   context: TaskContext,
-  options: { model?: string; now?: Date; client?: OpenAI; teamNames?: string[] } = {}
+  options: { model?: string; now?: Date; client?: OpenAI; teamNames?: string[]; related?: RelatedEvidence[] } = {}
 ): Promise<HybridIntelligence> {
   const now = options.now ?? new Date();
   const rules = analyzeWithRules(context, now);
@@ -129,7 +130,10 @@ export async function analyzeWithAI(
 
 Internal agency employees (not clients or vendors): ${(options.teamNames ?? []).join(', ')}
 
-${contextText(context)}`,
+${contextText(context)}
+
+Related task evidence (independent scope; do not assume shared completion):
+${relatedEvidenceText(options.related ?? []) || 'No strongly related tasks identified.'}`,
       text: { format: zodTextFormat(taskIntelligenceSchema, 'task_intelligence') }
     });
 
