@@ -71,7 +71,11 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
     amiAction = null;
   }
 
-  if (waitingOnName && [...context.assignees, ...teamNames].some(n => normalizedPerson(n) === normalizedPerson(waitingOnName)) && (waitingOnType === 'CLIENT' || waitingOnType === 'VENDOR')) {\n    waitingOnType = 'TEAM';\n    agentState = 'WAITING_ON_TEAM';\n  }\n  waitingOnName = normalizeWaitingName(context, waitingOnType, waitingOnName, teamNames);
+  if (waitingOnName && [...context.assignees, ...teamNames].some(n => normalizedPerson(n) === normalizedPerson(waitingOnName)) && (waitingOnType === 'CLIENT' || waitingOnType === 'VENDOR')) {
+    waitingOnType = 'TEAM';
+    agentState = 'WAITING_ON_TEAM';
+  }
+  waitingOnName = normalizeWaitingName(context, waitingOnType, waitingOnName, teamNames);
 
   const blocked = ['BLOCKED', 'ISSUE', 'WAITING_ON_VENDOR', 'WAITING_ON_CLIENT'].includes(agentState);
   const scores = scoreRules({
@@ -123,7 +127,9 @@ export async function analyzeWithAI(
       instructions: TASK_ANALYZER_SYSTEM,
       input: `Analyze the current operational state of this ClickUp task. Comments are chronological, oldest to newest.
 
-Internal agency employees (not clients or vendors): ${(options.teamNames ?? []).join(', ')}\n\n${contextText(context)}`,
+Internal agency employees (not clients or vendors): ${(options.teamNames ?? []).join(', ')}
+
+${contextText(context)}`,
       text: { format: zodTextFormat(taskIntelligenceSchema, 'task_intelligence') }
     });
 
