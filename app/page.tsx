@@ -41,7 +41,7 @@ export default async function Home() {
     const row = clientRows.get(task.client.slug) ?? { name: task.client.name, total: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 };
     row.total += 1;
     if (task.intelligence?.needsAmi) row.needsAmi += 1;
-    if (task.intelligence && waitingStates.includes(task.intelligence.agentState)) row.waiting += 1;
+    if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
     if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
     if (staleIds.has(task.id)) row.stale += 1;
     clientRows.set(task.client.slug, row);
@@ -60,7 +60,7 @@ export default async function Home() {
   }
 
 
-  const externalWaiting = waiting.filter(t => !t.intelligence?.needsAmi);
+  const externalWaiting = waiting.filter(t => t.intelligence?.agentState !== 'WAITING_ON_AMI');
   const orderedClients = [...clientRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
 
@@ -86,7 +86,7 @@ export default async function Home() {
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
             <div className="clean-task-list">{needsAmi.map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
-              <h3>{task.name}</h3><p>{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p>
+              <h3>{task.name}</h3><p>{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
               {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
             </article>)}</div>}
         </section>
@@ -96,7 +96,7 @@ export default async function Home() {
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
             <div className="clean-task-list">{externalWaiting.slice(0,8).map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{stateLabel[task.intelligence!.agentState] ?? 'Waiting'}</span></div>
-              <h3>{task.name}</h3><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>
+              <h3>{task.name}</h3><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>{task.intelligence?.needsAmi && <span className="secondary-dependency action-dependency">Also needs Ami's decision</span>}
               <div className="task-footer"><span>{task.intelligence?.waitingOnName ? 'With ' + task.intelligence.waitingOnName : 'Awaiting next step'}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open task ↗</a>}</div>
             </article>)}
             {externalWaiting.length > 8 && <p className="list-footnote">Showing 8 of {externalWaiting.length} waiting tasks. Open a client below to see more.</p>}</div>}
