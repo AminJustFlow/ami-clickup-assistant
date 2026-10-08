@@ -61,6 +61,10 @@ export default async function Home() {
 
 
   const externalWaiting = waiting.filter(t => t.intelligence?.agentState !== 'WAITING_ON_AMI');
+  const teamWaiting = externalWaiting.filter(t => t.intelligence?.agentState === 'WAITING_ON_TEAM');
+  const clientWaiting = externalWaiting.filter(t => t.intelligence?.agentState === 'WAITING_ON_CLIENT');
+  const vendorWaiting = externalWaiting.filter(t => t.intelligence?.agentState === 'WAITING_ON_VENDOR');
+  const otherWaiting = externalWaiting.filter(t => !['WAITING_ON_TEAM','WAITING_ON_CLIENT','WAITING_ON_VENDOR'].includes(t.intelligence?.agentState ?? ''));
   const orderedClients = [...clientRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
 
@@ -68,7 +72,7 @@ export default async function Home() {
     <AppNav current="overview" />
 
     <header className="dashboard-hero">
-      <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>Here's what needs attention</h1><p>Start with decisions that need you, then check what's waiting on the team.</p></div>
+      <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>What needs attention today?</h1><p>Decisions to make, people to follow up with, and client progress — all in one place.</p></div>
       <a className="quiet-action" href="/changes">See recent activity <span aria-hidden="true">↗</span></a>
     </header>
 
@@ -92,9 +96,9 @@ export default async function Home() {
         </section>
 
         <section className="clean-panel" aria-labelledby="waiting-title">
-          <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Waiting on someone else</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
-            <div className="clean-task-list">{externalWaiting.slice(0,8).map(task => <article className="clean-task" key={task.id}>
+            <div className="clean-task-list">{[...teamWaiting, ...clientWaiting, ...vendorWaiting, ...otherWaiting].slice(0,8).map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{stateLabel[task.intelligence!.agentState] ?? 'Waiting'}</span></div>
               <h3>{task.name}</h3><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>{task.intelligence?.needsAmi && <span className="secondary-dependency action-dependency">Also needs Ami's decision</span>}
               <div className="task-footer"><span>{task.intelligence?.waitingOnName ? 'With ' + task.intelligence.waitingOnName : 'Awaiting next step'}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open task ↗</a>}</div>
@@ -105,8 +109,8 @@ export default async function Home() {
 
       <aside className="dashboard-sidebar">
         <section className="clean-panel" id="clients" aria-labelledby="clients-title">
-          <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">Clients</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} tasks · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>
+          <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">How are our clients doing?</h2></div><span className="panel-count">{orderedClients.length}</span></div>
+          <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} tasks · {client.waiting} waiting · {client.active} active</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>
         </section>
         <section className="clean-panel" id="team" aria-labelledby="team-title">
           <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
