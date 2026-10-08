@@ -7,6 +7,7 @@ import { analyzeWithRules } from '../lib/intelligence/engine';
 import { intelligenceFingerprint } from '../lib/intelligence/fingerprint';
 import { DEFAULT_INTELLIGENCE_MODEL } from '../lib/intelligence/ai';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
+import { findRelatedTasks } from '../lib/intelligence/related';
 
 async function main(): Promise<void> {
   loadEnvConfig(process.cwd());
@@ -36,9 +37,11 @@ async function main(): Promise<void> {
   let aiCount = 0;
   let fallbackCount = 0;
 
+  const contexts = tasks.map(buildTaskContext);
   for (const task of tasks) {
     const context = buildTaskContext(task);
-    const fingerprint = intelligenceFingerprint(context, model, teamNames);
+    const related = findRelatedTasks(context, contexts);
+    const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
     const previous = task.intelligence;
     const expectedVersion = `${TASK_ANALYZER_PROMPT_VERSION}:${model}`;
     if (!force && previous?.sourceFingerprint === fingerprint && previous.promptVersion === expectedVersion) {
@@ -49,7 +52,7 @@ async function main(): Promise<void> {
       continue;
     }
     const rules = analyzeWithRules(context);
-    const result = await analyzeWithAI(context, { teamNames, model });
+    const result = await analyzeWithAI(context, { teamNames, model, related });
     counts.set(result.agentState, (counts.get(result.agentState) ?? 0) + 1);
     if (result.needsAmi) needsAmi += 1;
     if (result.source === 'AI') { aiCount += 1; newCount++; }
