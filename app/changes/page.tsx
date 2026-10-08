@@ -27,7 +27,7 @@ export default async function ChangesPage() {
   const parsed = raw ? new Date(raw) : null;
   const hasCheckpoint = !!parsed && !Number.isNaN(parsed.getTime()) && parsed.getTime() <= Date.now();
   const since = hasCheckpoint ? parsed! : new Date(Date.now() - 7 * 86400000);
-  const [events, comments, needsAmi, transitions] = await Promise.all([
+  const [events, comments, needsAmi] = await Promise.all([
     prisma.taskEvent.findMany({
       where: { occurredAt: { gt: since }, task: { deleted: false } },
       include: { task: { include: { client: true } } },
@@ -42,9 +42,7 @@ export default async function ChangesPage() {
       where: { deleted: false, intelligence: { needsAmi: true } },
       include: { client: true, intelligence: true },
       orderBy: { intelligence: { amiAttentionScore: 'desc' } }, take: 30
-    }),
-    prisma.intelligenceChange.findMany({ where: { detectedAt: { gt: since }, task: { deleted: false } }, include: { task: { include: { client: true } } }, orderBy: { detectedAt: 'desc' }, take: 250 })
-  ]);
+    })\n  ]);
   const items: ChangeItem[] = [];
   for (const e of events) {
     if (!e.task || !e.occurredAt) continue;
@@ -81,28 +79,8 @@ export default async function ChangesPage() {
       {needsAmi.map(t => <article className="compact-task" key={t.id}><div className="task-kicker">{t.client.name}</div><strong>{t.name}</strong><p>{t.intelligence?.amiAction ?? t.intelligence?.currentSummary}</p>{t.clickupUrl && <a href={t.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</article>)}
     </section>
     <section className="ops-section">
-      <div className="section-heading"><h2>Operational changes since last review</h2></div>
-      <p className="muted">Detected when intelligence analysis runs. Earlier states are not reconstructed retroactively.</p>
-      {[
-        { title: 'Newly needs Ami', entries: transitions.filter(t => t.nextNeedsAmi && !t.previousNeedsAmi) },
-        { title: 'New dependencies and blockers', entries: transitions.filter(t => !t.nextNeedsAmi && t.nextState !== t.previousState && (t.nextState.startsWith('WAITING_') || t.nextState === 'BLOCKED' || t.nextState === 'ISSUE')) },
-        { title: 'Completed and resolved', entries: transitions.filter(t => t.nextState === 'COMPLETED' || (t.previousNeedsAmi && !t.nextNeedsAmi)) },
-        { title: 'Other state changes', entries: transitions.filter(t => t.nextState !== 'COMPLETED' && !t.nextNeedsAmi && t.previousNeedsAmi !== true && !t.nextState.startsWith('WAITING_') && t.nextState !== 'BLOCKED' && t.nextState !== 'ISSUE') }
-      ].map(group => <details className="digest-group" key={group.title} open={group.entries.length > 0}>
-        <summary>{group.title} ({group.entries.length})</summary>
-        {group.entries.map(t => <article className="compact-task" key={t.id}>
-          <div className="task-kicker">{t.task.client.name} · Detected {t.detectedAt.toLocaleString('en-US')}</div>
-          <strong>{t.task.name}</strong>
-          <p>{t.previousState ?? 'Unknown'} → {t.nextState.replaceAll('_', ' ')}</p>
-          {t.summary && <p>{t.summary}</p>}
-          {t.nextNeedsAmi && t.amiAction && <p><strong>Ami action:</strong> {t.amiAction}</p>}
-          {t.task.clickupUrl && <a href={t.task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp →</a>}
-        </article>)}
-      </details>)}
-    </section>
-    <section className="ops-section">
       <div className="section-heading"><div><p className="eyebrow">RECORDED ACTIVITY</p><h2>{items.length} changes and comments</h2></div></div>
-      <p className="muted">Status and field changes are observed between syncs; exact edit time and actor are unknown. Comments use their ClickUp timestamps. Intelligence-state transitions are summarized above.</p>
+      <p className="muted">Status and field changes are observed between syncs; exact edit time and actor are unknown. Comments use their ClickUp timestamps. AI interpretation changes are not recorded activity.</p>
       <form action={markDigestChecked}><button className="digest-button" type="submit">Mark reviewed up to now</button></form>
       {grouped.map(group => <details key={group.key} className="digest-group" open={group.items.length > 0}>
         <summary>{group.label} ({group.items.length})</summary>
