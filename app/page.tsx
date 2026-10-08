@@ -104,10 +104,10 @@ export default async function Home() {
         <section className="clean-panel" aria-labelledby="waiting-title">
           <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
-            <div className="waiting-groups">{groupedWaiting.map(([key, group]) => {
+            <div className="waiting-groups">{groupedWaiting.map(([key, group], index) => {
               const kind = group[0].intelligence?.waitingOnType ?? 'OTHER';
               const name = group[0].intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
-              return <details className="waiting-person" key={key} open={groupedWaiting.length <= 3 ? true : undefined}>
+              return <details className="waiting-person" key={key} open={index < 3}>
                 <summary><span className="waiting-person-title"><strong>{name}</strong><small>{kind === 'TEAM' ? 'Team' : kind === 'CLIENT' ? 'Client' : kind === 'VENDOR' ? 'Vendor' : 'Other dependency'}</small></span><span className="panel-count">{group.length}</span></summary>
                 <div className="clean-task-list">{group.map(task => <article className="clean-task" key={task.id}>
                   <div className="task-topline"><span>{task.client.name}</span>{task.intelligence?.needsAmi && <span className="status-pill attention-pill">Also needs Ami</span>}</div>
