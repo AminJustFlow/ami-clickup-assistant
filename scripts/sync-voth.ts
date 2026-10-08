@@ -4,6 +4,7 @@ import { prisma } from '../lib/db/prisma';
 import { ClickUpApiError, getFolderLists, getTaskComments, getCommentReplies, getTasks } from '../lib/clickup/client';
 import { resolveClientFolder } from '../lib/clickup/discovery';
 import { clickupDate, commentPlainText, isClosedTask } from '../lib/clickup/raw';
+import { recordObservedTaskChanges } from '../lib/intelligence/activity-events';
 
 const VOTH_FOLDER_NAME = 'The Village on Technology Hill (VTH)';
 const VOTH_SLUG = 'voth';
@@ -117,7 +118,9 @@ async function main(): Promise<void> {
           clickupUpdatedAt: clickupDate(raw.date_updated), clickupUrl: raw.url ?? null,
           deleted: false, rawPayload: raw as Prisma.InputJsonValue
         };
+        const previousTask = await prisma.task.findUnique({ where: { clickupTaskId: String(raw.id) }, select: { rawPayload: true } });
         const task = await prisma.task.upsert({ where: { clickupTaskId: String(raw.id) }, update: taskData, create: { clickupTaskId: String(raw.id), ...taskData } });
+        if (previousTask) await recordObservedTaskChanges(task.id, task.clickupTaskId, previousTask.rawPayload, raw);
         await prisma.taskAssignee.deleteMany({ where: { taskId: task.id } });
         for (const assignee of raw.assignees ?? []) {
           const employee = await prisma.employee.upsert({ where: { clickupUserId: String(assignee.id) }, update: { name: assignee.username || assignee.email || String(assignee.id), email: assignee.email ?? null, active: true }, create: { clickupUserId: String(assignee.id), name: assignee.username || assignee.email || String(assignee.id), email: assignee.email ?? null } });
