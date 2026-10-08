@@ -124,6 +124,7 @@ model Task {
   events           TaskEvent[]
   intelligence     TaskIntelligence?
   intelligenceChanges IntelligenceChange[]
+  reviewFeedback   IntelligenceReview?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 }
@@ -204,4 +205,15 @@ model IntelligenceChange {
   detectedAt DateTime @default(now())
   @@index([detectedAt])
   @@index([taskId, detectedAt])
+}
+
+// Human evaluation of a specific saved intelligence snapshot. Not a ClickUp edit.
+model IntelligenceReview {
+  id         Int      @id @default(autoincrement())
+  taskId     Int      @unique
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  verdict    String
+  notes      String?
+  analyzedAt DateTime?
+  reviewedAt DateTime @default(now()) @updatedAt
 }
