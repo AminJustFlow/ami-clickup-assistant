@@ -52,7 +52,7 @@ export default async function Home() {
     for (const { employee } of task.assignees) {
       const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0, stale: 0 };
       row.total += 1;
-      if (task.intelligence && waitingStates.includes(task.intelligence.agentState)) row.waiting += 1;
+      if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
       if (task.intelligence?.needsAmi) row.needsAmi += 1;
       if (staleIds.has(task.id)) row.stale += 1;
       employeeRows.set(employee.name, row);
@@ -68,7 +68,7 @@ export default async function Home() {
     <AppNav current="overview" />
 
     <header className="dashboard-hero">
-      <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>Good overview, fewer surprises.</h1><p>See what needs a decision, what is moving, and what is waiting.</p></div>
+      <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>Here's what needs attention</h1><p>Start with decisions that need you, then check what's waiting on the team.</p></div>
       <a className="quiet-action" href="/changes">See recent activity <span aria-hidden="true">↗</span></a>
     </header>
 
@@ -79,10 +79,10 @@ export default async function Home() {
       <div className="overview-stat"><span>Completed</span><strong>{completed.length}</strong><small>Of {tasks.length} analyzed tasks</small></div>
     </section>
 
-    <div className="dashboard-main">
+    <div className="dashboard-main" id="main-content">
       <div className="dashboard-primary">
         <section className="clean-panel" aria-labelledby="attention-title">
-          <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Your attention</h2><p>Only items with a specific action for Ami.</p></div><span className="panel-count">{needsAmi.length}</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><span className="panel-count">{needsAmi.length}</span></div>
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
             <div className="clean-task-list">{needsAmi.map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
@@ -92,7 +92,7 @@ export default async function Home() {
         </section>
 
         <section className="clean-panel" aria-labelledby="waiting-title">
-          <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Waiting on others</h2><p>Who needs to move next, and why.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Waiting on someone else</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
             <div className="clean-task-list">{externalWaiting.slice(0,8).map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{stateLabel[task.intelligence!.agentState] ?? 'Waiting'}</span></div>
