@@ -16,8 +16,6 @@ const stateLabel: Record<string, string> = {
   COMPLETED: 'Completed'
 };
 
-const waitOrder = ['WAITING_ON_TEAM', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'BLOCKED', 'ISSUE'];
-
 export default async function Home() {
   const tasks = await prisma.task.findMany({
     where: { deleted: false, intelligence: { isNot: null } },
@@ -34,7 +32,6 @@ export default async function Home() {
   const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
   const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
   const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
-  const recentActive = active.filter(t => !stale.includes(t));
   const staleIds = new Set(stale.map(t => t.id));
   const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
