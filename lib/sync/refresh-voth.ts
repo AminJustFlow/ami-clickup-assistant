@@ -149,7 +149,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
       stats.scanned += raws.length;
       const known = await prisma.task.findMany({
         where: { clickupTaskId: { in: raws.map(t => String(t.id)) } },
-        select: { clickupTaskId: true, clickupUpdatedAt: true, id: true, listId: true }
+        select: { clickupTaskId: true, clickupUpdatedAt: true, id: true, listId: true, deleted: true }
       });
       const byId = new Map(known.map(t => [t.clickupTaskId, t]));
       for (const raw of raws) {
@@ -157,7 +157,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
         seenClickupIds.add(id);
         const prior = byId.get(id);
         const updated = clickupDate(raw.date_updated);
-        const changed = !prior || prior.listId !== localListId || prior.clickupUpdatedAt?.getTime() !== updated?.getTime() || pendingByTask.has(id);
+        const changed = !prior || prior.deleted || prior.listId !== localListId || prior.clickupUpdatedAt?.getTime() !== updated?.getTime() || pendingByTask.has(id);
         if (!changed) continue;
         try {
           const taskId = await importTask(raw, client.id, localListId);
