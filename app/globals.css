@@ -261,3 +261,19 @@ body{background:var(--jf-background);color:#414448}
 .search-empty{max-width:850px}
 .nav-search-link{font-weight:750!important}
 @media(max-width:680px){.waiting-groups{padding:9px}.global-search-form{padding:14px}.global-search-input-row button{padding:0 14px}.waiting-person>summary{padding:12px}}
+
+
+/* Search is the primary right-side nav action; developer tools live in the footer. */
+.app-nav>.nav-search-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;flex-shrink:0;margin-left:auto;border:1px solid #cde6f1;border-radius:9px;background:#eaf7fc;color:#0277a8;text-decoration:none;font-weight:750;font-size:13px;padding:10px 17px}
+.app-nav>.nav-search-link:hover{background:#d8f0fa;border-color:#9bd4eb}
+.app-nav>.nav-search-link:focus-visible{outline:3px solid #038CC6;outline-offset:3px}
+.app-footer{border-top:1px solid #e2e5e7;background:#f7f9fa;color:#7b868d;font-size:12px}
+.app-footer-inner{max-width:1240px;margin:0 auto;padding:19px 28px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.footer-dev-tools{position:relative}
+.footer-dev-tools summary{cursor:pointer;color:#66747b;font-size:12px}
+.footer-dev-tools summary:hover{color:#038CC6}
+.footer-dev-tools summary:focus-visible{outline:2px solid #038CC6;outline-offset:4px}
+.footer-dev-links{display:flex;gap:16px;flex-wrap:wrap;padding-top:12px}
+.footer-dev-links a{color:#586970;text-decoration:none}
+.footer-dev-links a:hover{text-decoration:underline;color:#038CC6}
+@media(max-width:680px){.app-nav>.nav-search-link{padding:8px 12px}.app-footer-inner{padding:18px 16px}}
