@@ -1,5 +1,6 @@
 import { loadEnvConfig } from '@next/env';
 import { prisma } from '../lib/db/prisma';
+import { saveIntelligenceChange } from '../lib/intelligence/change-history';
 import { buildTaskContext } from '../lib/intelligence/context';
 import { analyzeWithAI } from '../lib/intelligence/ai';
 import { analyzeWithRules } from '../lib/intelligence/engine';
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
     if (result.source === 'AI') aiCount += 1;
     else fallbackCount += 1;
 
+    await saveIntelligenceChange(task.id, result);
     await prisma.taskIntelligence.upsert({
       where: { taskId: task.id },
       create: {
