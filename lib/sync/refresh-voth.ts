@@ -187,8 +187,9 @@ export async function refreshVoth(): Promise<RefreshResult> {
   // Handle webhook updates even when the task's date_updated did not change.
   for (const [id] of pendingByTask) {
     if (refreshedClickupIds.has(id) || failedIds.has(id)) continue;
-    const local = await prisma.task.findUnique({ where: { clickupTaskId: id }, select: { id: true, clientId: true, listId: true } });
+    const local = await prisma.task.findUnique({ where: { clickupTaskId: id }, select: { id: true, clientId: true, listId: true, deleted: true } });
     if (!local || local.clientId !== client.id) continue;
+    if (local.deleted) { refreshedClickupIds.add(id); continue; }
     try {
       const raw = await getTask(id);
       const targetList = listIds.get(String(raw.list?.id)) ?? local.listId;
