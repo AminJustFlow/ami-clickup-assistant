@@ -1,6 +1,6 @@
 export function AppNav({ current }: { current: 'overview' | 'activity' | 'clients' | 'team' }) {
   return <nav className="app-nav" aria-label="Main navigation">
-    <a className="app-brand" href="/"><span className="brand-mark">JF</span><span>Just Flow <small>Intelligence</small></span></a>
+    <a className="app-brand" href="/"><img className="brand-logo" src="/just-flow-logo.png" alt="Just Flow Events & Marketing" /><span className="brand-product">Intelligence</span></a>
     <div className="app-nav-links">
       <a href="/" aria-current={current === 'overview' ? 'page' : undefined}>Overview</a>
       <a href="/changes" aria-current={current === 'activity' ? 'page' : undefined}>Activity</a>
