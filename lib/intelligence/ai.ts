@@ -24,12 +24,12 @@ function normalizedPerson(name: string | null): string {
   return name?.toLowerCase().replace(/’/g, "'").trim() ?? '';
 }
 
-function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: string | null): string | null {
+function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: string | null, teamNames: string[]): string | null {
   if (type === 'NONE') return null;
   if (type === 'AMI') return 'Ami';
 
   const normalizedName = normalizedPerson(name);
-  const internalNames = new Set(context.assignees.map(normalizedPerson));
+  const internalNames = new Set([...context.assignees, ...teamNames].map(normalizedPerson));
   for (const comment of context.comments) {
     if (comment.authorName) internalNames.add(normalizedPerson(comment.authorName));
   }
@@ -42,7 +42,7 @@ function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: s
   return name;
 }
 
-function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date): HybridIntelligence {
+function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date, teamNames: string[]): HybridIntelligence {
   let agentState = ai.agent_state as AgentState;
   let needsAmi = ai.needs_ami;
   let amiAction = ai.ami_action;
@@ -71,7 +71,7 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
     amiAction = null;
   }
 
-  waitingOnName = normalizeWaitingName(context, waitingOnType, waitingOnName);
+  if (waitingOnName && [...context.assignees, ...teamNames].some(n => normalizedPerson(n) === normalizedPerson(waitingOnName)) && (waitingOnType === 'CLIENT' || waitingOnType === 'VENDOR')) {\n    waitingOnType = 'TEAM';\n    agentState = 'WAITING_ON_TEAM';\n  }\n  waitingOnName = normalizeWaitingName(context, waitingOnType, waitingOnName, teamNames);
 
   const blocked = ['BLOCKED', 'ISSUE', 'WAITING_ON_VENDOR', 'WAITING_ON_CLIENT'].includes(agentState);
   const scores = scoreRules({
@@ -106,7 +106,7 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
 
 export async function analyzeWithAI(
   context: TaskContext,
-  options: { model?: string; now?: Date; client?: OpenAI } = {}
+  options: { model?: string; now?: Date; client?: OpenAI; teamNames?: string[] } = {}
 ): Promise<HybridIntelligence> {
   const now = options.now ?? new Date();
   const rules = analyzeWithRules(context, now);
@@ -123,12 +123,12 @@ export async function analyzeWithAI(
       instructions: TASK_ANALYZER_SYSTEM,
       input: `Analyze the current operational state of this ClickUp task. Comments are chronological, oldest to newest.
 
-${contextText(context)}`,
+Internal agency employees (not clients or vendors): ${(options.teamNames ?? []).join(', ')}\n\n${contextText(context)}`,
       text: { format: zodTextFormat(taskIntelligenceSchema, 'task_intelligence') }
     });
 
     if (!response.output_parsed) throw new Error('OpenAI returned no parsed intelligence output.');
-    return aiToHybrid(context, response.output_parsed, rules, model, now);
+    return aiToHybrid(context, response.output_parsed, rules, model, now, options.teamNames ?? []);
   } catch (error) {
     console.warn(`AI analysis failed for task ${context.clickupTaskId}; using rules fallback:`, error instanceof Error ? error.message : error);
     return { ...rules, source: 'RULES_FALLBACK', model, promptVersion: 'RULE_ENGINE_V1' };
