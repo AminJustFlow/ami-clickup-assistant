@@ -34,7 +34,8 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
           update: { ...next }
         });
 
-        // Inference changes are not observed ClickUp events.\n        return { changed: Boolean(changed) };
+        // Inference changes are not observed ClickUp events.
+        return { changed: Boolean(changed) };
       }, { isolationLevel: 'Serializable' });
     } catch (error) {
       if ((error as { code?: string }).code !== 'P2034' || attempt === 2) throw error;
