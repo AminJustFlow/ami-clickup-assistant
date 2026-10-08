@@ -8,7 +8,7 @@ import { recordObservedTaskChanges } from '../lib/intelligence/activity-events';
 
 const VOTH_FOLDER_NAME = 'The Village on Technology Hill (VTH)';
 const VOTH_SLUG = 'voth';
-interface SyncStats { lists: number; tasks: number; openTasks: number; closedTasks: number; successfulTasks: number; failedTasks: number; comments: number; successfulCommentImports: number; failedCommentImports: number }
+interface SyncStats { lists: number; tasks: number; openTasks: number; closedTasks: number; successfulTasks: number; failedTasks: number; comments: number; successfulCommentImports: number; failedCommentImports: number; observedChanges: number }
 
 function apiFailure(error: unknown): string {
   if (error instanceof ClickUpApiError) return `HTTP ${error.status}: ${error.message}`;
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   const discoveredIds = new Set(mapping.folder.lists.map((list) => list.id));
   for (const list of liveLists) if (!discoveredIds.has(String(list.id))) console.warn(`New List not present in saved discovery: ${list.name} (${list.id})`);
   await prisma.clickUpList.updateMany({ where: { clientId: client.id }, data: { active: false } });
-  const stats: SyncStats = { lists: liveLists.length, tasks: 0, openTasks: 0, closedTasks: 0, successfulTasks: 0, failedTasks: 0, comments: 0, successfulCommentImports: 0, failedCommentImports: 0 };
+  const stats: SyncStats = { lists: liveLists.length, tasks: 0, openTasks: 0, closedTasks: 0, successfulTasks: 0, failedTasks: 0, comments: 0, successfulCommentImports: 0, failedCommentImports: 0, observedChanges: 0 };
 
   for (const [index, rawList] of liveLists.entries()) {
     const list = await prisma.clickUpList.upsert({ where: { clickupListId: String(rawList.id) }, update: { clientId: client.id, name: rawList.name, active: true }, create: { clickupListId: String(rawList.id), clientId: client.id, name: rawList.name, active: true } });
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
         };
         const previousTask = await prisma.task.findUnique({ where: { clickupTaskId: String(raw.id) }, select: { rawPayload: true } });
         const task = await prisma.task.upsert({ where: { clickupTaskId: String(raw.id) }, update: taskData, create: { clickupTaskId: String(raw.id), ...taskData } });
-        if (previousTask) await recordObservedTaskChanges(task.id, task.clickupTaskId, previousTask.rawPayload, raw);
+        if (previousTask) stats.observedChanges += await recordObservedTaskChanges(task.id, task.clickupTaskId, previousTask.rawPayload, raw);
         await prisma.taskAssignee.deleteMany({ where: { taskId: task.id } });
         for (const assignee of raw.assignees ?? []) {
           const employee = await prisma.employee.upsert({ where: { clickupUserId: String(assignee.id) }, update: { name: assignee.username || assignee.email || String(assignee.id), email: assignee.email ?? null, active: true }, create: { clickupUserId: String(assignee.id), name: assignee.username || assignee.email || String(assignee.id), email: assignee.email ?? null } });
@@ -145,6 +145,7 @@ async function main(): Promise<void> {
   console.log(`Comments imported: ${stats.comments}`);
   console.log(`Successful comment imports: ${stats.successfulCommentImports}`);
   console.log(`Failed comment imports: ${stats.failedCommentImports}`);
+  console.log(`Observed field transitions: ${stats.observedChanges} (newly detected during this sync)`);
 }
 
 main().catch((error) => { console.error(`VOTH sync failed: ${apiFailure(error)}`); process.exitCode = 1; }).finally(() => prisma.$disconnect());
