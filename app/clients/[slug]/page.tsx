@@ -19,7 +19,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
   const tasks = await prisma.task.findMany({
     where: { clientId: client.id, deleted: false, intelligence: { isNot: null } },
-    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true } }, assignees: { include: { employee: true } } },
+    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true } }, events: { orderBy: { occurredAt: 'desc' }, take: 15 }, assignees: { include: { employee: true } } },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
@@ -64,8 +64,9 @@ function TaskCard({ task, compact=false }: { task: any; compact?: boolean }) {
     agentState: intel.agentState,
     clickupStatus: task.clickupStatus,
     comments: task.comments,
+    events: task.events,
     lastMeaningfulChangeAt: intel.lastMeaningfulChangeAt,
     lastMeaningfulChange: intel.lastMeaningfulChange
   });
-  return <article className="detail-task"><div className="task-kicker">{task.list.name} · {label[intel.agentState] ?? intel.agentState}</div><strong>{task.name}</strong><div className={`progress-signal progress-${progress.kind}`} title={progress.detail}>{progress.label}</div>{!compact && <p>{intel.currentSummary}</p>}<div className="task-meta task-meta-readable"><span>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{task.assignees.map((a:any)=>a.employee.name).join(', ') || 'Unassigned'}</span>{intel.waitingOnName && <span>Waiting on {intel.waitingOnName}</span>}{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</div></article>;
+  return <article className="detail-task"><div className="task-kicker">{task.list.name} · {label[intel.agentState] ?? intel.agentState}</div><strong>{task.name}</strong><div className={`progress-signal progress-${progress.kind}`} title={progress.detail}>{progress.label}</div>{!compact && <p>{intel.currentSummary}</p>}{task.events.length > 0 && <details className="task-timeline"><summary>Observed activity ({task.events.length}{task.events.length === 15 ? '+' : ''})</summary><ol>{task.events.map((event:any) => <li key={event.id}><strong>{event.eventType.replace(/^OBSERVED_/, '').replace(/_/g, ' ').toLowerCase()}</strong> · {event.occurredAt ? new Date(event.occurredAt).toLocaleString('en-US') : 'Unknown observation time'}<span> · {String(event.beforeValue?.value ?? 'none')} → {String(event.afterValue?.value ?? 'none')}</span></li>)}</ol><small>Detected between syncs. The edit time and actor are not known.</small></details>}<div className="task-meta task-meta-readable"><span>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{task.assignees.map((a:any)=>a.employee.name).join(', ') || 'Unassigned'}</span>{intel.waitingOnName && <span>Waiting on {intel.waitingOnName}</span>}{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</div></article>;
 }
