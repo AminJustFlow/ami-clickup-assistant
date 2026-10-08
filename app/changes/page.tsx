@@ -42,7 +42,8 @@ export default async function ChangesPage() {
       where: { deleted: false, intelligence: { needsAmi: true } },
       include: { client: true, intelligence: true },
       orderBy: { intelligence: { amiAttentionScore: 'desc' } }, take: 30
-    })\n  ]);
+    })
+  ]);
   const items: ChangeItem[] = [];
   for (const e of events) {
     if (!e.task || !e.occurredAt) continue;
