@@ -123,6 +123,7 @@ model Task {
   comments         Comment[]
   events           TaskEvent[]
   intelligence     TaskIntelligence?
+  intelligenceChanges IntelligenceChange[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 }
@@ -186,4 +187,21 @@ model TaskIntelligence {
   promptVersion            String?
   analyzedAt               DateTime?
   updatedAt                DateTime      @updatedAt
+}
+
+model IntelligenceChange {
+  id Int @id @default(autoincrement())
+  taskId Int
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  previousState AgentState?
+  nextState AgentState
+  previousNeedsAmi Boolean?
+  nextNeedsAmi Boolean
+  previousWaitingOnType WaitingOnType?
+  nextWaitingOnType WaitingOnType
+  summary String?
+  amiAction String?
+  detectedAt DateTime @default(now())
+  @@index([detectedAt])
+  @@index([taskId, detectedAt])
 }
