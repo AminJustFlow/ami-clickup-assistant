@@ -41,10 +41,14 @@ export default async function Home() {
   const staleIds = new Set(stale.map(t => t.id));
   const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
-  const clientRows = new Map<string, { name: string; total: number; needsAmi: number; waiting: number; active: number; stale: number }>();
+  const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number }>();
+  const allClients = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true, name: true } });
+  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false }, _count: { _all: true } });
+  const totalsByClient = new Map(importedCounts.map(row => [row.clientId, row._count._all]));
+  for (const client of allClients) clientRows.set(client.slug, { name: client.name, total: totalsByClient.get(client.id) ?? 0, analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 });
   for (const task of tasks) {
-    const row = clientRows.get(task.client.slug) ?? { name: task.client.name, total: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 };
-    row.total += 1;
+    const row = clientRows.get(task.client.slug) ?? { name: task.client.name, total: 0, analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 };
+    row.analyzed += 1;
     if (task.intelligence?.needsAmi) row.needsAmi += 1;
     if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
     if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
@@ -129,7 +133,7 @@ export default async function Home() {
       <aside className="dashboard-sidebar">
         <section className="clean-panel" id="clients" aria-labelledby="clients-title">
           <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">How are our clients doing?</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} tasks · {client.waiting} waiting · {client.active} active</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>
+          <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} imported · {client.analyzed} analyzed · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>
         </section>
         <section className="clean-panel" id="team" aria-labelledby="team-title">
           <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
