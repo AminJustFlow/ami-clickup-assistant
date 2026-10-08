@@ -24,7 +24,7 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
-  const waiting = tasks.filter(t => t.intelligence?.waitingOnType !== 'NONE' && !t.intelligence?.needsAmi);
+  const waiting = tasks.filter(t => t.intelligence?.waitingOnType !== 'NONE' && t.intelligence?.waitingOnType !== 'AMI');
   const active = tasks.filter(t => t.intelligence?.agentState === 'ACTIVE');
   const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
   const recentActive = active.filter(t => !stale.includes(t));
