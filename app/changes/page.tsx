@@ -69,7 +69,7 @@ export default async function ChangesPage() {
   const grouped = categories.map(category => ({ ...category, items: items.filter(item => item.category === category.key) }));
   const recent = items.slice(0, 25);
   const remaining = items.slice(25);
-  return <main className="ops-shell dashboard-shell">
+  return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="activity" />
     <header className="detail-hero">
       <p className="eyebrow">ACTIVITY</p><h1>What's changed?</h1>
