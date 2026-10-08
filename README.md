@@ -157,3 +157,29 @@ The shadow view shows inferred operational state, Needs Ami, waiting party, impo
 Important: an Ami mention alone does not mean Ami needs to act. Direct requests to Ami do. Comments are processed chronologically so newer operational evidence can supersede an older state.
 
 This rule engine is the baseline for the structured OpenAI analyzer. We will evaluate the model against the same cases and merge rule + model evidence rather than replacing deterministic signals.
+
+
+## Automatic VOTH ClickUp refresh (read-only)
+
+After the initial VOTH import and AI analysis, start the app and the refresh worker in **two separate terminals**:
+
+```bash
+npm run dev
+npm run clickup:auto:voth
+```
+
+The worker checks ClickUp every five minutes by default. It polls the VOTH Lists for new/updated/deleted tasks, refreshes assignees and comments for changed tasks, and consumes pending signed ClickUp webhook events (including comment changes that do not change a task's `date_updated`). It reuses the AI source fingerprint to avoid repeating AI calls for unchanged evidence. Related-task changes can also invalidate fingerprints. The worker updates `Client.lastSyncedAt` only after a successful pass; the dashboard displays the last successful VOTH sync time and warns when it is more than 15 minutes old.
+
+To run a single cycle and inspect the result:
+
+```bash
+npm run clickup:auto:voth:once
+```
+
+Optional `.env.local` setting: `CLICKUP_SYNC_INTERVAL_MINUTES=5` (allowed 1–1440). The worker needs `DATABASE_URL`, `CLICKUP_API_TOKEN`, `OPENAI_API_KEY` and, when using the webhook, `CLICKUP_WEBHOOK_SECRET`. Keep the worker running in a dedicated terminal or process manager; **starting Next.js alone does not run the worker**. If deployed, configure exactly one worker instance. Do not run the full initial sync concurrently with the worker.
+
+The existing `/api/webhooks/clickup` endpoint validates ClickUp's HMAC signature and stores events for the worker. Configure a ClickUp webhook pointing to your publicly reachable HTTPS application URL if you need rapid detection of comment-only updates. Without a webhook, the polling worker catches task changes but may miss comment-only changes until ClickUp updates the parent task timestamp or a manual full sync is run.
+
+This implementation **never writes to ClickUp**. It does write imported data and AI results to PostgreSQL. It currently refreshes **VOTH only**, not all clients. Keep the dashboard behind your existing internal access controls before deploying publicly. Avoid exposing API credentials in logs or source control.
+
+A successful TypeScript build does not prove external API connectivity. Verify the worker with a real ClickUp test comment, watch the console, and confirm the dashboard timestamp and task detail comments change.
