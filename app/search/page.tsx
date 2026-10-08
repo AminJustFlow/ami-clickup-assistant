@@ -1,3 +1,4 @@
+import { TaskDetailsButton } from '../components/task-details';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../components/app-nav';
 
@@ -56,7 +57,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         {task.intelligence?.needsAmi && task.intelligence.amiAction && <div className="task-decision"><strong>Next action for Ami</strong><p>{task.intelligence.amiAction}</p></div>}
         <h3>{task.name}</h3>
         {task.intelligence?.currentSummary && <p>{task.intelligence.currentSummary}</p>}
-        <div className="task-footer"><span>{task.assignees.map(a=>a.employee.name).join(', ') || 'Unassigned'}</span><span><a href={`/clients/${task.client.slug}?q=${encodeURIComponent(task.name)}`}>View in client ↗</a>{task.clickupUrl && <> · <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open ClickUp ↗</a></>}</span></div>
+        <div className="task-footer"><span>{task.assignees.map(a=>a.employee.name).join(', ') || 'Unassigned'}</span><span className="task-card-actions"><TaskDetailsButton taskId={task.id} /><a href={`/clients/${task.client.slug}?q=${encodeURIComponent(task.name)}`}>View in client ↗</a>{task.clickupUrl && <> · <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open ClickUp ↗</a></>}</span></div>
       </article>)}</div></section>}
     </div>}
   </main>;
