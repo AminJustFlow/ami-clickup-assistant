@@ -11,7 +11,7 @@ const format = (value: string | null | undefined) => value?.replaceAll('_', ' ')
 export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter = 'disagreements' } = await searchParams;
   const tasks = await prisma.task.findMany({
-    where: { deleted: false, intelligence: { isNot: null }, comments: { some: {} } },
+    where: { deleted: false, intelligence: { isNot: null } },
     include: {
       client: true, list: true, intelligence: true,
       assignees: { include: { employee: true } },
@@ -56,7 +56,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
       <a className="secondary-link" href="/">Back to dashboard</a>
     </header>
     <section className="metric-grid">
-      <div className="metric-card"><span>Tasks with comments</span><strong>{rows.length}</strong></div>
+      <div className="metric-card"><span>Tasks with intelligence</span><strong>{rows.length}</strong></div>
       <div className="metric-card"><span>Saved AI assessments</span><strong>{rows.filter(r => r.ai).length}</strong></div>
       <div className="metric-card"><span>Flagged</span><strong>{flagged}</strong></div>
       <div className="metric-card"><span>Priority review</span><strong>{critical}</strong></div>
