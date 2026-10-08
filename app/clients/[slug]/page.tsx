@@ -12,7 +12,7 @@ const label: Record<string,string> = {
   NEEDS_REVIEW:'Needs review', NOT_STARTED:'Not started', UNKNOWN:'Unknown'
 };
 
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ assignee?: string; age?: string; status?: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ assignee?: string; age?: string; status?: string; q?: string }> }) {
   const { slug } = await params;
   const filters = await searchParams;
   const client = await prisma.client.findUnique({ where: { slug } });
@@ -28,7 +28,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const active = tasks.filter(t => t.intelligence?.agentState === 'ACTIVE');
 
   const assigneeOptions = [...new Map(tasks.flatMap(t => t.assignees.map(a => [String(a.employee.id), { id: String(a.employee.id), name: a.employee.name }] as const))).values()].sort((a,b) => a.name.localeCompare(b.name));
+  const search = (filters.q ?? '').trim().toLocaleLowerCase();
   const matches = (t: typeof tasks[number]) => {
+    if (search && ![t.name, t.list.name, t.intelligence?.currentSummary ?? '', t.intelligence?.amiAction ?? '', ...t.assignees.map(a => a.employee.name)].some(value => value.toLocaleLowerCase().includes(search))) return false;
     if (filters.assignee && !t.assignees.some(a => String(a.employee.id) === filters.assignee)) return false;
     if (filters.status && (t.clickupStatus ?? '').toLowerCase() !== filters.status.toLowerCase()) return false;
     if (filters.age === '30' && !isStaleActive({ state: t.intelligence?.agentState ?? '', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) })) return false;
@@ -56,11 +58,13 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <div><strong>{active.length}</strong><span>In progress</span></div>
     </div>
     <form className="filter-bar clean-filters" method="GET">
+      <label className="search-label">Find a task<input type="search" name="q" defaultValue={filters.q ?? ""} placeholder="Search tasks, people, or summaries…" /></label>
       <label>Team member<select name="assignee" defaultValue={filters.assignee ?? ""}><option value="">Everyone</option>{assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label>ClickUp status<select name="status" defaultValue={filters.status ?? ""}><option value="">Any status</option>{statusOptions.map(status => <option key={status} value={status}>{status}</option>)}</select></label>
       <label>Activity<select name="age" defaultValue={filters.age ?? ""}><option value="">Any time</option><option value="recent">Recently active</option><option value="30">Stale active</option></select></label>
-      <button type="submit">Apply</button><a href={`/clients/${slug}`}>Reset</a>
+      <button type="submit">Show results</button><a href={`/clients/${slug}`}>Clear filters</a>
     </form>
+    <p className="filter-results">{tasks.filter(matches).length} of {tasks.length} tasks match your filters</p>
     <div className="detail-sections">
       {visibleNeedsAmi.length > 0 && <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">PRIORITY</p><h2>Needs Ami</h2></div><span className="panel-count">{visibleNeedsAmi.length}</span></div><div className="clean-task-list">{visibleNeedsAmi.map(t => <TaskCard key={t.id} task={t} />)}</div></section>}
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2>Waiting on someone</h2></div><span className="panel-count">{visibleWaiting.length}</span></div><div className="clean-task-list">{visibleWaiting.length ? visibleWaiting.map(t => <TaskCard key={t.id} task={t} />) : <p className="simple-empty">No tasks waiting on others.</p>}</div></section>
