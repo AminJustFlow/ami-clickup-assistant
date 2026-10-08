@@ -139,3 +139,13 @@ a:focus-visible,button:focus-visible,summary:focus-visible,select:focus-visible{
 .evidence-comment:last-child{border-bottom:0}
 .evidence-comment small{color:#8b98a1;font-size:11px}
 .evidence-comment p{white-space:pre-wrap;overflow-wrap:anywhere;color:#526671;font-size:12px;margin:5px 0 0}
+
+
+/* Fast task discovery */
+html{scroll-behavior:smooth}
+.search-label{flex:1 1 270px;min-width:180px}
+.clean-filters input[type=search]{width:100%;min-height:39px;padding:9px 12px;border:1px solid #cfd7de;border-radius:8px;background:#fff;color:#172b35;font:inherit;font-size:13px}
+.clean-filters input[type=search]::placeholder{color:#9aa7ae}
+.clean-filters input[type=search]:focus{border-color:#48868e;outline:2px solid #c6e0e3;outline-offset:1px}
+.filter-results{font-size:12px;color:#758690;margin:0 0 15px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
