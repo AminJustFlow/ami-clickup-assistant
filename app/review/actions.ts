@@ -20,5 +20,5 @@ export async function saveReview(formData: FormData) {
     update: { verdict, notes: notes || null, analyzedAt: task.intelligence.analyzedAt }
   });
   revalidatePath('/review');
-  redirect('/review?filter=' + (['all', 'critical', 'disagreements'].includes(filter) ? filter : 'disagreements') + '#task-' + taskId);
+  redirect('/review?filter=' + (['all', 'critical', 'disagreements', 'unreviewed'].includes(filter) ? filter : 'disagreements') + '#task-' + taskId);
 }
