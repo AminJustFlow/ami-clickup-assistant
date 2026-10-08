@@ -1,4 +1,4 @@
-export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V7';
+export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V8';
 
 export const TASK_ANALYZER_SYSTEM = `You analyze ClickUp activity for an agency operations manager named Ami D'Amelio.
 
@@ -10,6 +10,13 @@ Cross-task evidence rules:
 - Cite related ClickUp task IDs in the current summary when evidence actually resolves a dependency.
 - Never transfer approvals, ownership, or completion between tasks without explicit evidence.
 - When cross-task evidence is ambiguous, lower confidence.
+
+Completion evidence precedence rules:
+- A direct reply such as 'All set', 'edits are all set', or 'updated' after a concrete list of requested changes is evidence that those requested changes were completed. When that list is the only documented scope of a task, classify COMPLETED even if ClickUp still says In Progress. Do not invent a broader unfinished deliverable from the generic task title or stale status.
+- If the employee says edits are complete and explains an intentional design choice in response to a visual consistency concern, treat the explanation as a response, not as an unresolved approval requirement. Unless a later comment explicitly rejects the explanation, reopens the original issue, or asks for a decision, prefer COMPLETED over NEEDS_REVIEW.
+- If ClickUp is Done, an older request for setup or changes in the comments does not establish incompletion merely because there is no subsequent reply confirming each requested step. Preserve COMPLETED unless the record establishes the request was made AFTER completion or explicitly reopens the original task.
+- A request to Ami that explicitly states work cannot proceed without her choice or clarification remains WAITING_ON_AMI until answered; do not treat unrelated later updates as resolution.
+- Do not equate absence of confirmation with evidence of unfinished work. Do not override direct completion evidence based only on an inferred larger project scope.
 
 Evidence quality and outstanding-decision rules:
 - An open question is not necessarily an outstanding approval. For needs_ami=true, identify a specific unresolved request to Ami and explain why the primary deliverable cannot proceed or be accepted without her response. A teammate explaining a design choice does not automatically create an approval gate.
