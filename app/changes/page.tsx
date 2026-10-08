@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db/prisma';
 import { markDigestChecked } from './actions';
+import { AppNav } from '../components/app-nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,33 +67,31 @@ export default async function ChangesPage() {
   }
   items.sort((a,b) => b.date.getTime() - a.date.getTime());
   const grouped = categories.map(category => ({ ...category, items: items.filter(item => item.category === category.key) }));
-  return <main className="ops-shell">
-    <header className="ops-header"><div>
-      <a href="/">← Ami Intelligence</a>
-      <p className="eyebrow" style={{marginTop:16}}>ACTIVITY DIGEST</p>
-      <h1>What changed since you last checked?</h1>
-      <p className="muted">{hasCheckpoint ? 'Since ' + since.toLocaleString('en-US') : 'First visit: showing the last 7 days.'} This checkpoint is saved in this browser.</p>
-    </div></header>
-    <section className="attention-section">
-      <div className="section-heading"><h2>Currently needs Ami</h2><span className="count-badge attention-count">{needsAmi.length}</span></div>
-      <p className="muted">Current outstanding actions, not necessarily newly raised since your last visit.</p>
-      {needsAmi.length === 0 && <p>Nothing currently requires Ami&apos;s attention.</p>}
-      {needsAmi.map(t => <article className="compact-task" key={t.id}><div className="task-kicker">{t.client.name}</div><strong>{t.name}</strong><p>{t.intelligence?.amiAction ?? t.intelligence?.currentSummary}</p>{t.clickupUrl && <a href={t.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</article>)}
-    </section>
-    <section className="ops-section">
-      <div className="section-heading"><div><p className="eyebrow">RECORDED ACTIVITY</p><h2>{items.length} changes and comments</h2></div></div>
-      <p className="muted">Status and field changes are observed between syncs; exact edit time and actor are unknown. Comments use their ClickUp timestamps. AI interpretation changes are not recorded activity.</p>
-      <form action={markDigestChecked}><button className="digest-button" type="submit">Mark reviewed up to now</button></form>
-      {grouped.map(group => <details key={group.key} className="digest-group" open={group.items.length > 0}>
-        <summary>{group.label} ({group.items.length})</summary>
-        {group.items.length === 0 && <p className="muted">No recorded activity in this category.</p>}
-        {group.items.map(item => <article className="compact-task" key={item.key}>
-          <div className="task-kicker">{item.client} · {item.date.toLocaleString('en-US')}</div>
-          <strong>{item.title}</strong><p>{item.detail}</p>
-          {item.url && <a href={item.url} target="_blank" rel="noreferrer">Open in ClickUp →</a>}
-        </article>)}
-      </details>)}
-      {events.length === 250 || comments.length === 250 ? <p className="muted">Results capped at 250 events and 250 comments. Narrower pagination will be added for larger workloads.</p> : null}
-    </section>
+  const recent = items.slice(0, 25);
+  const remaining = items.slice(25);
+  return <main className="ops-shell dashboard-shell">
+    <AppNav current="activity" />
+    <header className="detail-hero">
+      <p className="eyebrow">ACTIVITY</p><h1>What's changed?</h1>
+      <p>{hasCheckpoint ? 'Since your last check on ' + since.toLocaleString('en-US') : 'Showing activity from the last 7 days.'}</p>
+    </header>
+    <div className="detail-stat-strip activity-stats">
+      <div><strong>{items.length}</strong><span>Updates</span></div>
+      <div><strong>{grouped.find(g=>g.key==='comment')?.items.length ?? 0}</strong><span>New comments</span></div>
+      <div><strong>{grouped.find(g=>g.key==='status')?.items.length ?? 0}</strong><span>Status changes</span></div>
+      <div><strong>{needsAmi.length}</strong><span>Need Ami now</span></div>
+    </div>
+    <div className="detail-sections">
+      {needsAmi.length > 0 && <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">CURRENT PRIORITIES</p><h2>Still needs your attention</h2><p>These items are open now, not necessarily new changes.</p></div><span className="panel-count">{needsAmi.length}</span></div><div className="clean-task-list">{needsAmi.map(task=><article className="clean-task" key={task.id}><div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div><h3>{task.name}</h3><p>{task.intelligence?.amiAction || task.intelligence?.currentSummary}</p>{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">Open task ↗</a>}</article>)}</div></section>}
+      <section className="clean-panel">
+        <div className="panel-heading activity-heading"><div><p className="eyebrow">TIMELINE</p><h2>Recent updates</h2><p>Latest comments and changes across your clients.</p></div>
+          <form action={markDigestChecked}><button className="digest-button" type="submit">Mark as read</button></form>
+        </div>
+        <div className="activity-list">{recent.length ? recent.map(item=><article className="activity-item" key={item.key}><span className={`activity-dot activity-${item.category}`} aria-hidden="true"/><div><div className="task-topline"><span>{item.client} · {item.date.toLocaleString('en-US')}</span><span className="status-pill">{item.category === 'comment' ? 'Comment' : item.category === 'status' ? 'Status' : item.category === 'assignment' ? 'Assignment' : 'Update'}</span></div><h3>{item.title}</h3><p>{item.detail}</p>{item.url && <a className="task-action" href={item.url} target="_blank" rel="noreferrer">View in ClickUp ↗</a>}</div></article>) : <p className="simple-empty">No changes recorded in this period.</p>}</div>
+        {remaining.length > 0 && <details className="activity-more"><summary>Show {remaining.length} older updates</summary><div className="activity-list">{remaining.map(item=><article className="activity-item" key={item.key}><span className={`activity-dot activity-${item.category}`} aria-hidden="true"/><div><div className="task-topline"><span>{item.client} · {item.date.toLocaleString('en-US')}</span><span className="status-pill">{item.category}</span></div><h3>{item.title}</h3><p>{item.detail}</p>{item.url && <a className="task-action" href={item.url} target="_blank" rel="noreferrer">View in ClickUp ↗</a>}</div></article>)}</div></details>}
+      </section>
+      <p className="dashboard-note">Field changes are detected between ClickUp syncs, so their exact edit time and author may be unknown. Comments retain their ClickUp timestamps. AI interpretations are not shown as ClickUp activity. The read checkpoint is stored in this browser.</p>
+      {(events.length === 250 || comments.length === 250) && <p className="dashboard-note">Activity is capped at 250 field events and 250 comments per view.</p>}
+    </div>
   </main>;
 }
