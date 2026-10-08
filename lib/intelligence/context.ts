@@ -62,6 +62,9 @@ export function contextText(context: TaskContext): string {
     `List: ${context.listName}`,
     `ClickUp status: ${context.status ?? 'unknown'}`,
     `Priority: ${context.priority ?? 'none'}`,
+    `Assigned internal employees: ${context.assignees.join(', ') || 'none'}`,
+    `Due date: ${context.dueDate?.toISOString() ?? 'none'}`,
+    `Last ClickUp update: ${context.updatedAt?.toISOString() ?? 'unknown'}`,
     context.description ? `Description: ${context.description}` : '',
     ...context.comments.map((comment) =>
       `[${comment.createdAt?.toISOString() ?? 'unknown time'}] ${comment.authorName ?? 'Unknown'}: ${comment.body}`
