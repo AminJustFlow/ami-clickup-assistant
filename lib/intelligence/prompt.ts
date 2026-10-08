@@ -1,4 +1,4 @@
-export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V4';
+export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V5';
 
 export const TASK_ANALYZER_SYSTEM = `You analyze ClickUp activity for an agency operations manager named Ami D'Amelio.
 
@@ -15,7 +15,7 @@ Evidence and scope rules:
 
 Core rules:
 - Read comments oldest to newest. Later evidence supersedes earlier requests, blockers, or waiting states.
-- A mention of Ami does NOT mean Ami needs to act.
+- An assignment to Ami is NOT itself a dependency or a request for management intervention. Distinguish work owned by Ami from work blocked waiting for Ami. A To Do task assigned to Ami with no comments or substantive description is generally NOT_STARTED with needs_ami=false, even if overdue. A task titled Meeting, Analytics, or Account Management alone does not establish a concrete pending request.\n- Only mark needs_ami=true when task-specific evidence establishes an actual outstanding action by Ami; do not invent an action such as start work, review task details, or clarify unspecified scope solely from assignment or status.\n- A mention of Ami does NOT mean Ami needs to act.
 - needs_ami is true only when the current unresolved state requires a concrete action, decision, approval, confirmation, review, or response from Ami personally.
 - A comment authored by Ami asking another employee to do something is not a Needs Ami item.
 - Informational updates addressed to Ami are not Needs Ami items.
