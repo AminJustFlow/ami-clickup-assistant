@@ -1,3 +1,4 @@
+import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,7 @@ export default async function Home() {
     include: {
       client: true,
       intelligence: true,
+      comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
       assignees: { include: { employee: true } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
@@ -31,25 +33,30 @@ export default async function Home() {
   const needsAmi = tasks.filter((task) => task.intelligence?.needsAmi);
   const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
   const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
+  const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
+  const recentActive = active.filter(t => !stale.includes(t));
+  const staleIds = new Set(stale.map(t => t.id));
   const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
-  const clientRows = new Map<string, { name: string; total: number; needsAmi: number; waiting: number; active: number }>();
+  const clientRows = new Map<string, { name: string; total: number; needsAmi: number; waiting: number; active: number; stale: number }>();
   for (const task of tasks) {
-    const row = clientRows.get(task.client.slug) ?? { name: task.client.name, total: 0, needsAmi: 0, waiting: 0, active: 0 };
+    const row = clientRows.get(task.client.slug) ?? { name: task.client.name, total: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 };
     row.total += 1;
     if (task.intelligence?.needsAmi) row.needsAmi += 1;
     if (task.intelligence && waitingStates.includes(task.intelligence.agentState)) row.waiting += 1;
-    if (task.intelligence?.agentState === 'ACTIVE') row.active += 1;
+    if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
+    if (staleIds.has(task.id)) row.stale += 1;
     clientRows.set(task.client.slug, row);
   }
 
-  const employeeRows = new Map<string, { id: number; total: number; waiting: number; needsAmi: number }>();
+  const employeeRows = new Map<string, { id: number; total: number; waiting: number; needsAmi: number; stale: number }>();
   for (const task of tasks) {
     for (const { employee } of task.assignees) {
-      const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0 };
+      const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0, stale: 0 };
       row.total += 1;
       if (task.intelligence && waitingStates.includes(task.intelligence.agentState)) row.waiting += 1;
       if (task.intelligence?.needsAmi) row.needsAmi += 1;
+      if (staleIds.has(task.id)) row.stale += 1;
       employeeRows.set(employee.name, row);
     }
   }
@@ -94,7 +101,8 @@ export default async function Home() {
 
     <section className="metric-grid">
       <div className="metric-card"><span>Waiting</span><strong>{waiting.length}</strong><small>External or team dependencies</small></div>
-      <div className="metric-card"><span>Active</span><strong>{active.length}</strong><small>Currently moving</small></div>
+      <div className="metric-card"><span>Recently active</span><strong>{recentActive.length}</strong><small>Activity within 30 days</small></div>
+      <div className="metric-card"><span>Stale active</span><strong>{stale.length}</strong><small>No activity in 30 days</small></div>
       <div className="metric-card"><span>Completed</span><strong>{completed.length}</strong><small>Operationally complete</small></div>
       <div className="metric-card"><span>Analyzed</span><strong>{tasks.length}</strong><small>Tasks with current intelligence</small></div>
     </section>
@@ -129,11 +137,11 @@ export default async function Home() {
       <div className="ops-section">
         <div className="section-heading"><div><p className="eyebrow">CLIENTS</p><h2>Client overview</h2></div></div>
         <div className="summary-table">
-          <div className="summary-row summary-head"><span>Client</span><span>Ami</span><span>Waiting</span><span>Active</span></div>
+          <div className="summary-row summary-head summary-row-wide"><span>Client</span><span>Ami</span><span>Waiting</span><span>Recent</span><span>Stale</span></div>
           {[...clientRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([slug, row]) =>
-            <div className="summary-row" key={slug}>
+            <div className="summary-row summary-row-wide" key={slug}>
               <span><a className="row-link" href={`/clients/${slug}`}><strong>{row.name}</strong></a><small>{row.total} analyzed</small></span>
-              <span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.active}</span>
+              <span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.active}</span><span>{row.stale}</span>
             </div>
           )}
         </div>
@@ -142,10 +150,10 @@ export default async function Home() {
       <div className="ops-section">
         <div className="section-heading"><div><p className="eyebrow">TEAM</p><h2>Employee overview</h2></div></div>
         <div className="summary-table">
-          <div className="summary-row summary-head"><span>Employee</span><span>Ami</span><span>Waiting</span><span>Owned</span></div>
+          <div className="summary-row summary-head"><span>Employee</span><span>Ami</span><span>Waiting</span><span>Stale</span><span>Owned</span></div>
           {[...employeeRows.entries()].sort((a,b) => b[1].needsAmi - a[1].needsAmi || b[1].waiting - a[1].waiting).map(([name, row]) =>
-            <div className="summary-row" key={name}>
-              <span><a className="row-link" href={`/employees/${row.id}`}><strong>{name}</strong></a></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.total}</span>
+            <div className="summary-row summary-row-wide" key={name}>
+              <span><a className="row-link" href={`/employees/${row.id}`}><strong>{name}</strong></a></span><span>{row.needsAmi}</span><span>{row.waiting}</span><span>{row.stale}</span><span>{row.total}</span>
             </div>
           )}
         </div>
