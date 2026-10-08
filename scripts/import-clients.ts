@@ -16,6 +16,7 @@ const apply = has('--apply');
 const includeVoth = has('--include-voth');
 const folderId = value('--folder-id');
 const spaceId = value('--space-id');
+const spaceName = value('--space-name');
 const limitArg = value('--limit-clients');
 const limit = limitArg ? Number(limitArg) : Infinity;
 if (limitArg && (!Number.isInteger(limit) || limit < 1)) throw new Error('--limit-clients must be a positive integer');
@@ -30,9 +31,15 @@ async function main() {
   if (!workspaceId) throw new Error('CLICKUP_WORKSPACE_ID is required');
   if (!process.env.CLICKUP_API_TOKEN) throw new Error('CLICKUP_API_TOKEN is required');
   const spaces = await getSpaces(workspaceId);
+  if (spaceName) {
+    const matches = spaces.spaces.filter(space => space.name === spaceName);
+    if (matches.length !== 1) throw new Error('Expected exactly one ClickUp Space named "' + spaceName + '", found ' + matches.length);
+    if (spaceId && String(matches[0].id) !== spaceId) throw new Error('--space-id does not match --space-name');
+  }
   const plans: FolderPlan[] = [];
   for (const space of spaces.spaces) {
     if (spaceId && String(space.id) !== spaceId) continue;
+    if (spaceName && space.name !== spaceName) continue;
     const { folders } = await getFolders(String(space.id));
     for (const folder of folders) {
       if (folderId && String(folder.id) !== folderId) continue;
