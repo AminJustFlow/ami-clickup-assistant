@@ -22,7 +22,8 @@ async function main(): Promise<void> {
     orderBy: { clickupUpdatedAt: 'desc' }
   });
 
-  const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);\n  const counts = new Map<string, number>();
+  const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);
+  const counts = new Map<string, number>();
   let needsAmi = 0;
   let aiCount = 0;
   let fallbackCount = 0;
@@ -56,7 +57,8 @@ async function main(): Promise<void> {
     if (result.amiAction) console.log(`  Ami action: ${result.amiAction}`);
   }
 
-  console.log(`\nAI analyzed ${tasks.length} VOTH tasks with comments.`);
+  console.log(`
+AI analyzed ${tasks.length} VOTH tasks with comments.`);
   console.log(`AI results: ${aiCount}; rule fallbacks: ${fallbackCount}; Needs Ami: ${needsAmi}`);
   for (const [state, count] of [...counts].sort()) console.log(`  ${state}: ${count}`);
 }
