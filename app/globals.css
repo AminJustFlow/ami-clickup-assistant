@@ -198,3 +198,18 @@ body{background:var(--jf-background);color:#414448}
 .clean-filters input[type=search]:focus{border-color:#038CC6;outline-color:#bde9f9}
 .activity-comment,.activity-status,.activity-assignment{background:#038CC6}
 @media(max-width:640px){.brand-logo{height:35px;max-width:135px}.brand-product{font-size:11px;padding-left:8px}}
+
+
+/* Everyday-use clarity and keyboard accessibility */
+.skip-link{position:absolute;left:16px;top:-100px;z-index:1000;background:#038CC6;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700}
+.skip-link:focus{top:12px}
+.app-nav a:focus-visible,.tools-menu summary:focus-visible,.clean-task a:focus-visible,.entity-row:focus-visible,.task-extra summary:focus-visible,.collapsible-panel summary:focus-visible,.digest-button:focus-visible{outline:3px solid #038CC6;outline-offset:3px;border-radius:5px}
+.app-nav-links a[aria-current=page]{font-weight:800}
+.clean-task h3{line-height:1.4}
+.clean-task>p{line-height:1.65;overflow-wrap:anywhere}
+.task-footer{gap:12px;flex-wrap:wrap}
+.entity-row{min-height:58px}
+.entity-row:hover{background:#f2faff}
+.clean-panel{scroll-margin-top:24px}
+.friendly-empty{padding:30px 20px}
+@media(max-width:680px){.clean-task .task-footer{align-items:flex-start;flex-direction:column}.task-action{display:inline-flex;padding:6px 0}.app-nav-links a{white-space:nowrap}}
