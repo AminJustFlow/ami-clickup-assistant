@@ -4,6 +4,9 @@ import { saveTaskIntelligence } from '../lib/intelligence/change-history';
 import { buildTaskContext } from '../lib/intelligence/context';
 import { analyzeWithAI } from '../lib/intelligence/ai';
 import { analyzeWithRules } from '../lib/intelligence/engine';
+import { intelligenceFingerprint } from '../lib/intelligence/fingerprint';
+import { DEFAULT_INTELLIGENCE_MODEL } from '../lib/intelligence/ai';
+import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
 
 async function main(): Promise<void> {
   loadEnvConfig(process.cwd());
@@ -13,9 +16,10 @@ async function main(): Promise<void> {
   if (!client) throw new Error('VOTH not found. Run npm run clickup:sync:voth first.');
 
   const tasks = await prisma.task.findMany({
-    where: { clientId: client.id, deleted: false, comments: { some: {} } },
+    where: { clientId: client.id, deleted: false },
     include: {
       list: true,
+      intelligence: true,
       assignees: { include: { employee: true } },
       comments: { orderBy: { clickupCreatedAt: 'asc' } }
     },
@@ -23,18 +27,32 @@ async function main(): Promise<void> {
   });
 
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);
+  const model = process.env.OPENAI_INTELLIGENCE_MODEL ?? DEFAULT_INTELLIGENCE_MODEL;
+  const force = process.argv.includes('--force');
   const counts = new Map<string, number>();
+  let cachedCount = 0;
+  let newCount = 0;
   let needsAmi = 0;
   let aiCount = 0;
   let fallbackCount = 0;
 
   for (const task of tasks) {
     const context = buildTaskContext(task);
+    const fingerprint = intelligenceFingerprint(context, model, teamNames);
+    const previous = task.intelligence;
+    const expectedVersion = `${TASK_ANALYZER_PROMPT_VERSION}:${model}`;
+    if (!force && previous?.sourceFingerprint === fingerprint && previous.promptVersion === expectedVersion) {
+      cachedCount++;
+      counts.set(previous.agentState, (counts.get(previous.agentState) ?? 0) + 1);
+      if (previous.needsAmi) needsAmi++;
+      console.log(`[CACHED] ${task.name} | ${previous.agentState}`);
+      continue;
+    }
     const rules = analyzeWithRules(context);
-    const result = await analyzeWithAI(context, { teamNames });
+    const result = await analyzeWithAI(context, { teamNames, model });
     counts.set(result.agentState, (counts.get(result.agentState) ?? 0) + 1);
     if (result.needsAmi) needsAmi += 1;
-    if (result.source === 'AI') aiCount += 1;
+    if (result.source === 'AI') { aiCount += 1; newCount++; }
     else fallbackCount += 1;
 
     await saveTaskIntelligence(task.id, {agentState: result.agentState, headline: result.headline,
@@ -43,7 +61,8 @@ async function main(): Promise<void> {
         importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore,
         riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange,
         lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence,
-        promptVersion: `${result.promptVersion}:${result.model ?? 'rules'}`, analyzedAt: new Date()
+        promptVersion: `${result.promptVersion}:${result.model ?? 'rules'}`, analyzedAt: new Date(),
+        sourceFingerprint: result.source === 'AI' ? fingerprint : null
     });
 
     console.log(`[${result.source}] ${task.name}`);
@@ -58,8 +77,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`
-AI analyzed ${tasks.length} VOTH tasks with comments.`);
-  console.log(`AI results: ${aiCount}; rule fallbacks: ${fallbackCount}; Needs Ami: ${needsAmi}`);
+Processed ${tasks.length} VOTH tasks (including tasks without comments).`);
+  console.log(`New AI calls: ${newCount}; reused cached assessments: ${cachedCount}; rule fallbacks: ${fallbackCount}; Needs Ami: ${needsAmi}`);
   for (const [state, count] of [...counts].sort()) console.log(`  ${state}: ${count}`);
 }
 
