@@ -149,3 +149,22 @@ html{scroll-behavior:smooth}
 .clean-filters input[type=search]:focus{border-color:#48868e;outline:2px solid #c6e0e3;outline-offset:1px}
 .filter-results{font-size:12px;color:#758690;margin:0 0 15px}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+
+/* Central brand palette. Replace these defaults with verified Just Flow brand standards. */
+:root{
+  --jf-primary:#153e45;
+  --jf-primary-hover:#20545d;
+  --jf-primary-soft:#eaf2f2;
+  --jf-accent:#d99854;
+  --jf-ink:#172b35;
+  --jf-background:#f6f8fa;
+  --jf-border:#e4e9ec;
+}
+.app-brand{gap:13px}
+.brand-logo{display:block;width:auto;height:43px;max-width:180px;object-fit:contain}
+.brand-wordmark{display:block}
+.primary-stat,.brand-mark,.digest-button,.clean-filters button,.filter-bar button{background:var(--jf-primary);border-color:var(--jf-primary)}
+.digest-button:hover,.clean-filters button:hover{background:var(--jf-primary-hover)}
+.app-nav-links a:hover,.app-nav-links a[aria-current=page]{background:var(--jf-primary-soft)}
+.task-decision{border-left-color:var(--jf-accent)}
