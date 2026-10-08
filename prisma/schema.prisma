@@ -186,6 +186,7 @@ model TaskIntelligence {
   lastMeaningfulChangeAt   DateTime?
   confidence               Float?
   promptVersion            String?
+  sourceFingerprint        String?
   analyzedAt               DateTime?
   updatedAt                DateTime      @updatedAt
 }
