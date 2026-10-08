@@ -78,8 +78,9 @@ function TaskCard({ task }: { task: any }) {
   return <article className="clean-task">
     <div className="task-topline"><span>{task.list.name}</span><span className="status-pill">{label[intel.agentState] ?? intel.agentState}</span></div>
     <h3>{task.name}</h3>
+    {intel.needsAmi && intel.amiAction && <div className="task-decision"><strong>Ami needs to decide</strong><p>{intel.amiAction}</p></div>}
     {intel.currentSummary && <p>{intel.currentSummary}</p>}
     <div className="task-footer"><span>{task.assignees.map((a:any)=>a.employee.name).join(', ') || 'Unassigned'}{intel.waitingOnName ? ' · Waiting on ' + intel.waitingOnName : ''}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}</div>
-    <details className="task-extra"><summary>More details</summary><p>{progress.label}: {progress.detail}</p><p>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })} · {humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })}</p></details>
+    <details className="task-extra"><summary>Context and evidence</summary><p>{progress.label}: {progress.detail}</p><p>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })} · {humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })}</p>{task.comments.length > 0 && <div className="evidence-comments"><strong>Recent ClickUp comments</strong>{task.comments.slice(-4).reverse().map((comment:any,index:number) => <div className="evidence-comment" key={index}><small>{comment.clickupCreatedAt ? new Date(comment.clickupCreatedAt).toLocaleDateString('en-US') : 'Undated'}</small><p>{comment.body}</p></div>)}</div>}</details>
   </article>;
 }
