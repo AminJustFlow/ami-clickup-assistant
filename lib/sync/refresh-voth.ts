@@ -111,7 +111,6 @@ export async function refreshVoth(): Promise<RefreshResult> {
   if (!client) throw new Error('VOTH is not initialized. Run clickup:sync:voth first.');
 
   const stats: RefreshResult = { scanned: 0, refreshed: 0, analyzed: 0, cached: 0, failed: 0, errors: [] };
-  const changedIds = new Set<number>();
   const failedIds = new Set<string>();
   const pendingEvents = await prisma.taskEvent.findMany({
     where: { processedAt: null, eventType: { not: 'unknown' } },
@@ -160,8 +159,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
         const changed = !prior || prior.deleted || prior.listId !== localListId || prior.clickupUpdatedAt?.getTime() !== updated?.getTime() || pendingByTask.has(id);
         if (!changed) continue;
         try {
-          const taskId = await importTask(raw, client.id, localListId);
-          changedIds.add(taskId);
+          await importTask(raw, client.id, localListId);
           refreshedClickupIds.add(id);
           stats.refreshed++;
         } catch (error) {
@@ -194,7 +192,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
     try {
       const raw = await getTask(id);
       const targetList = listIds.get(String(raw.list?.id)) ?? local.listId;
-      changedIds.add(await importTask(raw, client.id, targetList));
+      await importTask(raw, client.id, targetList);
       stats.refreshed++;
       refreshedClickupIds.add(id);
     } catch (error) {
