@@ -61,7 +61,7 @@ async function importComments(taskId: number, clickupId: string) {
   }
 }
 
-async function importTask(raw: Record<string, any>, clientId: number, listId: number): Promise<number> {
+export async function importTask(raw: Record<string, any>, clientId: number, listId: number): Promise<number> {
   const clickupId = String(raw.id);
   const data = {
     clientId, listId,
