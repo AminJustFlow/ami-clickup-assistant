@@ -125,3 +125,17 @@ a:focus-visible,button:focus-visible,summary:focus-visible,select:focus-visible{
 .activity-more>summary{padding:17px 24px;cursor:pointer;font-size:13px;font-weight:700;color:#32666a}
 .activity-more .activity-list{padding-top:6px}
 @media(max-width:680px){.activity-heading{align-items:flex-start;flex-direction:column}.activity-list{padding:0 17px 10px}.activity-more>summary{padding:17px}}
+
+
+/* Action context and supporting evidence */
+.secondary-dependency{display:inline-flex;align-items:center;padding:5px 9px;margin:0 0 11px;background:#edf3f5;color:#526c75;border-radius:7px;font-size:11px;font-weight:700}
+.action-dependency{background:#fff1e6;color:#99552b}
+.task-decision{border-left:3px solid #d99854;background:#fffaf3;border-radius:0 8px 8px 0;padding:12px 13px;margin:12px 0}
+.task-decision strong{display:block;color:#905624;font-size:11px;margin-bottom:5px}
+.task-decision p{color:#654c34;margin:0;font-size:13px;line-height:1.55}
+.evidence-comments{margin-top:12px;border-top:1px solid #e9eff1;padding-top:12px}
+.evidence-comments>strong{font-size:12px;color:#48636d}
+.evidence-comment{padding:10px 0;border-bottom:1px solid #eef1f3}
+.evidence-comment:last-child{border-bottom:0}
+.evidence-comment small{color:#8b98a1;font-size:11px}
+.evidence-comment p{white-space:pre-wrap;overflow-wrap:anywhere;color:#526671;font-size:12px;margin:5px 0 0}
