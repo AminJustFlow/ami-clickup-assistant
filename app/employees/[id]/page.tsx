@@ -1,3 +1,4 @@
+import { TaskDetailsButton } from '../../components/task-details';
 import { isStaleActive, activityLabel } from '@/lib/intelligence/staleness';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
@@ -60,6 +61,6 @@ function TaskCard({ task }: { task: any }) {
   return <article className="clean-task">
     <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{label[intel.agentState] ?? intel.agentState}</span></div>
     {intel.needsAmi && intel.amiAction && <div className="task-decision"><strong>Ami needs to decide</strong><p>{intel.amiAction}</p></div>}<h3 className="task-context-title">{task.name}</h3>{intel.currentSummary && <p>{intel.currentSummary}</p>}
-    <div className="task-footer"><span>{intel.waitingOnName ? 'Waiting on ' + intel.waitingOnName : activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}</div>
+    <div className="task-footer"><span>{intel.waitingOnName ? 'Waiting on ' + intel.waitingOnName : activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })}</span><TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}</div>
   </article>;
 }
