@@ -1,3 +1,4 @@
+import { TaskDetailsButton } from './components/task-details';
 import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
@@ -97,7 +98,7 @@ export default async function Home() {
             <div className="clean-task-list">{needsAmi.map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
               <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
-              {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
+              <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
             </article>)}</div>}
         </section>
 
@@ -112,7 +113,7 @@ export default async function Home() {
                 <div className="clean-task-list">{group.map(task => <article className="clean-task" key={task.id}>
                   <div className="task-topline"><span>{task.client.name}</span>{task.intelligence?.needsAmi && <span className="status-pill attention-pill">Also needs Ami</span>}</div>
                   <h3>{task.name}</h3><p className="next-step-label">What we're waiting for</p><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>
-                  {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}
+                  <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}
                 </article>)}</div>
               </details>;
             })}</div>}
