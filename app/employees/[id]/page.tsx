@@ -38,7 +38,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const shownStale = stale.filter(matches);
   const notStarted = tasks.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && matches(t));
   const completed = tasks.filter(t => t.intelligence?.agentState === 'COMPLETED' && matches(t));
-  return <main className="ops-shell dashboard-shell">
+  return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="team" />
     <header className="detail-hero"><div><a className="back-link" href="/#team">← All team members</a><p className="eyebrow">TEAM MEMBER</p><h1>{employee.name}</h1><p>Workload, blockers, and recent progress in one place.</p></div></header>
     <div className="detail-stat-strip"><div><strong>{tasks.length}</strong><span>Assigned</span></div><div><strong>{needsAmi.length}</strong><span>Need Ami</span></div><div><strong>{waiting.length}</strong><span>Waiting</span></div><div><strong>{active.length}</strong><span>In progress</span></div></div>
