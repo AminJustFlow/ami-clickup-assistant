@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     orderBy: { clickupUpdatedAt: 'desc' }
   });
 
-  const counts = new Map<string, number>();
+  const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);\n  const counts = new Map<string, number>();
   let needsAmi = 0;
   let aiCount = 0;
   let fallbackCount = 0;
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   for (const task of tasks) {
     const context = buildTaskContext(task);
     const rules = analyzeWithRules(context);
-    const result = await analyzeWithAI(context);
+    const result = await analyzeWithAI(context, { teamNames });
     counts.set(result.agentState, (counts.get(result.agentState) ?? 0) + 1);
     if (result.needsAmi) needsAmi += 1;
     if (result.source === 'AI') aiCount += 1;
