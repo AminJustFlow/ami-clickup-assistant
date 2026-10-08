@@ -20,7 +20,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
   const tasks = await prisma.task.findMany({
     where: { clientId: client.id, deleted: false, intelligence: { isNot: null } },
-    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true } }, events: { orderBy: { occurredAt: 'desc' }, take: 15 }, assignees: { include: { employee: true } } },
+    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true, authorName: true } }, events: { orderBy: { occurredAt: 'desc' }, take: 15 }, assignees: { include: { employee: true } } },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
@@ -85,6 +85,6 @@ function TaskCard({ task }: { task: any }) {
     {intel.needsAmi && intel.amiAction && <div className="task-decision"><strong>Ami needs to decide</strong><p>{intel.amiAction}</p></div>}
     {intel.currentSummary && <p>{intel.currentSummary}</p>}
     <div className="task-footer"><span>{task.assignees.map((a:any)=>a.employee.name).join(', ') || 'Unassigned'}{intel.waitingOnName ? ' · Waiting on ' + intel.waitingOnName : ''}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}</div>
-    <details className="task-extra"><summary>Context and evidence</summary><p>{progress.label}: {progress.detail}</p><p>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })} · {humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })}</p>{task.comments.length > 0 && <div className="evidence-comments"><strong>Recent ClickUp comments</strong>{task.comments.slice(-4).reverse().map((comment:any,index:number) => <div className="evidence-comment" key={index}><small>{comment.clickupCreatedAt ? new Date(comment.clickupCreatedAt).toLocaleDateString('en-US') : 'Undated'}</small><p>{comment.body}</p></div>)}</div>}</details>
+    <details className="task-extra"><summary>Context and evidence</summary><p>{progress.label}: {progress.detail}</p><p>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })} · {humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any)=>[c.clickupCreatedAt,c.clickupUpdatedAt]) })}</p>{task.comments.length > 0 && <div className="evidence-comments"><strong>Recent ClickUp comments</strong>{task.comments.slice(-4).reverse().map((comment:any,index:number) => <div className="evidence-comment" key={index}><div className="comment-byline"><strong>{comment.authorName?.trim() || 'Unknown author'}</strong><small>{comment.clickupCreatedAt ? new Date(comment.clickupCreatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Undated'}</small></div><p>{comment.body}</p></div>)}</div>}</details>
   </article>;
 }
