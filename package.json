@@ -12,7 +12,13 @@
     "clickup:discover": "tsx scripts/clickup-discovery.ts",
     "clickup:sync": "tsx scripts/initial-sync.ts",
     "clickup:sync:voth": "tsx scripts/sync-voth.ts",
-    "clickup:validate:voth": "tsx scripts/validate-voth.ts"
+    "clickup:validate:voth": "tsx scripts/validate-voth.ts",
+    "intelligence:analyze:voth": "tsx scripts/analyze-voth.ts",
+    "intelligence:evaluate": "tsx scripts/evaluate-intelligence.ts",
+    "intelligence:diagnose:voth": "tsx scripts/diagnose-voth-intelligence.ts",
+    "intelligence:audit:voth": "tsx scripts/audit-voth-intelligence.ts",
+    "intelligence:analyze:voth:ai": "tsx scripts/analyze-voth-ai.ts",
+    "intelligence:refresh:voth": "npm run clickup:sync:voth && npm run intelligence:analyze:voth && npm run intelligence:analyze:voth:ai"
   },
   "dependencies": {
     "@next/env": "^16.4.0",
