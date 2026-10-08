@@ -224,3 +224,10 @@ body{background:var(--jf-background);color:#414448}
 .primary-stat.metric-link span,.primary-stat.metric-link strong,.primary-stat.metric-link small{color:inherit}
 #attention-title,#waiting-title,#clients-title{scroll-margin-top:24px}
 @media(prefers-reduced-motion:reduce){.metric-link{transition:none}.metric-link:hover{transform:none}}
+
+/* Clear attribution for source comments */
+.comment-byline{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+.comment-byline strong{font-size:12px;color:#414448;font-weight:750}
+.comment-byline small{font-size:11px;color:#77858c}
+.evidence-comment{padding:13px 0}
+.evidence-comment p{margin-top:5px}
