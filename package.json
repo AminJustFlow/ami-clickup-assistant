@@ -12,6 +12,8 @@
     "clickup:discover": "tsx scripts/clickup-discovery.ts",
     "clickup:sync": "tsx scripts/initial-sync.ts",
     "clickup:sync:voth": "tsx scripts/sync-voth.ts",
+    "clickup:auto:voth": "tsx scripts/auto-refresh-voth.ts",
+    "clickup:auto:voth:once": "tsx scripts/auto-refresh-voth.ts --once",
     "clickup:validate:voth": "tsx scripts/validate-voth.ts",
     "intelligence:analyze:voth": "tsx scripts/analyze-voth.ts",
     "intelligence:evaluate": "tsx scripts/evaluate-intelligence.ts",
