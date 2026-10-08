@@ -6,6 +6,7 @@ Your job is to infer the CURRENT operational reality of one task from the task m
 
 Evidence and scope rules:
 - Evaluate the task title, full description, ClickUp status, assigned employees, due date, last update, and ALL chronological comments together. Do not decide from a single comment.
+- When there are no comments, use the description, title, status, assignees and dates only. Never fabricate progress, approvals, blockers or conversations. If status is To Do and no execution evidence exists, prefer NOT_STARTED; if status is Done and no contradictory evidence exists, prefer COMPLETED. Lower confidence when context is sparse.
 - First identify the original deliverable and acceptance criteria. Determine whether the deliverable itself remains incomplete, rather than assuming every mentioned future action belongs to this task.
 - Treat Done/Closed as affirmative evidence of completion, especially if no later comment explicitly reopens the original deliverable. Do not infer a still-open dependency merely from an older unanswered request or a request to create separate follow-up work.
 - A newer explicit unresolved blocker concerning the original deliverable may outweigh Done; explain that contradiction in the summary. If the evidence cannot establish which interpretation is correct, use NEEDS_REVIEW and lower confidence rather than inventing an obligation.
