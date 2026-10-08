@@ -140,6 +140,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
   }
 
   const refreshedClickupIds = new Set<string>();
+  const seenClickupIds = new Set<string>();
   for (const [clickupListId, localListId] of listIds) {
     for (let page = 0; ; page++) {
       const response = await getTasks(clickupListId, page);
@@ -152,6 +153,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
       const byId = new Map(known.map(t => [t.clickupTaskId, t]));
       for (const raw of raws) {
         const id = String(raw.id);
+        seenClickupIds.add(id);
         const prior = byId.get(id);
         const updated = clickupDate(raw.date_updated);
         const changed = !prior || prior.listId !== localListId || prior.clickupUpdatedAt?.getTime() !== updated?.getTime() || pendingByTask.has(id);
@@ -177,6 +179,10 @@ export async function refreshVoth(): Promise<RefreshResult> {
       if (raws.length < PAGE_LIMIT) break;
     }
   }
+
+  // Mark tasks absent from a complete successful list scan as deleted locally.
+  // This never deletes anything in ClickUp.
+  await prisma.task.updateMany({ where: { clientId: client.id, clickupTaskId: { notIn: [...seenClickupIds] }, deleted: false }, data: { deleted: true } });
 
   // Handle webhook updates even when the task's date_updated did not change.
   for (const [id] of pendingByTask) {
