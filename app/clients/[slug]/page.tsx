@@ -1,3 +1,4 @@
+import { progressSignal } from '@/lib/intelligence/progress';
 import { isStaleActive, activityLabel, humanActivityLabel } from '@/lib/intelligence/staleness';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
@@ -18,7 +19,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
   const tasks = await prisma.task.findMany({
     where: { clientId: client.id, deleted: false, intelligence: { isNot: null } },
-    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } }, assignees: { include: { employee: true } } },
+    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true } }, assignees: { include: { employee: true } } },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
@@ -59,5 +60,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
 function TaskCard({ task, compact=false }: { task: any; compact?: boolean }) {
   const intel = task.intelligence;
-  return <article className="detail-task"><div className="task-kicker">{task.list.name} · {label[intel.agentState] ?? intel.agentState}</div><strong>{task.name}</strong>{!compact && <p>{intel.currentSummary}</p>}<div className="task-meta task-meta-readable"><span>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{task.assignees.map((a:any)=>a.employee.name).join(', ') || 'Unassigned'}</span>{intel.waitingOnName && <span>Waiting on {intel.waitingOnName}</span>}{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</div></article>;
+  const progress = progressSignal({
+    agentState: intel.agentState,
+    clickupStatus: task.clickupStatus,
+    comments: task.comments,
+    lastMeaningfulChangeAt: intel.lastMeaningfulChangeAt,
+    lastMeaningfulChange: intel.lastMeaningfulChange
+  });
+  return <article className="detail-task"><div className="task-kicker">{task.list.name} · {label[intel.agentState] ?? intel.agentState}</div><strong>{task.name}</strong><div className={`progress-signal progress-${progress.kind}`} title={progress.detail}>{progress.label}</div>{!compact && <p>{intel.currentSummary}</p>}<div className="task-meta task-meta-readable"><span>{activityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{humanActivityLabel({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap((c:any) => [c.clickupCreatedAt, c.clickupUpdatedAt]) })}</span><span>{task.assignees.map((a:any)=>a.employee.name).join(', ') || 'Unassigned'}</span>{intel.waitingOnName && <span>Waiting on {intel.waitingOnName}</span>}{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">ClickUp →</a>}</div></article>;
 }
