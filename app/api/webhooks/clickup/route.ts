@@ -9,14 +9,15 @@ export async function POST(request: Request) {
   const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
   const a = Buffer.from(signature); const b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return new Response('Invalid signature', { status: 401 });
-  const payload = JSON.parse(raw);
-  const eventKey = `${payload.webhook_id ?? 'unknown'}:${payload.history_items?.[0]?.id ?? payload.event ?? 'event'}:${payload.task_id ?? ''}`;
+  let payload: Record<string, any>;
+  try { payload = JSON.parse(raw); } catch { return new Response('Invalid JSON', { status: 400 }); }
+  const eventKey = crypto.createHash('sha256').update(raw).digest('hex');
   try {
     await prisma.taskEvent.create({ data: { eventKey, eventType: payload.event ?? 'unknown', rawPayload: payload, occurredAt: new Date() } });
   } catch (e: any) {
     if (e?.code === 'P2002') return Response.json({ ok: true, duplicate: true });
     throw e;
   }
-  // V1: event is persisted. Next milestone will enqueue/debounce task refresh + intelligence analysis.
+  // The refresh worker consumes this event and only acknowledges it after successful refresh.
   return Response.json({ ok: true });
 }
