@@ -48,7 +48,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const visibleCompleted = tasks.filter(t => t.intelligence?.agentState === 'COMPLETED' && matches(t));
   const statusOptions = [...new Set(tasks.map(t => t.clickupStatus).filter((s): s is string => Boolean(s)))].sort();
 
-  return <main className="ops-shell dashboard-shell">
+  return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="clients" />
     <header className="detail-hero"><div><a className="back-link" href="/#clients">← All clients</a><p className="eyebrow">CLIENT OVERVIEW</p><h1>{client.name}</h1><p>Understand what needs attention and what the team is working on.</p></div></header>
     <div className="detail-stat-strip">
