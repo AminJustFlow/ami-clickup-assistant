@@ -24,7 +24,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
-  const waiting = tasks.filter(t => t.intelligence?.waitingOnType !== 'NONE' && !t.intelligence?.needsAmi);
+  const waiting = tasks.filter(t => t.intelligence?.waitingOnType !== 'NONE' && t.intelligence?.waitingOnType !== 'AMI');
   const active = tasks.filter(t => t.intelligence?.agentState === 'ACTIVE');
 
   const assigneeOptions = [...new Map(tasks.flatMap(t => t.assignees.map(a => [String(a.employee.id), { id: String(a.employee.id), name: a.employee.name }] as const))).values()].sort((a,b) => a.name.localeCompare(b.name));
