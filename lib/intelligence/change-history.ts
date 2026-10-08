@@ -12,7 +12,7 @@ type IntelligenceUpdate = {
 type IntelligenceRecord = Omit<Prisma.TaskIntelligenceUncheckedCreateInput, 'taskId' | 'id'>;
 
 /**
- * Persist intelligence and its state transition together.
+ * Persist intelligence without treating AI reinterpretations as real-world changes.
  * A repeated identical classification does not produce another change.
  * Serializable isolation and P2034 retries prevent racing analyzers from
  * recording transitions against stale state.
@@ -34,22 +34,7 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
           update: { ...next }
         });
 
-        if (changed) {
-          await tx.intelligenceChange.create({
-            data: {
-              taskId,
-              previousState: prior.agentState,
-              nextState: next.agentState,
-              previousNeedsAmi: prior.needsAmi,
-              nextNeedsAmi: next.needsAmi,
-              previousWaitingOnType: prior.waitingOnType,
-              nextWaitingOnType: next.waitingOnType,
-              summary: next.currentSummary,
-              amiAction: next.amiAction
-            }
-          });
-        }
-        return { changed: Boolean(changed) };
+        // Inference changes are not observed ClickUp events.\n        return { changed: Boolean(changed) };
       }, { isolationLevel: 'Serializable' });
     } catch (error) {
       if ((error as { code?: string }).code !== 'P2034' || attempt === 2) throw error;
