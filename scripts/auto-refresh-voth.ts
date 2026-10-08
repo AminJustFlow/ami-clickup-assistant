@@ -37,8 +37,7 @@ async function main() {
     await run();
     if (once || stopping) break;
     await new Promise<void>(resolve => {
-      const timer = setTimeout(resolve, intervalMinutes * 60_000);
-      timer.unref?.();
+      setTimeout(resolve, intervalMinutes * 60_000);
     });
   } while (!stopping);
 }
