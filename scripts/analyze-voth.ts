@@ -21,6 +21,9 @@ async function main(): Promise<void> {
   const counts = new Map<string, number>();
   let needsAmi = 0;
   for (const task of tasks) {
+    // Preserve richer AI classifications; this script only initializes tasks without AI results.
+    const prior = await prisma.taskIntelligence.findUnique({ where: { taskId: task.id } });
+    if (prior?.promptVersion?.startsWith('TASK_ANALYZER_')) continue;
     const result = analyzeWithRules(buildTaskContext(task));
     counts.set(result.agentState, (counts.get(result.agentState) ?? 0) + 1);
     if (result.needsAmi) needsAmi += 1;
