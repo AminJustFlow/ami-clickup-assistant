@@ -277,3 +277,49 @@ body{background:var(--jf-background);color:#414448}
 .footer-dev-links a{color:#586970;text-decoration:none}
 .footer-dev-links a:hover{text-decoration:underline;color:#038CC6}
 @media(max-width:680px){.app-nav>.nav-search-link{padding:8px 12px}.app-footer-inner{padding:18px 16px}}
+
+
+/* Reusable task details drawer */
+.task-details-trigger{border:1px solid #b5dcea;border-radius:8px;background:#eff9fd;color:#0277a8;font:inherit;font-size:12px;font-weight:800;cursor:pointer;padding:9px 12px;white-space:nowrap}
+.task-details-trigger:hover{background:#dff3fb}
+.task-details-trigger:focus-visible,.task-drawer button:focus-visible,.task-drawer a:focus-visible,.task-drawer summary:focus-visible{outline:3px solid #038CC6;outline-offset:3px}
+.task-card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.task-drawer-overlay{position:fixed;inset:0;z-index:2000;background:rgba(17,33,43,.54);display:flex;justify-content:flex-end}
+.task-drawer{width:min(100%,580px);height:100%;background:#fff;display:flex;flex-direction:column;box-shadow:-14px 0 55px rgba(17,33,43,.2);color:#3d4a51}
+.task-drawer-header{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid #e4e9ec;padding:18px 26px;flex-shrink:0}
+.task-drawer-header .eyebrow{margin-bottom:4px}
+.task-drawer-header span{font-size:13px;color:#6d7b82}
+.task-drawer-close{background:#f2f5f6;border:0;border-radius:9px;width:36px;height:36px;font-size:25px;line-height:1;cursor:pointer;color:#52616a}
+.task-drawer-close:hover{background:#e5edf1}
+.task-drawer-body{padding:26px;overflow-y:auto;overscroll-behavior:contain;flex:1}
+.task-drawer-title h2{font-size:25px;line-height:1.25;margin:14px 0 8px;color:#303c43;overflow-wrap:anywhere}
+.task-drawer-title>p{color:#74838a;font-size:12px;margin:0}
+.task-drawer-action{background:#eaf7fc;border-left:4px solid #038CC6;padding:13px 17px;border-radius:7px;margin:22px 0}
+.task-drawer-action .next-step-label{margin:0 0 6px!important}
+.task-drawer-action>p:last-child{font-size:16px;line-height:1.6;font-weight:750;margin:0;color:#30434d}
+.task-drawer-section{border-bottom:1px solid #e9edef;padding:20px 0}
+.task-drawer-section h3{font-size:15px;margin:0 0 12px;color:#37434a}
+.task-drawer-section>p{font-size:14px;line-height:1.7;color:#54636c;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.task-drawer-facts{display:grid;gap:12px}
+.task-drawer-facts>div{display:grid;grid-template-columns:115px 1fr;gap:14px;align-items:start;font-size:13px}
+.task-drawer-facts span{color:#7b8a91}
+.task-drawer-facts strong{font-weight:700;overflow-wrap:anywhere}
+.task-drawer-count{font-size:11px;background:#f0f3f4;color:#64727a;padding:4px 8px;border-radius:999px}
+.task-drawer-comment{padding:15px 0;border-top:1px solid #edf0f2}
+.task-drawer-comment:first-child{border-top:0}
+.task-drawer-comment p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6;margin:0;color:#4b5b64}
+.task-drawer-muted{color:#7b8a91}
+.task-drawer-evidence{padding:20px 0;color:#65747c}
+.task-drawer-evidence summary{font-size:13px;cursor:pointer;font-weight:750}
+.task-drawer-evidence dl{display:grid;grid-template-columns:145px 1fr;gap:10px 12px;font-size:12px;margin:16px 0}
+.task-drawer-evidence dt{color:#819098}
+.task-drawer-evidence dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.task-drawer-description p{font-size:12px;white-space:pre-wrap;line-height:1.6;overflow-wrap:anywhere}
+.task-drawer-description h4{font-size:13px;margin:14px 0 6px}
+.task-drawer-footer{padding:17px 26px;border-top:1px solid #e4e9ec;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;background:#fff}
+.task-drawer-primary,.task-drawer-secondary{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;padding:11px 15px;text-decoration:none;font-size:13px;font-weight:750;cursor:pointer}
+.task-drawer-primary{background:#038CC6;color:#fff;border:1px solid #038CC6}
+.task-drawer-primary:hover{background:#0277a8;color:#fff}
+.task-drawer-secondary{border:1px solid #d9e1e5;background:#fff;color:#5a6870}
+.task-drawer-message{font-size:14px;color:#596973;line-height:1.6}
+@media(max-width:640px){.task-drawer-header,.task-drawer-body,.task-drawer-footer{padding:17px}.task-drawer-title h2{font-size:21px}.task-drawer-facts>div{grid-template-columns:90px 1fr}}
