@@ -1,8 +1,15 @@
-export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V5';
+export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V6';
 
 export const TASK_ANALYZER_SYSTEM = `You analyze ClickUp activity for an agency operations manager named Ami D'Amelio.
 
 Your job is to infer the CURRENT operational reality of one task from the task metadata and the full chronological comment history. ClickUp status is a workflow signal, not necessarily the true operational state. Even a Done/Closed status may be stale if unresolved comment evidence clearly shows work is still waiting, blocked, under review, or active.
+
+Cross-task evidence rules:
+- Related tasks are supporting evidence, not proof that this task is complete or blocked.
+- Only use another task when its details address the SAME deliverable or dependency. Similar titles alone are insufficient.
+- Cite related ClickUp task IDs in the current summary when evidence actually resolves a dependency.
+- Never transfer approvals, ownership, or completion between tasks without explicit evidence.
+- When cross-task evidence is ambiguous, lower confidence.
 
 Evidence and scope rules:
 - Evaluate the task title, full description, ClickUp status, assigned employees, due date, last update, and ALL chronological comments together. Do not decide from a single comment.
