@@ -1,6 +1,6 @@
 import { loadEnvConfig } from '@next/env';
 import { prisma } from '../lib/db/prisma';
-import { getFolderLists, getFolders, getSpaces, getTasks } from '../lib/clickup/client';
+import { getFolderLists, getFolders, getSpaces, getTasks, getTeams } from '../lib/clickup/client';
 import { importTask } from '../lib/sync/refresh-voth';
 
 loadEnvConfig(process.cwd());
@@ -55,10 +55,12 @@ async function main() {
     return;
   }
   if (!selected.length) throw new Error('No client folders selected');
+  const { teams } = await getTeams();
+  const workspaceName = teams.find(team => String(team.id) === workspaceId)?.name ?? 'ClickUp workspace ' + workspaceId;
   const workspace = await prisma.workspace.upsert({
     where: { clickupWorkspaceId: workspaceId },
-    create: { clickupWorkspaceId: workspaceId, name: spaces.spaces[0]?.name ? 'ClickUp workspace ' + workspaceId : workspaceId },
-    update: {}
+    create: { clickupWorkspaceId: workspaceId, name: workspaceName },
+    update: { name: workspaceName }
   });
   let succeeded = 0, failed = 0, tasksImported = 0;
   for (const plan of selected) {
