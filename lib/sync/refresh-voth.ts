@@ -129,6 +129,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
   }
 
   const liveLists = await getFolderLists(client.clickupFolderId);
+  if (!liveLists.lists?.length) throw new Error('No VOTH Lists returned; refusing to mark existing tasks deleted.');
   const listIds = new Map<string, number>();
   for (const list of liveLists.lists) {
     const row = await prisma.clickUpList.upsert({
