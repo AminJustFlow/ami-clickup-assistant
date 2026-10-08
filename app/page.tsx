@@ -77,8 +77,8 @@ export default async function Home() {
     </header>
 
     <section className="dashboard-metrics" aria-label="Work summary">
-      <div className="overview-stat primary-stat"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Decisions or actions for Ami</small></div>
-      <div className="overview-stat"><span>Waiting on others</span><strong>{externalWaiting.length}</strong><small>Team, clients and vendors</small></div>
+      <a href="#attention-title" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Decisions or actions for Ami ↓</small></a>
+      <a href="#waiting-title" className="overview-stat metric-link"><span>Waiting on others</span><strong>{externalWaiting.length}</strong><small>Team, clients and vendors ↓</small></a>
       <div className="overview-stat"><span>In progress</span><strong>{active.length}</strong><small>{stale.length} may need a follow-up</small></div>
       <div className="overview-stat"><span>Completed</span><strong>{completed.length}</strong><small>Of {tasks.length} analyzed tasks</small></div>
     </section>
@@ -99,7 +99,7 @@ export default async function Home() {
           <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
             <div className="clean-task-list">{[...teamWaiting, ...clientWaiting, ...vendorWaiting, ...otherWaiting].slice(0,8).map(task => <article className="clean-task" key={task.id}>
-              <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{stateLabel[task.intelligence!.agentState] ?? 'Waiting'}</span></div>
+              <div className="task-topline"><span>{task.client.name}</span><span className="status-pill">{task.intelligence?.waitingOnName || stateLabel[task.intelligence!.agentState] || 'Waiting'}</span></div>
               <h3>{task.name}</h3><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>{task.intelligence?.needsAmi && <span className="secondary-dependency action-dependency">Also needs Ami's decision</span>}
               <div className="task-footer"><span>{task.intelligence?.waitingOnName ? 'With ' + task.intelligence.waitingOnName : 'Awaiting next step'}</span>{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noreferrer">Open task ↗</a>}</div>
             </article>)}
