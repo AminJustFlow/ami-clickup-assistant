@@ -183,3 +183,40 @@ The existing `/api/webhooks/clickup` endpoint validates ClickUp's HMAC signature
 This implementation **never writes to ClickUp**. It does write imported data and AI results to PostgreSQL. It currently refreshes **VOTH only**, not all clients. Keep the dashboard behind your existing internal access controls before deploying publicly. Avoid exposing API credentials in logs or source control.
 
 A successful TypeScript build does not prove external API connectivity. Verify the worker with a real ClickUp test comment, watch the console, and confirm the dashboard timestamp and task detail comments change.
+
+
+## Onboard additional ClickUp clients
+
+The dashboard supports multiple clients. Client onboarding uses **ClickUp folders** as the client boundary. Folderless lists are not imported, and VOTH is excluded by default to protect its existing setup.
+
+1. Preview candidate folders (read-only, no database writes):
+
+```bash
+npm run clients:preview
+```
+
+2. Review the names and Folder IDs. Start with **one additional client** using the exact ID printed in the preview:
+
+```bash
+npm run clients:import -- --folder-id YOUR_FOLDER_ID
+```
+
+3. Refresh the dashboard. The client appears with an imported task count and an **Imported — awaiting AI analysis** section. Importing alone does **not** generate AI recommendations.
+
+4. Analyze a controlled batch of tasks (50 model calls maximum per run by default):
+
+```bash
+npm run clients:analyze -- --max-ai 25
+```
+
+For a particular client, use `npm run clients:analyze -- --client CLIENT_SLUG --max-ai 25`; the slug is visible in the client URL after importing. The analyzer skips tasks whose saved AI fingerprint still matches the evidence. Rerun to continue with more tasks.
+
+5. After verifying the first additional client, import all eligible folders:
+
+```bash
+npm run clients:import
+```
+
+Or limit the import to a Space or a few folders with `--space-id SPACE_ID` and `--limit-clients 3`. Run `npm run clients:preview -- --space-id SPACE_ID` to inspect the same selection without writing anything.
+
+**Important:** This is an onboarding import, not yet a multi-client continuous sync worker. The automatic refresh worker still covers **VOTH only**. Do not assume newly imported clients update automatically until the multi-client refresh worker is implemented. AI analysis uses your OpenAI API key and may incur charges; `--max-ai` limits the number of successful AI calls in a run (failures may also initiate calls). No changes are written to ClickUp.
