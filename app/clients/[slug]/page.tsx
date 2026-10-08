@@ -20,10 +20,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   if (!client) notFound();
 
   const tasks = await prisma.task.findMany({
-    where: { clientId: client.id, deleted: false, intelligence: { isNot: null } },
+    where: { clientId: client.id, deleted: false },
     include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true, authorName: true } }, events: { orderBy: { occurredAt: 'desc' }, take: 15 }, assignees: { include: { employee: true } } },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
+  const unanalyzed = tasks.filter(t => !t.intelligence);
   const needsAmi = tasks.filter(t => t.intelligence?.needsAmi);
   const waiting = tasks.filter(t => t.intelligence?.waitingOnType !== 'NONE' && t.intelligence?.waitingOnType !== 'AMI');
   const active = tasks.filter(t => t.intelligence?.agentState === 'ACTIVE');
@@ -47,13 +48,14 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const visibleStale = stale.filter(matches);
   const visibleNotStarted = tasks.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && matches(t));
   const visibleCompleted = tasks.filter(t => t.intelligence?.agentState === 'COMPLETED' && matches(t));
+  const visibleUnanalyzed = unanalyzed.filter(matches);
   const statusOptions = [...new Set(tasks.map(t => t.clickupStatus).filter((s): s is string => Boolean(s)))].sort();
 
   return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="clients" />
     <header className="detail-hero"><div><a className="back-link" href="/#clients">← All clients</a><p className="eyebrow">CLIENT OVERVIEW</p><h1>{client.name}</h1><p>Understand what needs attention and what the team is working on.</p></div></header>
     <div className="detail-stat-strip">
-      <div><strong>{tasks.length}</strong><span>Total tasks</span></div>
+      <div><strong>{tasks.length}</strong><span>Imported tasks</span></div>
       <div><strong>{needsAmi.length}</strong><span>Need Ami</span></div>
       <div><strong>{waiting.length}</strong><span>Waiting</span></div>
       <div><strong>{active.length}</strong><span>In progress</span></div>
@@ -66,10 +68,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <button type="submit">Show results</button><a href={`/clients/${slug}`}>Clear filters</a>
     </form>
     <p className="filter-results">{tasks.filter(matches).length} of {tasks.length} tasks match your filters</p>
+    {unanalyzed.length > 0 && <p className="sync-status sync-status-warning">{unanalyzed.length} imported tasks are awaiting AI analysis. Decision and dependency totals include only analyzed tasks.</p>}
     <div className="detail-sections">
       {visibleNeedsAmi.length > 0 && <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">PRIORITY</p><h2>Needs Ami</h2></div><span className="panel-count">{visibleNeedsAmi.length}</span></div><div className="clean-task-list">{visibleNeedsAmi.map(t => <TaskCard key={t.id} task={t} />)}</div></section>}
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2>Waiting on someone</h2></div><span className="panel-count">{visibleWaiting.length}</span></div><div className="clean-task-list">{visibleWaiting.length ? visibleWaiting.map(t => <TaskCard key={t.id} task={t} />) : <p className="simple-empty">No tasks waiting on others.</p>}</div></section>
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">IN MOTION</p><h2>Recently active</h2></div><span className="panel-count">{visibleRecent.length}</span></div><div className="clean-task-list">{visibleRecent.length ? visibleRecent.map(t => <TaskCard key={t.id} task={t} />) : <p className="simple-empty">No recently active tasks match your filters.</p>}</div></section>
+      {visibleUnanalyzed.length > 0 && <details className="clean-panel collapsible-panel" open={tasks.length === unanalyzed.length}><summary>Imported — awaiting AI analysis <span>{visibleUnanalyzed.length}</span></summary><div className="clean-task-list">{visibleUnanalyzed.map(t => <article className="clean-task" key={t.id}><div className="task-topline"><span>{t.list.name}</span><span className="status-pill">{t.clickupStatus || 'Imported'}</span></div><h3>{t.name}</h3><div className="task-footer"><span>{t.assignees.map(a => a.employee.name).join(', ') || 'Unassigned'}</span><TaskDetailsButton taskId={t.id} /></div></article>)}</div></details>}
       <details className="clean-panel collapsible-panel"><summary>Stale active <span>{visibleStale.length}</span></summary><p className="section-explainer">No recorded activity in 30 days. This does not necessarily mean work stopped.</p><div className="clean-task-list">{visibleStale.map(t => <TaskCard key={t.id} task={t} />)}</div></details>
       <details className="clean-panel collapsible-panel"><summary>Not started <span>{visibleNotStarted.length}</span></summary><div className="clean-task-list">{visibleNotStarted.map(t => <TaskCard key={t.id} task={t} />)}</div></details>
       <details className="clean-panel collapsible-panel"><summary>Completed <span>{visibleCompleted.length}</span></summary><div className="clean-task-list">{visibleCompleted.map(t => <TaskCard key={t.id} task={t} />)}</div></details>
