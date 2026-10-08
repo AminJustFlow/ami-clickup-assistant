@@ -231,3 +231,33 @@ body{background:var(--jf-background);color:#414448}
 .comment-byline small{font-size:11px;color:#77858c}
 .evidence-comment{padding:13px 0}
 .evidence-comment p{margin-top:5px}
+
+
+/* Action-first cards, dependency owners, and global search */
+.next-step-label{margin:12px 0 5px!important;color:#0277a8!important;font-size:11px!important;font-weight:800;letter-spacing:.055em;text-transform:uppercase}
+.ami-next-action{font-size:15px!important;font-weight:700;line-height:1.55!important;color:#28343b!important;margin:0 0 10px!important}
+.task-context-title{font-size:13px!important;font-weight:650;color:#66757d;margin:7px 0 10px!important}
+.waiting-groups{padding:10px 18px 18px;display:grid;gap:10px}
+.waiting-person{border:1px solid #e1e8ec;border-radius:12px;background:#fff;overflow:hidden}
+.waiting-person>summary{cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px;list-style:none}
+.waiting-person>summary::-webkit-details-marker{display:none}
+.waiting-person>summary:before{content:'›';font-size:20px;color:#038CC6;transition:transform .15s ease}
+.waiting-person[open]>summary:before{transform:rotate(90deg)}
+.waiting-person-title{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.waiting-person-title strong{font-size:14px;color:#39444b}
+.waiting-person-title small{font-size:11px;color:#7c8b92}
+.waiting-person>.clean-task-list{border-top:1px solid #eef2f4;padding:0 17px}
+.waiting-person>summary:focus-visible{outline:3px solid #038CC6;outline-offset:-3px}
+.search-hero{margin-top:28px}
+.global-search-form{background:#fff;border:1px solid #e2e5e7;border-radius:13px;padding:20px;max-width:850px;margin-bottom:24px}
+.global-search-form>label{display:block;font-size:12px;font-weight:750;margin-bottom:10px;color:#52616a}
+.global-search-input-row{display:flex;gap:10px}
+.global-search-input-row input{min-width:0;flex:1;border:1px solid #cfd8dd;border-radius:9px;padding:12px 14px;font:inherit;font-size:14px}
+.global-search-input-row input:focus{outline:2px solid #038CC6;outline-offset:1px}
+.global-search-input-row button{border:0;background:#038CC6;color:#fff;border-radius:9px;padding:0 23px;font-weight:750;cursor:pointer}
+.global-search-input-row button:hover{background:#0277a8}
+.search-results{max-width:1000px;display:grid;gap:18px}
+.search-results .clean-panel{min-width:0}
+.search-empty{max-width:850px}
+.nav-search-link{font-weight:750!important}
+@media(max-width:680px){.waiting-groups{padding:9px}.global-search-form{padding:14px}.global-search-input-row button{padding:0 14px}.waiting-person>summary{padding:12px}}
