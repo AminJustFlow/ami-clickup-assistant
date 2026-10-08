@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { TaskContext } from './context';
+import { relatedEvidenceText, type RelatedEvidence } from './related';
 import { TASK_ANALYZER_PROMPT_VERSION, TASK_ANALYZER_SYSTEM } from './prompt';
 
 /**
  * Fingerprint all facts sent to the model, plus the model/prompt and team roster.
  * Stable ordering prevents harmless database retrieval differences from invalidating cache.
  */
-export function intelligenceFingerprint(context: TaskContext, model: string, teamNames: string[]): string {
+export function intelligenceFingerprint(context: TaskContext, model: string, teamNames: string[], related: RelatedEvidence[] = []): string {
   const evidence = {
     version: TASK_ANALYZER_PROMPT_VERSION,
     instructions: TASK_ANALYZER_SYSTEM,
@@ -21,6 +22,7 @@ export function intelligenceFingerprint(context: TaskContext, model: string, tea
     list: context.listName,
     assignees: [...context.assignees].sort(),
     internalTeam: [...teamNames].sort(),
+    relatedEvidence: relatedEvidenceText(related),
     comments: context.comments.map(c => ({
       id: c.id, author: c.authorName, body: c.body,
       createdAt: c.createdAt?.toISOString() ?? null
