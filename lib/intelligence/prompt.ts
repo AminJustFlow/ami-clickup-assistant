@@ -1,4 +1,4 @@
-export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V11';
+export const TASK_ANALYZER_PROMPT_VERSION = 'TASK_ANALYZER_V12';
 
 export const TASK_ANALYZER_SYSTEM = `You analyze ClickUp activity for an agency operations manager named Ami D'Amelio.
 
