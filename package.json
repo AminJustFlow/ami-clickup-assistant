@@ -20,6 +20,7 @@
     "clients:audit-groups": "tsx scripts/audit-client-groups.ts",
     "clients:audit-scope": "tsx scripts/audit-folder-scope.ts",
     "clients:audit-unattributed": "tsx scripts/audit-unattributed-folders.ts",
+    "clients:test-groups": "tsx scripts/test-client-grouping.ts",
     "clickup:auto:voth": "tsx scripts/auto-refresh-voth.ts",
     "clickup:auto:voth:once": "tsx scripts/auto-refresh-voth.ts --once",
     "clickup:validate:voth": "tsx scripts/validate-voth.ts",
