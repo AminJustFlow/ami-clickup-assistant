@@ -285,3 +285,18 @@ npm run clients:estimate -- --client fimbel-garage-doors-fmb-90146979789 --input
 ```
 
 All of these commands are read-only with respect to OpenAI and the database. The input/output rates are user-supplied assumptions, not verified live model prices. Never add `--execute` to the analyzer until the user explicitly approves a paid pilot and the model/prices are checked. Attachment contents and external linked documents remain outside the evidence set.
+
+
+## Full-task metadata ingestion for every client (October 2026)
+
+The shared `importTask` path now calls ClickUp's full-task endpoint for **every newly imported or refreshed task**, including all JF Corporate client folders and VOTH. It merges list and detail payloads before saving so that attachment metadata available only from full-task responses is captured. This adds approximately one ClickUp task-detail API request per imported/changed task; the API client retries HTTP 429 and transient server errors. Imports can take substantially longer and may encounter ClickUp rate limits. This is a change to **future imports**, not an automatic background refresh for non-VOTH clients.
+
+To backfill **already imported** tasks for one consolidated client, use bounded, resumable batches (writes **local PostgreSQL only**):
+
+```bash
+npm run clickup:audit-detail -- --client fimbel-garage-doors-fmb-90146979789 --limit 200 --missing-detail --apply --confirm
+```
+
+Rerun until `Pending full-detail enrichment in scope: 0` and `Selected: 0 tasks`. Each successful task receives a `_fullTaskFetchedAt` marker, so subsequent batches skip it; failed tasks remain eligible for retry. This script preserves existing comments and task-intelligence rows, does not write to ClickUp, does not download attachment file contents, and makes **no OpenAI calls**. Afterward run `npm run intelligence:audit-context -- --client fimbel-garage-doors-fmb-90146979789` and `npm run clients:estimate -- --client fimbel-garage-doors-fmb-90146979789 --input-rate YOUR_RATE --output-rate YOUR_RATE` to verify coverage and re-estimate AI cost.
+
+To inspect without writing, omit `--apply --confirm`. Only use `--client` for writes; the audit intentionally refuses global database enrichment. Other clients' **future imports** use full task details automatically, but their existing records need the same explicit per-client backfill if completeness is required. Do not run an initial import and a backfill concurrently for the same client.
