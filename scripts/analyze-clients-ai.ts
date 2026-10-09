@@ -7,6 +7,7 @@ import { findRelatedTasks } from '../lib/intelligence/related';
 import { analyzeWithAI } from '../lib/intelligence/ai';
 import { saveTaskIntelligence } from '../lib/intelligence/change-history';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
+import { analysisClientGroups } from '../lib/intelligence/client-scope';
 
 loadEnvConfig(process.cwd());
 const args = process.argv.slice(2);
@@ -35,22 +36,19 @@ async function main() {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
   console.log('EXECUTION APPROVED: at most ' + maxAI + ' attempts; conservative estimated upper batch cost USD ' + upperEstimate.toFixed(2) + '. Not a guaranteed billing cap.');
 
-  const clients = await prisma.client.findMany({
-    where: { active: true, ...(options.clientSlug ? { slug: options.clientSlug } : options.includeVoth ? {} : { slug: { not: 'voth' } }) },
-    orderBy: { name: 'asc' }
-  });
+  const clients = await analysisClientGroups(options);
   const model = plan.model;
   const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);
   let analyzed = 0, attempted = 0, cached = 0, failed = 0;
   for (const client of clients) {
     const tasks = await prisma.task.findMany({
-      where: { clientId: client.id, deleted: false },
+      where: { clientId: { in: client.folders.map(folder => folder.id) }, deleted: false },
       include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } },
       orderBy: { clickupUpdatedAt: 'desc' }
     });
     const contexts = tasks.map(buildTaskContext);
-    console.log('\nCLIENT ' + client.name + ' (' + client.slug + ') · ' + tasks.length + ' tasks');
+    console.log('\nCLIENT ' + client.canonical.name + ' (' + client.canonical.slug + ') · ' + tasks.length + ' tasks across ' + client.folders.length + ' folders');
     for (const task of tasks) {
       const context = buildTaskContext(task);
       const related = findRelatedTasks(context, contexts);
