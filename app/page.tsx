@@ -25,7 +25,7 @@ export default async function Home() {
   const staleSync = !lastSync || Date.now() - lastSync.getTime() > 15 * 60 * 1000;
   const syncLabel = lastSync ? lastSync.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET' : 'Not yet synced';
   const tasks = await prisma.task.findMany({
-    where: { deleted: false, intelligence: { isNot: null } },
+    where: { deleted: false, client: { space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
     include: {
       client: true,
       intelligence: true,
@@ -43,10 +43,10 @@ export default async function Home() {
   const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
   const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number }>();
-  const allClients = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true, name: true } });
+  const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true } });
   const groups = groupClientFolders(allClients);
   const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
-  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false }, _count: { _all: true } });
+  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { space: { name: 'JF Corporate' } } }, _count: { _all: true } });
   const totalsByClient = new Map(importedCounts.map(row => [row.clientId, row._count._all]));
   for (const group of groups) {
     clientRows.set(group.canonical.slug, {
