@@ -57,18 +57,24 @@ async function importComments(taskId: number, clickupId: string) {
 
 export async function importTask(raw: Record<string, any>, clientId: number, listId: number): Promise<number> {
   const clickupId = String(raw.id);
+  // List-task responses omit attachment metadata. Fetch full details for every
+  // imported task, across all client folders and VOTH refreshes. Fail closed:
+  // never replace previously enriched data with an incomplete list response.
+  const full = raw._fullTaskFetchedAt ? raw : await getTask(clickupId);
+  if (!full || String(full.id) !== clickupId) throw new Error('Unexpected full ClickUp task ID: ' + clickupId);
+  const taskRaw = { ...raw, ...full, _fullTaskFetchedAt: raw._fullTaskFetchedAt ?? new Date().toISOString() };
   const data = {
     clientId, listId,
-    name: String(raw.name ?? raw.id),
-    description: raw.description || raw.text_content || null,
-    clickupStatus: raw.status?.status ?? null,
-    clickupPriority: raw.priority?.priority ?? null,
-    dueDate: clickupDate(raw.due_date),
-    clickupCreatedAt: clickupDate(raw.date_created),
-    clickupUpdatedAt: clickupDate(raw.date_updated),
-    clickupUrl: raw.url ?? null,
+    name: String(taskRaw.name ?? taskRaw.id),
+    description: taskRaw.description || taskRaw.text_content || null,
+    clickupStatus: taskRaw.status?.status ?? null,
+    clickupPriority: taskRaw.priority?.priority ?? null,
+    dueDate: clickupDate(taskRaw.due_date),
+    clickupCreatedAt: clickupDate(taskRaw.date_created),
+    clickupUpdatedAt: clickupDate(taskRaw.date_updated),
+    clickupUrl: taskRaw.url ?? null,
     deleted: false,
-    rawPayload: raw as Prisma.InputJsonValue
+    rawPayload: taskRaw as Prisma.InputJsonValue
   };
   const task = await prisma.task.upsert({
     where: { clickupTaskId: clickupId },
@@ -76,7 +82,7 @@ export async function importTask(raw: Record<string, any>, clientId: number, lis
     update: data
   });
   await prisma.taskAssignee.deleteMany({ where: { taskId: task.id } });
-  for (const person of raw.assignees ?? []) {
+  for (const person of taskRaw.assignees ?? []) {
     const employee = await prisma.employee.upsert({
       where: { clickupUserId: String(person.id) },
       create: { clickupUserId: String(person.id), name: person.username || person.email || String(person.id), email: person.email ?? null },
