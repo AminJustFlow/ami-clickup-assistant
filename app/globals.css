@@ -330,3 +330,50 @@ body{background:var(--jf-background);color:#414448}
 .sync-status-current{border-color:#c8e5d9;color:#3c7158}
 .sync-status-warning{border-color:#f0d5a6;color:#916b30;background:#fffaf0}
 .sync-status span:first-child{font-size:15px;font-weight:800}
+
+
+/* Ami action inbox */
+.attention-hero{margin-top:28px}
+.attention-coverage{margin:0 0 18px;max-width:900px}
+.attention-panel{max-width:1080px}
+.attention-filters{display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:16px 24px 20px;border-top:1px solid #e8edf0}
+.attention-filters label{display:grid;gap:6px;font-size:12px;font-weight:700;color:#586970;flex:1 1 160px}
+.attention-filters .attention-search-label{flex:2 1 240px}
+.attention-filters select,.attention-filters input{height:40px;width:100%;border:1px solid #cfd8dd;border-radius:8px;background:#fff;padding:8px 11px;font:inherit;font-size:13px;color:#263d46}
+.attention-filters button{height:40px;background:#038CC6;border:0;border-radius:8px;padding:0 17px;color:#fff;font-weight:750;cursor:pointer}
+.attention-filters>a{font-size:12px;font-weight:700;color:#0277a8;text-decoration:none;padding:12px 4px}
+.attention-meta{display:flex;gap:9px 18px;flex-wrap:wrap;font-size:11px;color:#7c8991;margin:0 0 13px}
+.attention-meta .attention-overdue{color:#aa4a27;font-weight:800}
+.attention-item .task-card-actions{margin-top:10px}
+.attention-pagination{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;border-top:1px solid #e8edf0;padding:17px 24px;font-size:12px;color:#667984}
+.attention-pagination>div{display:flex;gap:15px}
+.attention-pagination a{color:#0277a8;font-weight:750;text-decoration:none}
+.attention-filters input:focus-visible,.attention-filters select:focus-visible,.attention-filters button:focus-visible,.attention-pagination a:focus-visible{outline:3px solid #038CC6;outline-offset:2px}
+@media(max-width:680px){.attention-filters{padding:15px;gap:11px}.attention-pagination{padding:16px}.attention-filters label{flex-basis:100%}}
+
+
+/* Compact decision queue: deliberate visual hierarchy and progressive disclosure */
+.attention-view-tabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px 24px 0;border-top:1px solid #e8edf0}
+.attention-view-tabs a{display:inline-flex;align-items:center;padding:9px 14px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:750;color:#5b6b76;background:#f2f5f6}
+.attention-view-tabs a[aria-current="page"]{background:#e4f3fa;color:#006a9b}
+.attention-rows{border-top:1px solid #e8edf0}
+.attention-row{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:20px;padding:19px 24px;border-bottom:1px solid #edf0f2;align-items:start}
+.attention-row:last-child{border-bottom:0}
+.attention-row:hover{background:#fbfcfd}
+.attention-row-byline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#6a7b86;font-size:11px;font-weight:700;margin-bottom:8px}
+.attention-urgency{font-size:10px;font-weight:800;letter-spacing:.15px;border-radius:99px;padding:4px 9px}
+.attention-urgency.overdue{background:#fff0e8;color:#a64017}
+.attention-urgency.high{background:#fff5df;color:#8c5700}
+.attention-urgency.normal{background:#eef5f7;color:#4b6472}
+.attention-row h3{font-size:14px;line-height:1.4;margin:0 0 7px;color:#213642}
+.attention-row-action{font-size:13px;line-height:1.5;color:#455967;margin:0 0 11px;max-width:78ch}
+.attention-row .attention-meta{margin:0}
+.attention-row-actions{display:flex;flex-direction:column;align-items:stretch;gap:9px;font-size:12px}
+.attention-row-actions>.task-action{text-align:center;text-decoration:none}
+.attention-decision-form{display:grid;gap:7px;border-top:1px solid #e8edf0;padding-top:9px}
+.attention-decision-form button{padding:9px 10px;background:#e7f5ee;color:#17603d;border:1px solid #c4e5d4;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer}
+.attention-decision-form .attention-dismiss{background:#fff;color:#65717b;border-color:#d9e0e5}
+.attention-decision-form button:hover{filter:brightness(.96)}
+.attention-decision-form button:focus-visible,.attention-view-tabs a:focus-visible{outline:3px solid #038CC6;outline-offset:2px}
+.attention-notice{padding:12px 16px;background:#fff7e8;border:1px solid #e9d9b8;border-radius:9px;font-size:13px}
+@media(max-width:720px){.attention-row{grid-template-columns:1fr;padding:17px 16px;gap:14px}.attention-row-actions{flex-direction:row;flex-wrap:wrap;align-items:center}.attention-decision-form{display:flex;flex-wrap:wrap;border:0;padding:0}.attention-view-tabs{padding:12px 15px 0}}
