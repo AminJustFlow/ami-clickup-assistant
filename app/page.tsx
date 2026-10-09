@@ -103,7 +103,7 @@ export default async function Home() {
 
     <header className="dashboard-hero">
       <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>What needs attention today?</h1><p>Decisions to make, people to follow up with, and client progress — all in one place.</p></div>
-      <a className="quiet-action" href="/changes">See recent activity <span aria-hidden="true">↗</span></a>
+      <a className="quiet-action" href="/attention">Open Ami action inbox <span aria-hidden="true">↗</span></a>
     </header>
 
     <div className={"sync-status " + (staleSync ? "sync-status-warning" : "sync-status-current")} role="status"><span aria-hidden="true">{staleSync ? "◷" : "✓"}</span><span>{staleSync ? "One or more client syncs may be out of date" : "All active clients synced"} · Oldest successful sync: {syncLabel}</span></div>
@@ -118,7 +118,7 @@ export default async function Home() {
     <div className="dashboard-main" id="main-content">
       <div className="dashboard-primary">
         <section className="clean-panel" aria-labelledby="attention-title">
-          <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><span className="panel-count">{needsAmi.length}</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><a className="task-action" href="/attention">Open full action inbox ↗</a><span className="panel-count">{needsAmi.length}</span></div>
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
             <div className="clean-task-list">{needsAmi.map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
