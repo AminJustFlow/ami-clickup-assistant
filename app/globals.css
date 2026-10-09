@@ -450,3 +450,49 @@ button{font-family:inherit}
   html{scroll-behavior:auto}
   .app-nav-links a,.clean-task,.attention-row,.entity-row,.attention-filters button,.digest-button,.filter-bar button{transition:none}
 }
+
+
+/* Phase 2: readable decision workspace and shorter dashboard previews */
+.attention-hero{max-width:100%;padding-bottom:14px}
+.attention-hero h1{font-size:clamp(30px,3vw,42px);line-height:1.15}
+.attention-hero>p:not(.eyebrow){font-size:14px;max-width:70ch}
+.attention-panel{max-width:none}
+.attention-coverage{max-width:none;font-size:12px;line-height:1.6}
+.attention-row{grid-template-columns:minmax(0,1fr) 244px;gap:30px;min-height:144px}
+.attention-row-main{min-width:0}
+.attention-row h3{font-size:16px;line-height:1.45;margin-bottom:8px}
+.attention-row-action{font-size:14px;max-width:85ch;margin-bottom:13px}
+.attention-row-byline{font-size:12px;margin-bottom:8px}
+.attention-row .attention-meta{font-size:12px;line-height:1.5}
+.attention-row-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-content:start}
+.attention-row-actions>button,.attention-row-actions>a{min-width:0;min-height:39px}
+.attention-row-actions>.task-action{border:1px solid var(--ui-border);border-radius:8px;background:#fff;padding:9px 7px;text-align:center}
+.attention-row-actions>.task-action:hover{background:#f3f8fb;text-decoration:none}
+.attention-row-actions .attention-decision-form{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border:0;padding:0}
+.attention-row-actions .attention-decision-form button{min-height:40px;font-size:12px}
+.attention-row-actions .attention-decision-form button:first-child{background:#e5f3ec;color:#185f3e}
+.attention-row-actions .attention-decision-form button.attention-dismiss{background:#fff;color:#61727b}
+.attention-row-actions .attention-decision-form button:hover{filter:brightness(.97)}
+.attention-filters{gap:14px}
+.attention-filters label{font-size:12px}
+.attention-filters select,.attention-filters input{font-size:13px}
+.detail-stat-strip>div{padding:21px 23px}
+.detail-stat-strip strong{font-size:30px}
+.detail-stat-strip span{line-height:1.4;display:block;margin-top:5px}
+.dashboard-list-more{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 0;border-top:1px solid #e6edf1;color:#657984;font-size:12px}
+.dashboard-list-more a{color:var(--ui-primary);font-weight:800;text-decoration:none;white-space:nowrap}
+.dashboard-list-more a:hover{text-decoration:underline}
+.dashboard-primary>.clean-panel:first-child .clean-task-list{padding-bottom:5px}
+.dashboard-primary>.clean-panel:first-child .clean-task{padding:16px 0}
+.dashboard-primary>.clean-panel:first-child .ami-next-action{font-size:14px}
+@media(min-width:1150px){.dashboard-main{grid-template-columns:minmax(0,1.9fr) minmax(310px,1fr)}}
+@media(max-width:950px){.attention-row{grid-template-columns:minmax(0,1fr) 210px;gap:18px}}
+@media(max-width:720px){
+  .attention-row{grid-template-columns:1fr;gap:16px;min-height:0}
+  .attention-row-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .attention-row-actions .attention-decision-form{grid-column:1/-1}
+  .detail-stat-strip>div{padding:16px}
+  .detail-stat-strip strong{font-size:25px}
+  .attention-hero h1{font-size:31px}
+  .dashboard-list-more{flex-wrap:wrap}
+}
