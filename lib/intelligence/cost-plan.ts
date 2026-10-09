@@ -83,7 +83,9 @@ export async function calculateCostPlan(options: CostOptions): Promise<CostPlan>
       foundTaskIds.add(task.clickupTaskId);
       if (options.taskIds.length) console.log('PILOT TASK: ' + task.clickupTaskId + ' | ' + task.name + ' | ' + task.list.name);
       const context = buildTaskContext(task);
-      const isCached = task.intelligence?.sourceFingerprint === intelligenceFingerprint(context, model, teamNames, findRelatedTasks(context, contexts)) && task.intelligence.promptVersion === expectedVersion;
+      const related = findRelatedTasks(context, contexts);
+      const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
+      const isCached = task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === expectedVersion;
       if (!isCached && options.maxAI !== undefined && plannedPending >= options.maxAI) continue;
       row.comments += task.comments.length;
       row.attachments += context.coverage.attachments;
@@ -92,8 +94,6 @@ export async function calculateCostPlan(options: CostOptions): Promise<CostPlan>
       row.customFields += context.coverage.customFields;
       row.linkedTasks += context.coverage.linkedTasks;
       row.dependencies += context.coverage.dependencies;
-      const related = findRelatedTasks(context, contexts);
-      const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
       if (isCached) { row.cached++; continue; }
       plannedPending++;
       const payload = [
