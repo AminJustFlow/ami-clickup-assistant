@@ -48,3 +48,11 @@ export function foldersForClient(clients: ClientFolder[], slug: string): ClientF
   const group = groups.find(item => item.folders.some(folder => folder.slug === slug));
   return group?.folders ?? clients.filter(folder => folder.slug === slug);
 }
+
+/**
+ * Folders whose names do not identify an actual client. Keep them accessible
+ * for manual attribution, but never count them as standalone client accounts.
+ */
+export function needsClientAttribution(name: string): boolean {
+  return /^(?:invoiced projects|jf invoiced projects)$/i.test(name.trim());
+}
