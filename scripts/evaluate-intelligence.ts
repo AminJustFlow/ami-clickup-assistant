@@ -18,6 +18,8 @@ const base = (name: string, body: string): TaskContext => ({
   updatedAt: new Date('2026-10-07T12:00:00Z'),
   listName: 'VTH Website',
   assignees: ['Amin'],
+  extraEvidence: [],
+  coverage: { checklistCount: 0, checklistItems: 0, customFields: 0, attachments: 0, linkedTasks: 0, dependencies: 0, missingAttachmentContents: 0 },
   comments: [{ id: 1, authorName: 'Amin', body, createdAt: new Date('2026-10-07T12:00:00Z') }]
 });
 
