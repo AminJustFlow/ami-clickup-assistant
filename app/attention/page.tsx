@@ -79,7 +79,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const categorized = candidates.map(task => {
     const intel = task.intelligence!;
     const closed = intel.agentState === 'COMPLETED' || isClosed(task.clickupStatus);
-    const recorded = task.attentionDisposition?.sourceFingerprint === fingerprint(intel)
+    const recorded = task.attentionDisposition && task.attentionDisposition.sourceFingerprint === fingerprint(intel)
       ? task.attentionDisposition.decision : null;
     const overdue = !closed && !!task.dueDate && task.dueDate < now;
     const urgency = overdue ? 'Overdue' : intel.amiAttentionScore >= 70 ? 'High priority' : 'Normal';
