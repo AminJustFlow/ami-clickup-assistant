@@ -17,6 +17,7 @@
     "clients:analyze": "tsx scripts/analyze-clients-ai.ts",
     "clients:estimate": "tsx scripts/estimate-ai-cost.ts",
     "clickup:audit-detail": "tsx scripts/audit-clickup-detail.ts",
+    "clients:audit-groups": "tsx scripts/audit-client-groups.ts",
     "clickup:auto:voth": "tsx scripts/auto-refresh-voth.ts",
     "clickup:auto:voth:once": "tsx scripts/auto-refresh-voth.ts --once",
     "clickup:validate:voth": "tsx scripts/validate-voth.ts",
