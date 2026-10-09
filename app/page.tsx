@@ -43,7 +43,7 @@ export default async function Home() {
   const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
   const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number }>();
-  const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true } });
+  const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const groups = groupClientFolders(allClients);
   const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
   const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { space: { name: 'JF Corporate' } } }, _count: { _all: true } });
