@@ -1,0 +1,9 @@
+.git
+.next
+node_modules
+.env
+data
+*.log
+*.zip
+voth-audit.txt
+tsconfig.tsbuildinfo

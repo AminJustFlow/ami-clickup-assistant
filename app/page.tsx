@@ -20,8 +20,12 @@ const stateLabel: Record<string, string> = {
 };
 
 export default async function Home() {
-  const vothSync = await prisma.client.findUnique({ where: { slug: 'voth' }, select: { lastSyncedAt: true } });
-  const lastSync = vothSync?.lastSyncedAt ?? null;
+  const [syncState, workerState, jobCounts, todayUsage] = await Promise.all([
+    prisma.client.aggregate({ where: { active: true }, _min: { lastSyncedAt: true } }),
+    prisma.workerHeartbeat.findMany(), prisma.analysisJob.groupBy({ by: ['status'], _count: true }),
+    prisma.aiBudgetDay.findUnique({ where: { day: new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z') } })
+  ]);
+  const lastSync = syncState._min.lastSyncedAt ?? null;
   const staleSync = !lastSync || Date.now() - lastSync.getTime() > 15 * 60 * 1000;
   const syncLabel = lastSync ? lastSync.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET' : 'Not yet synced';
   const tasks = await prisma.task.findMany({
@@ -102,7 +106,7 @@ export default async function Home() {
       <a className="quiet-action" href="/changes">See recent activity <span aria-hidden="true">↗</span></a>
     </header>
 
-    <div className={"sync-status " + (staleSync ? "sync-status-warning" : "sync-status-current")} role="status"><span aria-hidden="true">{staleSync ? "◷" : "✓"}</span><span>{staleSync ? "VOTH sync may be out of date" : "VOTH ClickUp data synced"} · Last successful sync: {syncLabel}</span></div>
+    <div className={"sync-status " + (staleSync ? "sync-status-warning" : "sync-status-current")} role="status"><span aria-hidden="true">{staleSync ? "◷" : "✓"}</span><span>{staleSync ? "One or more client syncs may be out of date" : "All active clients synced"} · Oldest successful sync: {syncLabel}</span></div>
 
     <section className="dashboard-metrics" aria-label="Work summary">
       <a href="#attention-title" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Decisions or actions for Ami ↓</small></a>
@@ -142,6 +146,11 @@ export default async function Home() {
       </div>
 
       <aside className="dashboard-sidebar">
+        <section className="clean-panel" aria-labelledby="worker-title"><div className="panel-heading"><div><p className="eyebrow">AUTOMATION</p><h2 id="worker-title">Worker health</h2></div></div><div className="dashboard-note">
+          {workerState.length ? workerState.map(worker => <p key={worker.name}><strong>{worker.name}</strong>: {worker.status} · seen {worker.lastSeenAt.toLocaleString('en-US', { timeZone: 'America/New_York' })} ET{worker.lastError ? ` · ${worker.lastError}` : ''}</p>) : <p>Workers have not reported yet.</p>}
+          <p>AI jobs: {jobCounts.map(row => `${row.status.toLowerCase()} ${row._count}`).join(' · ') || 'none queued'}</p>
+          <p>Today: ${Number(todayUsage?.reservedUsd ?? 0).toFixed(4)} reserved · ${Number(todayUsage?.actualEstimatedUsd ?? 0).toFixed(4)} estimated actual · {String(todayUsage?.inputTokens ?? 0)} input / {String(todayUsage?.outputTokens ?? 0)} output tokens.</p>
+        </div></section>
         <section className="clean-panel" id="clients" aria-labelledby="clients-title">
           <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">How are our clients doing?</h2></div><span className="panel-count">{orderedClients.length}</span></div>
           <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} imported · {client.analyzed} analyzed · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>

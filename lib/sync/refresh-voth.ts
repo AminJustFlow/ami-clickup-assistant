@@ -3,7 +3,6 @@ import { prisma } from '../db/prisma';
 import { getFolderLists, getTask, getTaskComments, getCommentReplies, getTasks } from '../clickup/client';
 import { clickupDate, commentPlainText } from '../clickup/raw';
 
-const CLIENT_SLUG = 'voth';
 const PAGE_LIMIT = 100;
 const COMMENT_PAGE_SIZE = 25;
 
@@ -104,11 +103,17 @@ export type RefreshResult = {
 };
 
 /** Read-only against ClickUp; only updates our local database. */
-export async function refreshVoth(): Promise<RefreshResult> {
+export async function refreshClient(clientSlug: string): Promise<RefreshResult> {
   if (!process.env.CLICKUP_API_TOKEN) throw new Error('CLICKUP_API_TOKEN is missing');
   // The background worker only syncs raw data. AI runs through the explicitly approved cost-gated analyzer.
-  const client = await prisma.client.findUnique({ where: { slug: CLIENT_SLUG } });
-  if (!client) throw new Error('VOTH is not initialized. Run clickup:sync:voth first.');
+  const client = await prisma.client.findUnique({ where: { slug: clientSlug } });
+  if (!client || !client.active) throw new Error('Active imported client not found: ' + clientSlug);
+
+  // PostgreSQL advisory locks prevent two schedulers from syncing the same
+  // client concurrently while allowing different clients to make progress.
+  const lockRows = await prisma.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_lock(41721, CAST(${client.id} AS integer)) AS locked`;
+  if (!lockRows[0]?.locked) throw new Error('Client sync already running: ' + clientSlug);
+  try {
 
   const stats: RefreshResult = { scanned: 0, refreshed: 0, analyzed: 0, cached: 0, failed: 0, errors: [] };
   const failedIds = new Set<string>();
@@ -128,7 +133,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
   }
 
   const liveLists = await getFolderLists(client.clickupFolderId);
-  if (!liveLists.lists?.length) throw new Error('No VOTH Lists returned; refusing to mark existing tasks deleted.');
+  if (!liveLists.lists?.length) throw new Error('No Lists returned; refusing to mark existing tasks deleted.');
   const listIds = new Map<string, number>();
   for (const list of liveLists.lists) {
     const row = await prisma.clickUpList.upsert({
@@ -211,4 +216,9 @@ export async function refreshVoth(): Promise<RefreshResult> {
 
   if (stats.failed === 0) await prisma.client.update({ where: { id: client.id }, data: { lastSyncedAt: new Date() } });
   return stats;
+  } finally {
+    await prisma.$queryRaw`SELECT pg_advisory_unlock(41721, CAST(${client.id} AS integer))`;
+  }
 }
+
+export const refreshVoth = () => refreshClient('voth');

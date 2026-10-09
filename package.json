@@ -27,6 +27,8 @@
     "intelligence:test-context": "tsx scripts/test-context-quality.ts",
     "clickup:auto:voth": "tsx scripts/auto-refresh-voth.ts",
     "clickup:auto:voth:once": "tsx scripts/auto-refresh-voth.ts --once",
+    "clickup:auto": "tsx scripts/auto-refresh-clients.ts",
+    "clickup:auto:once": "tsx scripts/auto-refresh-clients.ts --once",
     "clickup:validate:voth": "tsx scripts/validate-voth.ts",
     "intelligence:analyze:voth": "tsx scripts/analyze-voth.ts",
     "intelligence:evaluate": "tsx scripts/evaluate-intelligence.ts",
@@ -34,7 +36,9 @@
     "intelligence:audit:voth": "tsx scripts/audit-voth-intelligence.ts",
     "intelligence:analyze:voth:ai": "tsx scripts/analyze-voth-ai.ts",
     "intelligence:refresh:voth": "npm run clickup:sync:voth && npm run intelligence:analyze:voth && npm run intelligence:analyze:voth:ai",
-    "clients:auto": "tsx scripts/auto-analyze-clients.ts"
+    "clients:auto": "tsx scripts/auto-analyze-clients.ts",
+    "worker:ai": "tsx scripts/continuous-ai-worker.ts",
+    "worker:ai:once": "tsx scripts/continuous-ai-worker.ts --once"
   },
   "dependencies": {
     "@next/env": "^16.4.0",

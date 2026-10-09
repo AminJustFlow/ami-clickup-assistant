@@ -1,0 +1,4 @@
+{
+  "addOnType": "AutoSnapshot",
+  "autoSnapshotAddOnRequest": { "snapshotTimeOfDay": "08:00" }
+}

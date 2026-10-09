@@ -2,9 +2,12 @@ node_modules
 .next
 .env
 .env.local
+.env.production
 *.log
+*.dump
 prisma/dev.db
 data/clickup-discovery.json
 data/ai-worker-budget.json
 data/ai-worker-budget.json.tmp
 data/ai-worker.lock
+.next-stale-*

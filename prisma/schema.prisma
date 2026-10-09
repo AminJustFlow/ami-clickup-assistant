@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -68,14 +69,14 @@ model Workspace {
 }
 
 model Space {
-  id                 Int       @id @default(autoincrement())
-  clickupSpaceId     String    @unique
-  workspaceId        Int
-  workspace          Workspace @relation(fields: [workspaceId], references: [id])
-  name               String
-  clients            Client[]
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  clickupSpaceId String    @unique
+  workspaceId    Int
+  workspace      Workspace @relation(fields: [workspaceId], references: [id])
+  name           String
+  clients        Client[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model ClickUpList {
@@ -92,41 +93,109 @@ model ClickUpList {
 }
 
 model Employee {
-  id            Int              @id @default(autoincrement())
-  clickupUserId String           @unique
+  id            Int            @id @default(autoincrement())
+  clickupUserId String         @unique
   name          String
   email         String?
-  active        Boolean          @default(true)
+  active        Boolean        @default(true)
   assignments   TaskAssignee[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model Task {
-  id               Int                @id @default(autoincrement())
-  clickupTaskId    String             @unique
-  clientId         Int
-  listId           Int
-  client           Client             @relation(fields: [clientId], references: [id])
-  list             ClickUpList        @relation(fields: [listId], references: [id])
-  name             String
-  description      String?
-  clickupStatus    String?
-  clickupPriority  String?
-  dueDate          DateTime?
-  clickupCreatedAt DateTime?
-  clickupUpdatedAt DateTime?
-  clickupUrl       String?
-  deleted          Boolean            @default(false)
-  rawPayload       Json
-  assignees        TaskAssignee[]
-  comments         Comment[]
-  events           TaskEvent[]
-  intelligence     TaskIntelligence?
+  id                  Int                  @id @default(autoincrement())
+  clickupTaskId       String               @unique
+  clientId            Int
+  listId              Int
+  client              Client               @relation(fields: [clientId], references: [id])
+  list                ClickUpList          @relation(fields: [listId], references: [id])
+  name                String
+  description         String?
+  clickupStatus       String?
+  clickupPriority     String?
+  dueDate             DateTime?
+  clickupCreatedAt    DateTime?
+  clickupUpdatedAt    DateTime?
+  clickupUrl          String?
+  deleted             Boolean              @default(false)
+  rawPayload          Json
+  assignees           TaskAssignee[]
+  comments            Comment[]
+  events              TaskEvent[]
+  intelligence        TaskIntelligence?
   intelligenceChanges IntelligenceChange[]
-  reviewFeedback   IntelligenceReview?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  reviewFeedback      IntelligenceReview?
+  analysisJob         AnalysisJob?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+enum JobStatus {
+  PENDING
+  LEASED
+  SUCCEEDED
+  FAILED
+  PAUSED_BUDGET
+}
+
+model AnalysisJob {
+  id                   Int       @id @default(autoincrement())
+  taskId               Int       @unique
+  task                 Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status               JobStatus @default(PENDING)
+  sourceFingerprint    String?
+  attempts             Int       @default(0)
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?
+  nextAttemptAt        DateTime  @default(now())
+  lastError            String?
+  estimatedReservedUsd Decimal   @default(0) @db.Decimal(12, 6)
+  actualInputTokens    Int?
+  actualOutputTokens   Int?
+  actualEstimatedUsd   Decimal?  @db.Decimal(12, 6)
+  completedAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+}
+
+model AiBudgetDay {
+  day                DateTime @id @db.Date
+  reservedUsd        Decimal  @default(0) @db.Decimal(12, 6)
+  actualEstimatedUsd Decimal  @default(0) @db.Decimal(12, 6)
+  inputTokens        BigInt   @default(0)
+  outputTokens       BigInt   @default(0)
+  successfulJobs     Int      @default(0)
+  failedJobs         Int      @default(0)
+  updatedAt          DateTime @updatedAt
+}
+
+model WorkerHeartbeat {
+  name          String    @id
+  status        String
+  lastStartedAt DateTime?
+  lastSeenAt    DateTime
+  lastSuccessAt DateTime?
+  lastError     String?
+  metadata      Json?
+}
+
+model SyncRun {
+  id          Int       @id @default(autoincrement())
+  clientId    Int?
+  status      String
+  scanned     Int       @default(0)
+  refreshed   Int       @default(0)
+  failed      Int       @default(0)
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([startedAt])
+  @@index([clientId, startedAt])
 }
 
 model TaskAssignee {
@@ -134,29 +203,30 @@ model TaskAssignee {
   employeeId Int
   task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
   @@id([taskId, employeeId])
 }
 
 model Comment {
-  id               Int      @id @default(autoincrement())
-  clickupCommentId String   @unique
+  id               Int       @id @default(autoincrement())
+  clickupCommentId String    @unique
   taskId           Int
-  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task             Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   authorClickupId  String?
   authorName       String?
   body             String
   clickupCreatedAt DateTime?
   clickupUpdatedAt DateTime?
   rawPayload       Json
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 model TaskEvent {
-  id             Int      @id @default(autoincrement())
-  eventKey       String?  @unique
+  id             Int       @id @default(autoincrement())
+  eventKey       String?   @unique
   taskId         Int?
-  task           Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  task           Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
   eventType      String
   actorClickupId String?
   actorName      String?
@@ -165,56 +235,57 @@ model TaskEvent {
   occurredAt     DateTime?
   rawPayload     Json
   processedAt    DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 }
 
 model TaskIntelligence {
-  id                       Int           @id @default(autoincrement())
-  taskId                   Int           @unique
-  task                     Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  agentState               AgentState    @default(UNKNOWN)
-  headline                 String?
-  currentSummary           String?
-  needsAmi                 Boolean       @default(false)
-  amiAction                String?
-  waitingOnType            WaitingOnType @default(NONE)
-  waitingOnName            String?
-  importanceScore          Int           @default(0)
-  amiAttentionScore        Int           @default(0)
-  riskLevel                RiskLevel     @default(LOW)
-  lastMeaningfulChange     String?
-  lastMeaningfulChangeAt   DateTime?
-  confidence               Float?
-  promptVersion            String?
-  sourceFingerprint        String?
-  analyzedAt               DateTime?
-  updatedAt                DateTime      @updatedAt
+  id                     Int           @id @default(autoincrement())
+  taskId                 Int           @unique
+  task                   Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentState             AgentState    @default(UNKNOWN)
+  headline               String?
+  currentSummary         String?
+  needsAmi               Boolean       @default(false)
+  amiAction              String?
+  waitingOnType          WaitingOnType @default(NONE)
+  waitingOnName          String?
+  importanceScore        Int           @default(0)
+  amiAttentionScore      Int           @default(0)
+  riskLevel              RiskLevel     @default(LOW)
+  lastMeaningfulChange   String?
+  lastMeaningfulChangeAt DateTime?
+  confidence             Float?
+  promptVersion          String?
+  sourceFingerprint      String?
+  analyzedAt             DateTime?
+  updatedAt              DateTime      @updatedAt
 }
 
 model IntelligenceChange {
-  id Int @id @default(autoincrement())
-  taskId Int
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  previousState AgentState?
-  nextState AgentState
-  previousNeedsAmi Boolean?
-  nextNeedsAmi Boolean
+  id                    Int            @id @default(autoincrement())
+  taskId                Int
+  task                  Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  previousState         AgentState?
+  nextState             AgentState
+  previousNeedsAmi      Boolean?
+  nextNeedsAmi          Boolean
   previousWaitingOnType WaitingOnType?
-  nextWaitingOnType WaitingOnType
-  summary String?
-  amiAction String?
-  detectedAt DateTime @default(now())
+  nextWaitingOnType     WaitingOnType
+  summary               String?
+  amiAction             String?
+  detectedAt            DateTime       @default(now())
+
   @@index([detectedAt])
   @@index([taskId, detectedAt])
 }
 
 // Human evaluation of a specific saved intelligence snapshot. Not a ClickUp edit.
 model IntelligenceReview {
-  id         Int      @id @default(autoincrement())
-  taskId     Int      @unique
-  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id         Int       @id @default(autoincrement())
+  taskId     Int       @unique
+  task       Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   verdict    String
   notes      String?
   analyzedAt DateTime?
-  reviewedAt DateTime @default(now()) @updatedAt
+  reviewedAt DateTime  @default(now()) @updatedAt
 }

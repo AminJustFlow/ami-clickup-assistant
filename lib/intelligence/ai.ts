@@ -14,6 +14,7 @@ export type HybridIntelligence = RuleIntelligence & {
   source: 'AI' | 'RULES_FALLBACK';
   model: string | null;
   promptVersion: string;
+  usage?: { inputTokens: number; outputTokens: number };
 };
 
 function isAmiAuthor(name: string | null): boolean {
@@ -132,7 +133,10 @@ ${relatedEvidenceText(options.related ?? []) || 'No strongly related tasks ident
     });
 
     if (!response.output_parsed) throw new Error('OpenAI returned no parsed intelligence output.');
-    return aiToHybrid(context, response.output_parsed, rules, model, now, options.teamNames ?? []);
+    return {
+      ...aiToHybrid(context, response.output_parsed, rules, model, now, options.teamNames ?? []),
+      usage: { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 }
+    };
   } catch (error) {
     console.warn(`AI analysis failed for task ${context.clickupTaskId}; using rules fallback:`, error instanceof Error ? error.message : error);
     return { ...rules, source: 'RULES_FALLBACK', model, promptVersion: 'RULE_ENGINE_V1' };

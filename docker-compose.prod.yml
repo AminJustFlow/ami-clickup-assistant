@@ -1,0 +1,55 @@
+x-app: &app
+  build: .
+  env_file: .env.production
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks: [backend]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    env_file: .env.production
+    environment:
+      POSTGRES_DB: ami_assistant
+      POSTGRES_USER: ami
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    restart: unless-stopped
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U ami -d ami_assistant"], interval: 10s, timeout: 5s, retries: 10 }
+    networks: [backend]
+    mem_limit: 512m
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["npx", "prisma", "migrate", "deploy"]
+  web:
+    <<: *app
+    command: ["npm", "run", "start"]
+    healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"], interval: 30s, timeout: 5s, retries: 5 }
+    mem_limit: 512m
+  sync-worker:
+    <<: *app
+    command: ["npm", "run", "clickup:auto"]
+    mem_limit: 384m
+  ai-worker:
+    <<: *app
+    command: ["npm", "run", "worker:ai"]
+    mem_limit: 512m
+  caddy:
+    image: caddy:2-alpine
+    env_file: .env.production
+    ports: ["80:80", "443:443"]
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data", "caddy_config:/config"]
+    depends_on: { web: { condition: service_healthy } }
+    restart: unless-stopped
+    networks: [backend]
+    mem_limit: 128m
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+
+networks: { backend: {} }
+volumes: { postgres_data: {}, caddy_data: {}, caddy_config: {} }
