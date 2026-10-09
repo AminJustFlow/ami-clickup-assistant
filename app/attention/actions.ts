@@ -13,7 +13,7 @@ export async function setAttentionDecision(formData: FormData) {
     ? returnTo : '/attention';
 
   if (!Number.isSafeInteger(taskId) || taskId < 1 ||
-      (decision !== 'REVIEWED' && decision !== 'DISMISSED') ||
+      (decision !== 'REVIEWED' && decision !== 'DISMISSED' && decision !== 'REOPEN') ||
       typeof fingerprint !== 'string' || fingerprint.length > 256) {
     throw new Error('Invalid inbox review request.');
   }
@@ -26,6 +26,12 @@ export async function setAttentionDecision(formData: FormData) {
   const currentFingerprint = intel?.sourceFingerprint ?? `analyzed:${intel?.analyzedAt?.toISOString() ?? 'unknown'}`;
   if (!intel?.needsAmi || intel.agentState === 'COMPLETED' || currentFingerprint !== fingerprint) {
     redirect('/attention?notice=stale');
+  }
+
+  if (decision === 'REOPEN') {
+    await prisma.attentionDisposition.deleteMany({ where: { taskId, sourceFingerprint: currentFingerprint } });
+    revalidatePath('/attention');
+    redirect('/attention');
   }
 
   await prisma.attentionDisposition.upsert({
