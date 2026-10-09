@@ -2,12 +2,6 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { getFolderLists, getTask, getTaskComments, getCommentReplies, getTasks } from '../clickup/client';
 import { clickupDate, commentPlainText } from '../clickup/raw';
-import { buildTaskContext } from '../intelligence/context';
-import { intelligenceFingerprint } from '../intelligence/fingerprint';
-import { findRelatedTasks } from '../intelligence/related';
-import { analyzeWithAI, DEFAULT_INTELLIGENCE_MODEL } from '../intelligence/ai';
-import { saveTaskIntelligence } from '../intelligence/change-history';
-import { TASK_ANALYZER_PROMPT_VERSION } from '../intelligence/prompt';
 
 const CLIENT_SLUG = 'voth';
 const PAGE_LIMIT = 100;
@@ -106,7 +100,7 @@ export type RefreshResult = {
 /** Read-only against ClickUp; only updates our local database. */
 export async function refreshVoth(): Promise<RefreshResult> {
   if (!process.env.CLICKUP_API_TOKEN) throw new Error('CLICKUP_API_TOKEN is missing');
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing');
+  // The background worker only syncs raw data. AI runs through the explicitly approved cost-gated analyzer.
   const client = await prisma.client.findUnique({ where: { slug: CLIENT_SLUG } });
   if (!client) throw new Error('VOTH is not initialized. Run clickup:sync:voth first.');
 
@@ -202,44 +196,7 @@ export async function refreshVoth(): Promise<RefreshResult> {
     }
   }
 
-  const tasks = await prisma.task.findMany({
-    where: { clientId: client.id, deleted: false },
-    include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } }
-  });
-  const contexts = tasks.map(buildTaskContext);
-  const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(x => x.name);
-  const model = process.env.OPENAI_INTELLIGENCE_MODEL ?? DEFAULT_INTELLIGENCE_MODEL;
-  const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
-
-  for (const task of tasks) {
-    const context = buildTaskContext(task);
-    const related = findRelatedTasks(context, contexts);
-    const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
-    if (task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === expectedVersion) {
-      stats.cached++;
-      continue;
-    }
-    try {
-      const result = await analyzeWithAI(context, { teamNames, model, related });
-      if (result.source !== 'AI') throw new Error('AI unavailable; retaining previous intelligence and retrying next run');
-      await saveTaskIntelligence(task.id, {
-        agentState: result.agentState, headline: result.headline,
-        currentSummary: result.currentSummary, needsAmi: result.needsAmi, amiAction: result.amiAction,
-        waitingOnType: result.waitingOnType, waitingOnName: result.waitingOnName,
-        importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore,
-        riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange,
-        lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence,
-        promptVersion: expectedVersion, analyzedAt: new Date(), sourceFingerprint: fingerprint
-      });
-      stats.analyzed++;
-    } catch (error) {
-      stats.failed++;
-      stats.errors.push('AI ' + task.clickupTaskId + ': ' + (error instanceof Error ? error.message : String(error)));
-      failedIds.add(task.clickupTaskId);
-    }
-  }
-
-  // Only acknowledge webhook events after their task refresh AND AI analysis succeeded.
+  // Acknowledge successfully imported webhook events; AI analysis is separately approved.
   for (const [clickupId, eventIds] of pendingByTask) {
     if (failedIds.has(clickupId)) continue;
     if (!refreshedClickupIds.has(clickupId)) continue;
