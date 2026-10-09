@@ -11,6 +11,7 @@ export type CostOptions = {
   clientSlug?: string;
   includeVoth?: boolean;
   taskIds: string[];
+  maxAI?: number;
   inputRate: number;
   outputRate: number;
   outputTokens: number;
@@ -42,6 +43,9 @@ export function parseCostOptions(args: string[]): CostOptions {
   const taskIds = (value('--task-ids') ?? '').split(',').map(id => id.trim()).filter(Boolean);
   if (new Set(taskIds).size !== taskIds.length) throw new Error('--task-ids contains duplicate IDs');
   if (taskIds.length && !value('--client')) throw new Error('--task-ids requires --client');
+  const maxAIArg = value('--max-ai');
+  const maxAI = maxAIArg === undefined ? undefined : Number(maxAIArg);
+  if (maxAI !== undefined && (!Number.isInteger(maxAI) || maxAI < 1 || maxAI > 10000)) throw new Error('--max-ai must be between 1 and 10000');
   const inputRate = Number(value('--input-rate') ?? process.env.AI_INPUT_USD_PER_MILLION ?? NaN);
   const outputRate = Number(value('--output-rate') ?? process.env.AI_OUTPUT_USD_PER_MILLION ?? NaN);
   const outputTokens = Number(value('--output-tokens') ?? '1500');
@@ -53,7 +57,7 @@ export function parseCostOptions(args: string[]): CostOptions {
   if (!Number.isInteger(outputTokens) || outputTokens < 1 || !Number.isFinite(charsPerToken) || charsPerToken <= 0 || !Number.isFinite(inputSafetyMultiplier) || inputSafetyMultiplier < 1) {
     throw new Error('Invalid output-tokens, chars-per-token, or input-safety');
   }
-  return { clientSlug: value('--client'), includeVoth: args.includes('--include-voth'), taskIds, inputRate, outputRate, outputTokens, charsPerToken, inputSafetyMultiplier };
+  return { clientSlug: value('--client'), includeVoth: args.includes('--include-voth'), taskIds, maxAI, inputRate, outputRate, outputTokens, charsPerToken, inputSafetyMultiplier };
 }
 
 export async function calculateCostPlan(options: CostOptions): Promise<CostPlan> {
@@ -63,12 +67,14 @@ export async function calculateCostPlan(options: CostOptions): Promise<CostPlan>
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);
   const rows: CostRow[] = [];
   const foundTaskIds = new Set<string>();
+  let plannedPending = 0;
   // Include schema size and system instructions. These are approximations, not API token counts.
   const sharedChars = TASK_ANALYZER_SYSTEM.length + JSON.stringify(taskIntelligenceSchema.shape).length + 1000;
   for (const client of clients) {
     const tasks = await prisma.task.findMany({
       where: { clientId: { in: client.folders.map(folder => folder.id) }, deleted: false },
-      include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } }
+      include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } },
+      orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }]
     });
     const contexts = tasks.map(buildTaskContext);
     const row: CostRow = { client: client.canonical.name, slug: client.canonical.slug, imported: tasks.length, cached: 0, pending: 0, comments: 0, attachments: 0, checklists: 0, customFields: 0, checklistItems: 0, linkedTasks: 0, dependencies: 0, estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedUSD: 0, largestTaskTokens: 0 };
@@ -76,8 +82,10 @@ export async function calculateCostPlan(options: CostOptions): Promise<CostPlan>
       if (options.taskIds.length && !options.taskIds.includes(task.clickupTaskId)) continue;
       foundTaskIds.add(task.clickupTaskId);
       if (options.taskIds.length) console.log('PILOT TASK: ' + task.clickupTaskId + ' | ' + task.name + ' | ' + task.list.name);
-      row.comments += task.comments.length;
       const context = buildTaskContext(task);
+      const isCached = task.intelligence?.sourceFingerprint === intelligenceFingerprint(context, model, teamNames, findRelatedTasks(context, contexts)) && task.intelligence.promptVersion === expectedVersion;
+      if (!isCached && options.maxAI !== undefined && plannedPending >= options.maxAI) continue;
+      row.comments += task.comments.length;
       row.attachments += context.coverage.attachments;
       row.checklists += context.coverage.checklistCount;
       row.checklistItems += context.coverage.checklistItems;
@@ -86,7 +94,8 @@ export async function calculateCostPlan(options: CostOptions): Promise<CostPlan>
       row.dependencies += context.coverage.dependencies;
       const related = findRelatedTasks(context, contexts);
       const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
-      if (task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === expectedVersion) { row.cached++; continue; }
+      if (isCached) { row.cached++; continue; }
+      plannedPending++;
       const payload = [
         'Analyze the current operational state of this ClickUp task. Comments are chronological, oldest to newest.',
         'Internal agency employees (not clients or vendors): ' + teamNames.join(', '),
@@ -120,11 +129,13 @@ export function printCostPlan(plan: CostPlan, options: CostOptions) {
   console.log('\nAI PRE-FLIGHT COST ESTIMATE (NO API REQUESTS)');
   console.log('Model: ' + plan.model);
   if (options.taskIds.length) console.log('Selected task IDs: ' + options.taskIds.join(', '));
+  if (options.maxAI !== undefined) console.log('Pending AI batch limit: ' + options.maxAI + ' (ordered by ClickUp updated time, newest first; cached tasks excluded)');
   console.log('Rates: $' + options.inputRate + '/M input; $' + options.outputRate + '/M output; expected ' + options.outputTokens + ' output tokens/task');
   console.log('Assumptions: ' + options.charsPerToken + ' chars/input token, ' + options.inputSafetyMultiplier + 'x input safety multiplier');
   for (const r of plan.rows) console.log(r.client + ' [' + r.slug + '] · ' + r.imported + ' imported · ' + r.comments + ' comments · ' + r.attachments + ' attachment refs · ' + r.checklists + ' checklists (' + r.checklistItems + ' items) · ' + r.customFields + ' custom fields · ' + r.dependencies + ' dependencies · ' + r.linkedTasks + ' links · ' + r.pending + ' AI calls · ' + r.cached + ' cached · $' + r.estimatedUSD.toFixed(4) + ' estimated');
   console.log('TOTAL: ' + plan.pending + ' pending calls, ' + plan.cached + ' cached, ~' + plan.estimatedInputTokens.toLocaleString() + ' input tokens, ~' + plan.estimatedOutputTokens.toLocaleString() + ' output tokens, $' + plan.estimatedUSD.toFixed(2) + ' estimated');
   if (options.taskIds.length) console.log('PILOT SCOPE: metrics and costs reflect only selected task IDs; imported count is the full client group.');
+  else if (options.maxAI !== undefined) console.log('BATCH SCOPE: estimated costs and evidence coverage reflect up to ' + options.maxAI + ' pending tasks plus cached tasks; imported count is the full client group.');
   console.log('EVIDENCE COVERAGE: ' + plan.rows.reduce((n,r) => n+r.comments,0) + ' comments, ' + plan.rows.reduce((n,r) => n+r.checklistItems,0) + ' checklist items, ' + plan.rows.reduce((n,r) => n+r.customFields,0) + ' custom field entries, ' + plan.rows.reduce((n,r) => n+r.attachments,0) + ' attachment references, ' + plan.rows.reduce((n,r) => n+r.dependencies,0) + ' dependencies.');
   console.log('Largest estimated task input: ' + plan.maxTaskInputTokens.toLocaleString() + ' tokens (check model context limit).');
   console.log('WARNING: This is a conservative character-based approximation, NOT a quote or hard spending cap. Actual tokenization, reasoning/output tokens, retries, and provider rates may differ.');
