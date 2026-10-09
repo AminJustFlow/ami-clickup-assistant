@@ -256,3 +256,16 @@ npm run clickup:audit-detail -- --client fimbel-garage-doors-fmb-90146979789 --l
 ```
 
 Enrichment fetches full task metadata from ClickUp, merges it into the stored raw payload, and never calls OpenAI. It does **not** download attachments, transcribe files, ingest linked documents, retrieve all activity history or unify separate invoicing/client folders. These are remaining requirements before claiming comprehensive cross-folder intelligence. Re-run `npm run clients:estimate` after enrichment to see the increased context and estimated costs. If the full task response is missing fields, the audit makes that gap visible rather than silently claiming coverage.
+
+## Consolidated client folders (read-only)
+
+The client detail page now groups a canonical folder with related invoicing, monthly-budget, and no-go folders **only** when a unique client acronym is explicit in both names. Example: `Fimbel Garage Doors (FMB)`, `FMB Invoiced Projects`, and `FMB NO GO Projects`. The underlying ClickUp folders and local database rows are not merged or changed. Task cards retain their source folder name. Ambiguous and unlabeled folders remain separate; they require an explicit mapping review.
+
+Inspect grouping, task counts, attachment metadata and whether dependency IDs resolve to tasks in the same client group:
+
+```bash
+npm run clients:audit-groups -- --client fimbel-garage-doors-fmb-90146979789
+npm run clients:audit-groups -- --limit 20
+```
+
+This audit reads the local database only and never calls OpenAI or modifies records. Dependencies are reported as **references**, not interpreted as blockers or approvals. The AI analyzer still limits related-task retrieval to its conservative matching rules; this dashboard consolidation does not yet imply cross-folder AI evidence ingestion. Attachments and linked documents remain an explicit coverage gap.
