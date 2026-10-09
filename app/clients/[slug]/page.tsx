@@ -4,6 +4,7 @@ import { isStaleActive, activityLabel, humanActivityLabel } from '@/lib/intellig
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../../components/app-nav';
+import { foldersForClient } from '@/lib/clients/grouping';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +20,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const client = await prisma.client.findUnique({ where: { slug } });
   if (!client) notFound();
 
+  const allClientFolders = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true, name: true } });
+  const relatedFolders = foldersForClient(allClientFolders, slug);
   const tasks = await prisma.task.findMany({
-    where: { clientId: client.id, deleted: false },
-    include: { intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true, authorName: true } }, events: { orderBy: { occurredAt: 'desc' }, take: 15 }, assignees: { include: { employee: true } } },
+    where: { clientId: { in: relatedFolders.map(folder => folder.id) }, deleted: false },
+    include: { client: { select: { name: true } }, intelligence: true, list: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true, body: true, authorName: true } }, events: { orderBy: { occurredAt: 'desc' }, take: 15 }, assignees: { include: { employee: true } } },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
   const unanalyzed = tasks.filter(t => !t.intelligence);
@@ -53,7 +56,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
   return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="clients" />
-    <header className="detail-hero"><div><a className="back-link" href="/#clients">← All clients</a><p className="eyebrow">CLIENT OVERVIEW</p><h1>{client.name}</h1><p>Understand what needs attention and what the team is working on.</p></div></header>
+    <header className="detail-hero"><div><a className="back-link" href="/#clients">← All clients</a><p className="eyebrow">CLIENT OVERVIEW</p><h1>{relatedFolders[0]?.name ?? client.name}</h1><p>Understand what needs attention and what the team is working on.</p></div></header>
+    {relatedFolders.length > 1 && <section className="clean-panel"><p className="eyebrow">CONSOLIDATED CLIENT VIEW</p><p>Showing {relatedFolders.length} original ClickUp folders together. Billing and no-go records remain separate from operational approvals.</p><p>{relatedFolders.map(folder => folder.name).join(' · ')}</p></section>}
     <div className="detail-stat-strip">
       <div><strong>{tasks.length}</strong><span>Imported tasks</span></div>
       <div><strong>{needsAmi.length}</strong><span>Need Ami</span></div>
@@ -73,7 +77,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {visibleNeedsAmi.length > 0 && <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">PRIORITY</p><h2>Needs Ami</h2></div><span className="panel-count">{visibleNeedsAmi.length}</span></div><div className="clean-task-list">{visibleNeedsAmi.map(t => <TaskCard key={t.id} task={t} />)}</div></section>}
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2>Waiting on someone</h2></div><span className="panel-count">{visibleWaiting.length}</span></div><div className="clean-task-list">{visibleWaiting.length ? visibleWaiting.map(t => <TaskCard key={t.id} task={t} />) : <p className="simple-empty">No tasks waiting on others.</p>}</div></section>
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">IN MOTION</p><h2>Recently active</h2></div><span className="panel-count">{visibleRecent.length}</span></div><div className="clean-task-list">{visibleRecent.length ? visibleRecent.map(t => <TaskCard key={t.id} task={t} />) : <p className="simple-empty">No recently active tasks match your filters.</p>}</div></section>
-      {visibleUnanalyzed.length > 0 && <details className="clean-panel collapsible-panel" open={tasks.length === unanalyzed.length}><summary>Imported — awaiting AI analysis <span>{visibleUnanalyzed.length}</span></summary><div className="clean-task-list">{visibleUnanalyzed.map(t => <article className="clean-task" key={t.id}><div className="task-topline"><span>{t.list.name}</span><span className="status-pill">{t.clickupStatus || 'Imported'}</span></div><h3>{t.name}</h3><div className="task-footer"><span>{t.assignees.map(a => a.employee.name).join(', ') || 'Unassigned'}</span><TaskDetailsButton taskId={t.id} /></div></article>)}</div></details>}
+      {visibleUnanalyzed.length > 0 && <details className="clean-panel collapsible-panel" open={tasks.length === unanalyzed.length}><summary>Imported — awaiting AI analysis <span>{visibleUnanalyzed.length}</span></summary><div className="clean-task-list">{visibleUnanalyzed.map(t => <article className="clean-task" key={t.id}><div className="task-topline"><span>{t.client.name} / {t.list.name}</span><span className="status-pill">{t.clickupStatus || 'Imported'}</span></div><h3>{t.name}</h3><div className="task-footer"><span>{t.assignees.map(a => a.employee.name).join(', ') || 'Unassigned'}</span><TaskDetailsButton taskId={t.id} /></div></article>)}</div></details>}
       <details className="clean-panel collapsible-panel"><summary>Stale active <span>{visibleStale.length}</span></summary><p className="section-explainer">No recorded activity in 30 days. This does not necessarily mean work stopped.</p><div className="clean-task-list">{visibleStale.map(t => <TaskCard key={t.id} task={t} />)}</div></details>
       <details className="clean-panel collapsible-panel"><summary>Not started <span>{visibleNotStarted.length}</span></summary><div className="clean-task-list">{visibleNotStarted.map(t => <TaskCard key={t.id} task={t} />)}</div></details>
       <details className="clean-panel collapsible-panel"><summary>Completed <span>{visibleCompleted.length}</span></summary><div className="clean-task-list">{visibleCompleted.map(t => <TaskCard key={t.id} task={t} />)}</div></details>
@@ -85,7 +89,7 @@ function TaskCard({ task }: { task: any }) {
   const intel = task.intelligence;
   const progress = progressSignal({ agentState: intel.agentState, clickupStatus: task.clickupStatus, comments: task.comments, events: task.events, lastMeaningfulChangeAt: intel.lastMeaningfulChangeAt, lastMeaningfulChange: intel.lastMeaningfulChange });
   return <article className="clean-task">
-    <div className="task-topline"><span>{task.list.name}</span><span className="status-pill">{label[intel.agentState] ?? intel.agentState}</span></div>
+    <div className="task-topline"><span>{task.client.name} / {task.list.name}</span><span className="status-pill">{label[intel.agentState] ?? intel.agentState}</span></div>
     {intel.needsAmi && intel.amiAction && <div className="task-decision"><strong>Ami needs to decide</strong><p>{intel.amiAction}</p></div>}
     <h3 className="task-context-title">{task.name}</h3>
     {intel.currentSummary && <p>{intel.currentSummary}</p>}
