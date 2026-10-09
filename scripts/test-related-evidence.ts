@@ -15,6 +15,12 @@ const result = findRelatedTasks(original, [original, related, unrelated]);
 assert.equal(result[0]?.context.clickupTaskId, '2');
 assert.match(result[0].reason, /dependency/i);
 assert.equal(result.some(row => row.context.clickupTaskId === '3'), false);
+const recurring = task('4', 'Week 1 Monitoring (M, W, F)', 'Operational');
+const sameListRecurring = task('5', 'Week 3 Monitoring (M, W, F)', 'Operational');
+assert.equal(findRelatedTasks(original, [original, related, recurring, sameListRecurring]).length, 1,
+  'An explicit dependency must not be padded with unrelated recurring week tasks');
+assert.equal(findRelatedTasks(recurring, [recurring, sameListRecurring]).length, 0,
+  'Recurring week titles alone must not imply related deliverables');
 assert.deepEqual(dependencyTaskIds({ dependencies: [
   { task_id: '1', depends_on: '2' }, { task_id: '1', depends_on: '2' }, { task_id: '1', depends_on: '3' }
 ]}, '1'), ['2', '3']);
