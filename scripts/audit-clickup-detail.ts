@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/db/prisma';
 import { getTask } from '../lib/clickup/client';
 import { rawEvidence } from '../lib/intelligence/context';
+import { analysisClientGroups } from '../lib/intelligence/client-scope';
 
 loadEnvConfig(process.cwd());
 const args = process.argv.slice(2);
@@ -20,8 +21,9 @@ if (!Number.isInteger(limit) || limit < 1 || limit > 10000) throw new Error('--l
 if (apply && !clientSlug) throw new Error('For safety, --apply requires --client SLUG. Enrich one client at a time.');
 if (apply && !flag('--confirm')) throw new Error('For safety, --apply requires --confirm.');
 async function main() {
+  const group = clientSlug ? (await analysisClientGroups({ clientSlug }))[0] : null;
   const candidates = await prisma.task.findMany({
-    where: { deleted: false, ...(clientSlug ? { client: { slug: clientSlug } } : {}) },
+    where: { deleted: false, ...(group ? { clientId: { in: group.folders.map(folder => folder.id) } } : {}) },
     select: { id: true, clickupTaskId: true, name: true, rawPayload: true, client: { select: { name: true } } },
     orderBy: { clickupUpdatedAt: 'desc' },
     ...(filters ? {} : { take: limit })
@@ -31,7 +33,7 @@ async function main() {
     return withChecklists ? c.checklistItems > 0 : withDependencies ? c.dependencies > 0 : c.attachments > 0;
   }).slice(0, limit) : candidates);
   console.log('CLICKUP FULL-TASK COVERAGE AUDIT (' + (apply ? 'ENRICH LOCAL DB' : 'READ-ONLY SAMPLE') + ')');
-  console.log('Selected: ' + tasks.length + ' tasks. No OpenAI calls.');
+  console.log('Selected: ' + tasks.length + ' tasks' + (group ? ' across ' + group.folders.length + ' client folders' : '') + '. No OpenAI calls.');
   if (filters && !tasks.length) console.log('No stored tasks matched the requested evidence filter; this does not establish that ClickUp contains none.');
   let changed = 0, errors = 0;
   for (const task of tasks) {
