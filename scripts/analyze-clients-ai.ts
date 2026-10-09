@@ -45,7 +45,7 @@ async function main() {
     const tasks = await prisma.task.findMany({
       where: { clientId: { in: client.folders.map(folder => folder.id) }, deleted: false },
       include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } },
-      orderBy: { clickupUpdatedAt: 'desc' }
+      orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }]
     });
     const contexts = tasks.map(buildTaskContext);
     console.log('\nCLIENT ' + client.canonical.name + ' (' + client.canonical.slug + ') · ' + tasks.length + ' tasks across ' + client.folders.length + ' folders');
