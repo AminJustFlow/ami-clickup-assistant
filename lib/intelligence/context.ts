@@ -128,9 +128,20 @@ export function rawEvidence(rawValue: unknown): { lines: string[]; coverage: Evi
     }
   }
   if (customFields.length) {
+    // Preserve all raw metadata in PostgreSQL. Only omit empty field values
+    // from the model prompt; zero and false remain meaningful values.
+    const populated = customFields.filter(field => {
+      const value = field.value;
+      return value != null && value !== '' &&
+        (!Array.isArray(value) || value.length > 0) &&
+        (typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 0);
+    });
     lines.push('CUSTOM FIELDS (ClickUp task metadata; do not infer meaning from missing values):');
-    for (const field of customFields) {
+    for (const field of populated) {
       lines.push('  ' + str(field.name || field.id) + ' (' + str(field.type) + '): ' + valueText(field));
+    }
+    if (customFields.length > populated.length) {
+      lines.push('  ' + (customFields.length - populated.length) + ' unset/empty custom field entries omitted from AI context (retained in database).');
     }
   }
   if (dependencies.length) lines.push('DEPENDENCIES: ' + dependencies.map(v => str(v)).join('; '));
