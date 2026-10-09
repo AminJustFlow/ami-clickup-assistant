@@ -24,6 +24,7 @@
     "intelligence:test-dependencies": "tsx scripts/test-related-evidence.ts",
     "intelligence:audit-related": "tsx scripts/audit-related-evidence.ts",
     "intelligence:audit-context": "tsx scripts/audit-context-quality.ts",
+    "intelligence:test-context": "tsx scripts/test-context-quality.ts",
     "clickup:auto:voth": "tsx scripts/auto-refresh-voth.ts",
     "clickup:auto:voth:once": "tsx scripts/auto-refresh-voth.ts --once",
     "clickup:validate:voth": "tsx scripts/validate-voth.ts",
