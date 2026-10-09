@@ -1,29 +1,38 @@
 /**
- * Conservative read-only grouping of ClickUp folders that belong to one real client.
- * The database keeps every original folder, list and task unchanged.
- * Only an explicit acronym in the canonical client name can link an ancillary folder.
- * Ambiguous acronyms are not grouped.
+ * Group client-specific ClickUp folders for presentation without changing
+ * any source folder, task or database relationship.
+ *
+ * Matching requires a unique explicit code from the canonical folder name.
+ * Ambiguous generic "Invoiced Projects" folders are never assigned.
  */
 export type ClientFolder = { id: number; name: string; slug: string };
 export type ClientGroup = { canonical: ClientFolder; folders: ClientFolder[] };
 
-const canonicalCode = (name: string): string | null => {
-  const match = name.match(/\(([A-Za-z0-9]{2,6})\)\s*$/);
-  return match ? match[1].toUpperCase() : null;
-};
 const auxiliaryCode = (name: string): string | null => {
-  const match = name.match(/^([A-Za-z0-9]{2,6})\s+(?:Invoic(?:ed|ing)(?: Projects)?|Monthly Budget|NO GO Projects)\s*$/i);
+  const match = name.trim().match(/^([A-Za-z0-9]{2,6})\s+(?:Invoic(?:ed|ing)(?: Projects)?|Monthly Budget|NO GO Projects)\s*$/i);
   return match ? match[1].toUpperCase() : null;
 };
+
+const canonicalCodes = (name: string): string[] => {
+  if (auxiliaryCode(name) || needsClientAttribution(name)) return [];
+  const matches = [...name.matchAll(/\(([A-Za-z0-9]{2,6})\)/g)].map(match => match[1].toUpperCase());
+  // Explicit legacy folder names whose client code is not in parentheses.
+  if (name.trim().toLowerCase() === 'just flow') matches.push('JF');
+  return [...new Set(matches)];
+};
+
+export function needsClientAttribution(name: string): boolean {
+  return /^(?:invoiced projects)$/i.test(name.trim());
+}
 
 export function groupClientFolders(clients: ClientFolder[]): ClientGroup[] {
   const byCode = new Map<string, ClientFolder[]>();
   for (const client of clients) {
-    const code = canonicalCode(client.name);
-    if (!code || auxiliaryCode(client.name)) continue;
-    const matches = byCode.get(code) ?? [];
-    matches.push(client);
-    byCode.set(code, matches);
+    for (const code of canonicalCodes(client.name)) {
+      const matches = byCode.get(code) ?? [];
+      matches.push(client);
+      byCode.set(code, matches);
+    }
   }
   const groups = new Map<number, ClientGroup>();
   for (const client of clients) groups.set(client.id, { canonical: client, folders: [client] });
@@ -47,12 +56,4 @@ export function foldersForClient(clients: ClientFolder[], slug: string): ClientF
   const groups = groupClientFolders(clients);
   const group = groups.find(item => item.folders.some(folder => folder.slug === slug));
   return group?.folders ?? clients.filter(folder => folder.slug === slug);
-}
-
-/**
- * Folders whose names do not identify an actual client. Keep them accessible
- * for manual attribution, but never count them as standalone client accounts.
- */
-export function needsClientAttribution(name: string): boolean {
-  return /^(?:invoiced projects|jf invoiced projects)$/i.test(name.trim());
 }
