@@ -50,6 +50,7 @@ async function main() {
     const contexts = tasks.map(buildTaskContext);
     console.log('\nCLIENT ' + client.canonical.name + ' (' + client.canonical.slug + ') · ' + tasks.length + ' tasks across ' + client.folders.length + ' folders');
     for (const task of tasks) {
+      if (options.taskIds.length && !options.taskIds.includes(task.clickupTaskId)) continue;
       const context = buildTaskContext(task);
       const related = findRelatedTasks(context, contexts);
       const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
