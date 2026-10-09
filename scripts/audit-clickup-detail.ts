@@ -15,9 +15,11 @@ const withChecklists = flag('--with-checklists');
 const withDependencies = flag('--with-dependencies');
 const withAttachments = flag('--with-attachments');
 const spread = flag('--spread');
+const missingDetail = flag('--missing-detail');
 const filters = Number(withChecklists) + Number(withDependencies) + Number(withAttachments);
 if (filters > 1) throw new Error('Use only one of --with-checklists, --with-dependencies, --with-attachments.');
 if (spread && filters) throw new Error('--spread cannot be combined with evidence filters.');
+if (missingDetail && (spread || filters)) throw new Error('--missing-detail cannot be combined with --spread or evidence filters.');
 const limit = Number(value('--limit') ?? '5');
 if (!Number.isInteger(limit) || limit < 1 || limit > 10000) throw new Error('--limit must be an integer between 1 and 10000');
 if (apply && !clientSlug) throw new Error('For safety, --apply requires --client SLUG. Enrich one client at a time.');
@@ -28,9 +30,12 @@ async function main() {
     where: { deleted: false, ...(group ? { clientId: { in: group.folders.map(folder => folder.id) } } : {}) },
     select: { id: true, clientId: true, clickupTaskId: true, name: true, rawPayload: true, client: { select: { name: true } } },
     orderBy: { clickupUpdatedAt: 'desc' },
-    ...(filters || spread ? {} : { take: limit })
+    ...(filters || spread || missingDetail ? {} : { take: limit })
   });
-  const tasks = (filters ? candidates.filter(task => {
+  const tasks = (missingDetail ? candidates.filter(task => {
+    const raw = task.rawPayload && typeof task.rawPayload === 'object' && !Array.isArray(task.rawPayload) ? task.rawPayload as Record<string, unknown> : {};
+    return !raw._fullTaskFetchedAt;
+  }).slice(0, limit) : filters ? candidates.filter(task => {
     const c = rawEvidence(task.rawPayload).coverage;
     return withChecklists ? c.checklistItems > 0 : withDependencies ? c.dependencies > 0 : c.attachments > 0;
   }).slice(0, limit) : spread ? (() => {
@@ -55,7 +60,11 @@ async function main() {
   console.log('CLICKUP FULL-TASK COVERAGE AUDIT (' + (apply ? 'ENRICH LOCAL DB' : 'READ-ONLY SAMPLE') + ')');
   console.log('Selected: ' + tasks.length + ' tasks' + (group ? ' across ' + group.folders.length + ' client folders' : '') + (spread ? ' (spread across folders and update history)' : '') + '. No OpenAI calls.');
   if (filters && !tasks.length) console.log('No stored tasks matched the requested evidence filter; this does not establish that ClickUp contains none.');
-  let changed = 0, errors = 0;
+  if (missingDetail) console.log('Pending full-detail enrichment in scope: ' + candidates.filter(task => {
+    const raw = task.rawPayload && typeof task.rawPayload === 'object' && !Array.isArray(task.rawPayload) ? task.rawPayload as Record<string, unknown> : {};
+    return !raw._fullTaskFetchedAt;
+  }).length + '. Run repeatedly with --missing-detail to resume safely.');
+  let changed = 0, errors = 0, recoveredAttachments = 0;
   for (const task of tasks) {
     try {
       const raw = await getTask(task.clickupTaskId);
@@ -69,6 +78,7 @@ async function main() {
       const storedRaw = task.rawPayload && typeof task.rawPayload === 'object' && !Array.isArray(task.rawPayload) ? task.rawPayload as Record<string, unknown> : {};
       console.log('  populated custom fields: stored ' + populated(storedRaw.custom_fields) + ', live ' + populated(raw.custom_fields));
       if (JSON.stringify(before) !== JSON.stringify(after)) console.log('  DIFFERENCE: stored and live evidence counts do not match');
+      if (apply) recoveredAttachments += Math.max(0, after.attachments - before.attachments);
       if (apply) {
         // Merge complete detail into the existing raw payload without touching comments or AI.
         const previous = task.rawPayload && typeof task.rawPayload === 'object' && !Array.isArray(task.rawPayload)
@@ -88,8 +98,8 @@ async function main() {
       console.error('  ERROR ' + task.clickupTaskId + ': ' + (error instanceof Error ? error.message : String(error)));
     }
   }
-  console.log('RESULT: inspected ' + tasks.length + ', enriched ' + changed + ', errors ' + errors);
-  if (!apply) console.log('Read-only. To enrich one client, pass --client SLUG --limit N --apply --confirm.');
+  console.log('RESULT: inspected ' + tasks.length + ', enriched ' + changed + ', newly recovered attachment refs ' + recoveredAttachments + ', errors ' + errors);
+  if (!apply) console.log('Read-only. To enrich one client, pass --client SLUG --limit N --missing-detail --apply --confirm.');
   if (errors) process.exitCode = 1;
 }
 main().catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
