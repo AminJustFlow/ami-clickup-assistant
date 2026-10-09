@@ -16,14 +16,15 @@ function explicitReference(source: TaskContext, candidate: TaskContext): boolean
 export function findRelatedTasks(task: TaskContext, all: TaskContext[], limit = 3): RelatedEvidence[] {
   const a = terms(task.name);
   const ranked = all.filter(other => other.taskId !== task.taskId).map(other => {
+    const dependency = (task.dependencyTaskIds ?? []).includes(other.clickupTaskId) || (other.dependencyTaskIds ?? []).includes(task.clickupTaskId);
     const direct = explicitReference(task, other) || explicitReference(other, task);
     const b = terms(other.name);
     const overlap = [...a].filter(t => b.has(t));
     // Avoid matching generic workflow stages (e.g. multiple unrelated "Review Graphic Design" tasks).
     const strong = overlap.length >= 2 && a.size >= 2 && b.size >= 2;
     const sameList = task.listName === other.listName;
-    const score = direct ? 100 : strong && sameList ? overlap.length * 10 : 0;
-    return { other, score, reason: direct ? 'Explicit ClickUp task reference' : 'Shared distinctive title terms in the same list' };
+    const score = dependency ? 200 : direct ? 100 : strong && sameList ? overlap.length * 10 : 0;
+    return { other, score, reason: dependency ? 'ClickUp dependency reference (direction and blocker status not inferred)' : direct ? 'Explicit ClickUp task reference' : 'Shared distinctive title terms in the same list' };
   }).filter(x => x.score > 0).sort((a,b) => b.score-a.score || a.other.clickupTaskId.localeCompare(b.other.clickupTaskId));
   return ranked.slice(0,limit).map(x => ({context:x.other,reason:x.reason}));
 }
