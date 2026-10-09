@@ -232,3 +232,27 @@ Or limit the import to a Space or a few folders with `--space-id SPACE_ID` and `
 ## AI cost and context safeguards
 
 The cost estimator runs entirely offline against PostgreSQL; it does not call OpenAI. It reports imported tasks, cached analyses, pending model calls, comments, attachment references, checklists and custom fields per client. Pass the latest provider rates explicitly with `--input-rate` and `--output-rate` (USD per million tokens). The default model is controlled by `OPENAI_INTELLIGENCE_MODEL`; verify that it exists and check its current pricing before approval. The character-to-token estimate uses a safety multiplier but cannot guarantee final charges or context-window fit. `npm run clients:analyze` also performs the estimate before any call and requires `--execute --max-usd N`. The VOTH background worker syncs data only; it no longer automatically spends on AI.
+
+## Full-context ClickUp audit (before paid AI analysis)
+
+Task intelligence now includes imported ClickUp checklist item names, completion flags, item assignees, custom-field values, parent task IDs, dependency and linked-task references, relevant task dates and attachment filenames/metadata. The model is explicitly instructed **not** to claim it has read attachment file contents. The intelligence prompt version was incremented, invalidating earlier cached summaries because the evidence changed.
+
+ClickUp's list-task response can omit full task fields. Compare a small sample of live full-task responses to the stored task payload, with **no database changes and no OpenAI calls**:
+
+```bash
+npm run clickup:audit-detail -- --limit 5
+```
+
+For a specific imported folder/client, first inspect the client's slug from the cost report, then sample:
+
+```bash
+npm run clickup:audit-detail -- --client fimbel-garage-doors-fmb-90146979789 --limit 10
+```
+
+Only if the live full-task API exposes additional data worth storing, explicitly enrich a limited number of tasks in **one** folder:
+
+```bash
+npm run clickup:audit-detail -- --client fimbel-garage-doors-fmb-90146979789 --limit 10 --apply --confirm
+```
+
+Enrichment fetches full task metadata from ClickUp, merges it into the stored raw payload, and never calls OpenAI. It does **not** download attachments, transcribe files, ingest linked documents, retrieve all activity history or unify separate invoicing/client folders. These are remaining requirements before claiming comprehensive cross-folder intelligence. Re-run `npm run clients:estimate` after enrichment to see the increased context and estimated costs. If the full task response is missing fields, the audit makes that gap visible rather than silently claiming coverage.
