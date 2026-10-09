@@ -323,3 +323,14 @@ npm run clients:analyze -- --client fimbel-garage-doors-fmb-90146979789 --task-i
 ```
 
 The `--max-usd` check is an estimated preflight gate, not a hard API billing cap. The paid command saves AI intelligence in local PostgreSQL and never writes to ClickUp. Check summaries and action flags against the actual ClickUp history before expanding to more tasks.
+
+
+## Read-only 50-task Fimbel expansion preflight
+
+After the five-task pilot, estimate the next 50 pending tasks in the same deterministic ClickUp-updated ordering used by the paid analyzer:
+
+```bash
+npm run clients:estimate -- --client fimbel-garage-doors-fmb-90146979789 --max-ai 50 --input-rate 0.20 --output-rate 1.20
+```
+
+The estimator excludes previously cached analyses from the 50-call limit, shows their count separately, and estimates only the pending batch (rather than all remaining tasks). This is read-only: no paid AI calls and no database writes. Review the actual output and confirm the spend threshold before a separate authorized `clients:analyze --execute` run. The budget gate remains an estimate, not a hard billing cap. Do not merge the feature branch without approval.
