@@ -36,7 +36,7 @@ async function main() {
   const model = process.env.OPENAI_INTELLIGENCE_MODEL ?? DEFAULT_INTELLIGENCE_MODEL;
   const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(x => x.name);
-  let analyzed = 0, cached = 0, failed = 0;
+  let analyzed = 0, attempted = 0, cached = 0, failed = 0;
   for (const client of clients) {
     const tasks = await prisma.task.findMany({
       where: { clientId: client.id, deleted: false },
@@ -53,12 +53,13 @@ async function main() {
         cached++;
         continue;
       }
-      if (analyzed >= maxAI) {
+      if (attempted >= maxAI) {
         console.log('AI call limit reached (' + maxAI + '). Rerun to continue.');
-        console.log(JSON.stringify({ analyzed, cached, failed }));
+        console.log(JSON.stringify({ attempted, analyzed, cached, failed }));
         return;
       }
       try {
+        attempted++;
         const result = await analyzeWithAI(context, { model, teamNames, related });
         if (result.source !== 'AI') throw new Error('AI fallback; task will be retried next run');
         await saveTaskIntelligence(task.id, {
