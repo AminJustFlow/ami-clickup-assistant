@@ -300,3 +300,26 @@ npm run clickup:audit-detail -- --client fimbel-garage-doors-fmb-90146979789 --l
 Rerun until `Pending full-detail enrichment in scope: 0` and `Selected: 0 tasks`. Each successful task receives a `_fullTaskFetchedAt` marker, so subsequent batches skip it; failed tasks remain eligible for retry. This script preserves existing comments and task-intelligence rows, does not write to ClickUp, does not download attachment file contents, and makes **no OpenAI calls**. Afterward run `npm run intelligence:audit-context -- --client fimbel-garage-doors-fmb-90146979789` and `npm run clients:estimate -- --client fimbel-garage-doors-fmb-90146979789 --input-rate YOUR_RATE --output-rate YOUR_RATE` to verify coverage and re-estimate AI cost.
 
 To inspect without writing, omit `--apply --confirm`. Only use `--client` for writes; the audit intentionally refuses global database enrichment. Other clients' **future imports** use full task details automatically, but their existing records need the same explicit per-client backfill if completeness is required. Do not run an initial import and a backfill concurrently for the same client.
+
+
+## Targeted five-task Fimbel AI pilot (October 2026)
+
+Use `--task-ids` (comma-separated ClickUp IDs) with `--client` to restrict both the read-only cost estimate and the paid analyzer to exactly the specified tasks. IDs are checked against the selected consolidated client before any paid calls. Related-task evidence can still come from other tasks in that client group. Do not pass `--execute` until the operator has reviewed the preview and explicitly approved the pilot budget.
+
+Read-only preflight:
+
+```bash
+npm run typecheck
+npm run build
+npm run clients:estimate -- --client fimbel-garage-doors-fmb-90146979789 --task-ids 86ba93t02,86b8q2tmt,86bbppz3e,86b8d3wrj,86b883nmq --input-rate 0.20 --output-rate 1.20
+```
+
+The five tasks represent an event invitation, a form troubleshooting issue, a recurring digital-display deliverable, an invoiced-project GA4 task, and an Epping processing task. Confirm the task names printed in the preflight; the estimator errors if any ID is missing from the consolidated Fimbel client. The selected scope is five tasks, while the imported count remains the full client total. The script estimates token use, not guaranteed billing. Verify the active `OPENAI_INTELLIGENCE_MODEL` and its current Standard API prices before authorizing a paid run. GPT-5.6 Luna was $0.20/M input and $1.20/M output as of October 2026.
+
+Only after explicit paid-run approval, the bounded command is:
+
+```bash
+npm run clients:analyze -- --client fimbel-garage-doors-fmb-90146979789 --task-ids 86ba93t02,86b8q2tmt,86bbppz3e,86b8d3wrj,86b883nmq --input-rate 0.20 --output-rate 1.20 --max-ai 5 --max-usd 0.10 --execute
+```
+
+The `--max-usd` check is an estimated preflight gate, not a hard API billing cap. The paid command saves AI intelligence in local PostgreSQL and never writes to ClickUp. Check summaries and action flags against the actual ClickUp history before expanding to more tasks.
