@@ -20,7 +20,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const client = await prisma.client.findUnique({ where: { slug } });
   if (!client) notFound();
 
-  const allClientFolders = await prisma.client.findMany({ where: { active: true, clickupSpaceId: client.clickupSpaceId }, select: { id: true, slug: true, name: true } });
+  const allClientFolders = await prisma.client.findMany({ where: { active: true, clickupSpaceId: client.clickupSpaceId }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const relatedFolders = foldersForClient(allClientFolders, slug);
   const tasks = await prisma.task.findMany({
     where: { clientId: { in: relatedFolders.map(folder => folder.id) }, deleted: false },
