@@ -52,7 +52,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       { name: { contains: q, mode: 'insensitive' as const } },
       { intelligence: { is: { needsAmi: true, amiAction: { contains: q, mode: 'insensitive' as const } } } }
     ] } : {}),
-    ...(priority === 'overdue' ? { dueDate: { lt: now } } : {}),
+    ...(priority === 'overdue' ? { dueDate: { lt: now }, intelligence: { is: { needsAmi: true, agentState: { not: 'COMPLETED' as const } } } } : {}),
     ...(priority === 'high' ? { intelligence: { is: { needsAmi: true, amiAttentionScore: { gte: 70 } } } } : {}),
     ...(priority === 'recent' ? { clickupUpdatedAt: { gte: weekAgo } } : {})
   };
