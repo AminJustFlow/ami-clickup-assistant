@@ -1,0 +1,77 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ami-clickup-assistant-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure dedicated SSH identity
+        env:
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          test -n "$PROD_SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/ami-production
+          chmod 600 ~/.ssh/ami-production
+          printf '%s\n' '34.224.54.213 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIltYrYu9bNie7dBrX7nPEMiuzqTRHjwp1SDMjt0UM3U' > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Package release
+        run: tar -czf "/tmp/ami-${GITHUB_SHA}.tar.gz" --exclude=.git --exclude=node_modules --exclude=.next --exclude=.env --exclude=.env.production .
+      - name: Upload release
+        run: scp -i ~/.ssh/ami-production "/tmp/ami-${GITHUB_SHA}.tar.gz" ubuntu@34.224.54.213:"/tmp/ami-${GITHUB_SHA}.tar.gz"
+      - name: Backup, migrate, and deploy
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/ami-production ubuntu@34.224.54.213 "DEPLOY_SHA=${DEPLOY_SHA} bash -s" <<'REMOTE'
+          set -euo pipefail
+          exec 9>/tmp/ami-clickup-deploy.lock
+          flock -n 9 || { echo 'Another production deployment is running'; exit 1; }
+          cd /opt/ami-clickup-assistant
+          test -s .env.production
+          ./deploy/backup.sh
+          tar -xzf "/tmp/ami-${DEPLOY_SHA}.tar.gz" -C /opt/ami-clickup-assistant
+          docker compose -f docker-compose.prod.yml build
+          docker compose -f docker-compose.prod.yml run --rm migrate
+          docker compose -f docker-compose.prod.yml up -d postgres web sync-worker ai-worker caddy
+          docker compose -f docker-compose.prod.yml restart caddy
+          docker compose -f docker-compose.prod.yml ps
+          printf '%s\n' "$DEPLOY_SHA" > .deployed-commit
+          rm -f "/tmp/ami-${DEPLOY_SHA}.tar.gz"
+          REMOTE
+      - name: Verify production
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error https://intelligence.justflownh.com/api/health; then exit 0; fi
+            sleep 5
+          done
+          exit 1

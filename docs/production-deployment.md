@@ -16,6 +16,8 @@ Export the validated local data without changing it: `pg_dump --format=custom --
 
 Run `docker compose -f docker-compose.prod.yml build`, `docker compose -f docker-compose.prod.yml run --rm migrate`, and `docker compose -f docker-compose.prod.yml up -d`. Verify with `docker compose -f docker-compose.prod.yml ps` and `curl -fsS https://$APP_DOMAIN/api/health`. Tag every deployed commit. To roll back, check out the prior tag and rebuild; restore the pre-deploy dump only for an incompatible migration. Never run `migrate reset` in production.
 
+Pushes to `main` deploy through `.github/workflows/deploy-production.yml` after `npm ci`, TypeScript, and production build checks pass. The workflow uses the protected `production` GitHub environment and the `PROD_SSH_KEY` repository secret. It serializes deployments, takes a database dump before changing files, applies forward migrations, recreates services with restart policies, records the deployed commit in `.deployed-commit`, and verifies the public database-backed health endpoint. Feature branches never deploy.
+
 ## Backup, restore, logs, and monitoring
 
 Run `deploy/backup.sh` daily and copy encrypted dumps off-instance. Lightsail snapshots protect the disk; database dumps provide granular recovery. Use `docker compose -f docker-compose.prod.yml logs --tail=200 web sync-worker ai-worker`, `df -h`, `free -m`, and the dashboard worker panel. Logs rotate at 10 MB with five files. AI estimates are safeguards, not guaranteed provider billing caps; configure OpenAI project budgets and alerts too.

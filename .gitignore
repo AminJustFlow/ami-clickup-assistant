@@ -11,3 +11,4 @@ data/ai-worker-budget.json
 data/ai-worker-budget.json.tmp
 data/ai-worker.lock
 .next-stale-*
+.deploy-secrets/
