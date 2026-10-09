@@ -2,7 +2,7 @@ import { TaskDetailsButton } from './components/task-details';
 import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
-import { groupClientFolders } from '@/lib/clients/grouping';
+import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,7 +90,8 @@ export default async function Home() {
     waitingGroups.set(key, group);
   }
   const groupedWaiting = [...waitingGroups.entries()].sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-  const orderedClients = [...clientRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
+  const unattributedFolders = [...clientRows.entries()].filter(([, client]) => needsClientAttribution(client.name)).sort((a,b) => b[1].total - a[1].total);
+  const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
 
   return <main className="ops-shell dashboard-shell">
@@ -145,6 +146,11 @@ export default async function Home() {
           <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">How are our clients doing?</h2></div><span className="panel-count">{orderedClients.length}</span></div>
           <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} imported · {client.analyzed} analyzed · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>
         </section>
+        {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
+          <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
+          <p className="section-explainer">These ClickUp folders have generic names, so we cannot safely identify their client. Their tasks remain imported and accessible, but they are not counted as separate clients.</p>
+          <div className="entity-list">{unattributedFolders.map(([slug, folder]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">?</span><span className="entity-copy"><strong>{folder.name}</strong><small>{folder.total} imported tasks · Identify client before grouping</small></span><span className="entity-arrow">›</span></a>)}</div>
+        </details>}
         <section className="clean-panel" id="team" aria-labelledby="team-title">
           <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
           <div className="entity-list">{orderedEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.total} assigned · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}</div>
