@@ -31,9 +31,7 @@ function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: s
 
   const normalizedName = normalizedPerson(name);
   const internalNames = new Set([...context.assignees, ...teamNames].map(normalizedPerson));
-  for (const comment of context.comments) {
-    if (comment.authorName) internalNames.add(normalizedPerson(comment.authorName));
-  }
+  // Comment authors can be clients or vendors; do not classify them as internal solely for commenting.
   internalNames.add("ami d'amelio");
   internalNames.add('ami');
 
