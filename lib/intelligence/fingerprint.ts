@@ -23,6 +23,8 @@ export function intelligenceFingerprint(context: TaskContext, model: string, tea
     assignees: [...context.assignees].sort(),
     internalTeam: [...teamNames].sort(),
     relatedEvidence: relatedEvidenceText(related),
+    extraEvidence: context.extraEvidence,
+    coverage: context.coverage,
     comments: context.comments.map(c => ({
       id: c.id, author: c.authorName, body: c.body,
       createdAt: c.createdAt?.toISOString() ?? null
