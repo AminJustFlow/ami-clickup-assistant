@@ -377,3 +377,76 @@ body{background:var(--jf-background);color:#414448}
 .attention-decision-form button:focus-visible,.attention-view-tabs a:focus-visible{outline:3px solid #038CC6;outline-offset:2px}
 .attention-notice{padding:12px 16px;background:#fff7e8;border:1px solid #e9d9b8;border-radius:9px;font-size:13px}
 @media(max-width:720px){.attention-row{grid-template-columns:1fr;padding:17px 16px;gap:14px}.attention-row-actions{flex-direction:row;flex-wrap:wrap;align-items:center}.attention-decision-form{display:flex;flex-wrap:wrap;border:0;padding:0}.attention-view-tabs{padding:12px 15px 0}}
+
+
+/* UI refresh foundation: shared visual language across intelligence screens */
+:root{
+  --ui-canvas:#f5f7fa;
+  --ui-surface:#fff;
+  --ui-text:#203442;
+  --ui-muted:#627684;
+  --ui-border:#e0e7ed;
+  --ui-primary:#087da9;
+  --ui-primary-hover:#066b92;
+  --ui-radius:14px;
+  --ui-shadow:0 1px 2px rgba(25,53,70,.035),0 8px 24px rgba(25,53,70,.025);
+}
+html{scroll-behavior:smooth}
+body{background:var(--ui-canvas);color:var(--ui-text);-webkit-font-smoothing:antialiased}
+::selection{background:#cbeaf6;color:#123a4c}
+.ops-shell.dashboard-shell{max-width:1440px;padding-left:clamp(16px,3.2vw,48px);padding-right:clamp(16px,3.2vw,48px)}
+.app-nav{position:relative;min-height:82px;height:auto;gap:22px;margin-bottom:34px}
+.app-brand{flex-shrink:0}
+.app-nav-links{gap:5px;margin-left:clamp(6px,2vw,32px)}
+.app-nav-links a{white-space:nowrap;transition:background .15s ease,color .15s ease}
+.app-nav-links a[aria-current="page"]{background:#e5f4fa;color:#006c9b}
+.app-nav-links a:hover{background:#edf4f7;color:#165a76}
+.nav-search-link{margin-left:auto;white-space:nowrap}
+.dashboard-hero,.detail-hero{max-width:100%;margin-bottom:27px}
+.dashboard-hero h1,.detail-hero h1{color:#1e3441;font-weight:800;letter-spacing:-1.2px}
+.detail-hero p:not(.eyebrow),.dashboard-hero p:not(.eyebrow){max-width:78ch;line-height:1.6}
+.eyebrow{color:#64808f;letter-spacing:1.2px}
+.clean-panel,.overview-stat,.detail-stat-strip>div,.metric-card,.ops-section,.attention-section{border-color:var(--ui-border);box-shadow:var(--ui-shadow)}
+.clean-panel,.overview-stat,.detail-stat-strip>div{border-radius:var(--ui-radius)}
+.panel-heading h2{font-weight:800;color:#223845}
+.dashboard-metrics,.detail-stat-strip{gap:14px}
+.overview-stat strong,.detail-stat-strip strong{font-variant-numeric:tabular-nums}
+.clean-task,.attention-row,.entity-row{transition:background-color .15s ease}
+.clean-task:hover,.attention-row:hover{background:#fbfdfe}
+.attention-row h3{font-size:15px;letter-spacing:-.15px}
+.attention-row-action{color:#536b79;line-height:1.55}
+.attention-row-byline{font-size:11px;color:#728692}
+.attention-filters select,.attention-filters input,.filter-bar select{border-color:#cddbe3;background:#fff;min-height:40px}
+.attention-filters button,.digest-button,.filter-bar button{background:var(--ui-primary);transition:background-color .15s ease}
+.attention-filters button:hover,.digest-button:hover,.filter-bar button:hover{background:var(--ui-primary-hover)}
+.attention-view-tabs a[aria-current="page"]{box-shadow:inset 0 -2px 0 var(--ui-primary)}
+.attention-decision-form button{min-height:36px}
+.attention-row-actions .task-action{min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+a,button,input,select{touch-action:manipulation}
+button{font-family:inherit}
+@media(min-width:1120px){
+  .attention-panel{max-width:1150px}
+  .attention-row{grid-template-columns:minmax(0,1fr) 178px;padding:19px 28px}
+  .attention-row-actions{gap:8px}
+}
+@media(max-width:900px){
+  .app-nav{gap:10px}
+  .app-nav-links{margin-left:0;gap:1px}
+  .app-nav-links a{font-size:12px;padding:10px 9px}
+}
+@media(max-width:720px){
+  .ops-shell.dashboard-shell{padding-left:16px;padding-right:16px}
+  .app-nav{padding:13px 0 12px;gap:12px;margin-bottom:23px}
+  .app-nav-links{order:3;width:100%;display:flex;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding-bottom:3px}
+  .app-nav-links a{flex-shrink:0}
+  .nav-search-link{margin-left:auto}
+  .attention-row{padding:18px 16px}
+  .attention-row-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .attention-row-actions .attention-decision-form{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .attention-row-actions .task-action{min-height:36px}
+  .attention-row-actions .attention-decision-form button{min-height:40px}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .app-nav-links a,.clean-task,.attention-row,.entity-row,.attention-filters button,.digest-button,.filter-bar button{transition:none}
+}
