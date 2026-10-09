@@ -109,7 +109,7 @@ export default async function Home() {
     <div className={"sync-status " + (staleSync ? "sync-status-warning" : "sync-status-current")} role="status"><span aria-hidden="true">{staleSync ? "◷" : "✓"}</span><span>{staleSync ? "One or more client syncs may be out of date" : "All active clients synced"} · Oldest successful sync: {syncLabel}</span></div>
 
     <section className="dashboard-metrics" aria-label="Work summary">
-      <a href="#attention-title" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Decisions or actions for Ami ↓</small></a>
+      <a href="/attention" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Open the decision inbox ↗</small></a>
       <a href="#waiting-title" className="overview-stat metric-link"><span>Waiting on others</span><strong>{externalWaiting.length}</strong><small>Team, clients and vendors ↓</small></a>
       <div className="overview-stat"><span>In progress</span><strong>{active.length}</strong><small>{stale.length} may need a follow-up</small></div>
       <div className="overview-stat"><span>Completed</span><strong>{completed.length}</strong><small>Of {tasks.length} analyzed tasks</small></div>
@@ -120,11 +120,11 @@ export default async function Home() {
         <section className="clean-panel" aria-labelledby="attention-title">
           <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><a className="task-action" href="/attention">Open full action inbox ↗</a><span className="panel-count">{needsAmi.length}</span></div>
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
-            <div className="clean-task-list">{needsAmi.map(task => <article className="clean-task" key={task.id}>
+            <div className="clean-task-list">{needsAmi.slice(0, 5).map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
               <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
               <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
-            </article>)}</div>}
+            </article>)}{needsAmi.length > 5 && <div className="dashboard-list-more"><span>{needsAmi.length - 5} more AI-flagged tasks</span><a href="/attention">View action inbox ↗</a></div>}</div>}
         </section>
 
         <section className="clean-panel" aria-labelledby="waiting-title">
@@ -135,11 +135,11 @@ export default async function Home() {
               const name = group[0].intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
               return <details className="waiting-person" key={key} open={index < 3}>
                 <summary><span className="waiting-person-title"><strong>{name}</strong><small>{kind === 'TEAM' ? 'Team' : kind === 'CLIENT' ? 'Client' : kind === 'VENDOR' ? 'Vendor' : 'Other dependency'}</small></span><span className="panel-count">{group.length}</span></summary>
-                <div className="clean-task-list">{group.map(task => <article className="clean-task" key={task.id}>
+                <div className="clean-task-list">{group.slice(0, 3).map(task => <article className="clean-task" key={task.id}>
                   <div className="task-topline"><span>{task.client.name}</span>{task.intelligence?.needsAmi && <span className="status-pill attention-pill">Also needs Ami</span>}</div>
                   <h3>{task.name}</h3><p className="next-step-label">What we're waiting for</p><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>
                   <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}
-                </article>)}</div>
+                </article>)}{group.length > 3 && <div className="dashboard-list-more"><span>{group.length - 3} additional tasks in this group</span><a href="/search">Search tasks ↗</a></div>}</div>
               </details>;
             })}</div>}
         </section>
