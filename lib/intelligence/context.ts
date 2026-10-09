@@ -18,6 +18,7 @@ export type TaskContext = {
   assignees: string[];
   comments: IntelligenceComment[];
   extraEvidence: string[];
+  dependencyTaskIds?: string[];
   coverage: EvidenceCoverage;
 };
 
@@ -76,6 +77,19 @@ function valueText(field: Record<string, unknown>): string {
   if (type === 'users') return arr(value).map(person).join(', ');
   return str(value);
 }
+export function dependencyTaskIds(rawValue: unknown, ownId?: string): string[] {
+  const raw = obj(rawValue);
+  const ids = new Set<string>();
+  for (const entry of arr(raw.dependencies).map(obj)) {
+    for (const value of [entry.task_id, entry.depends_on]) {
+      if ((typeof value === 'string' || typeof value === 'number') && String(value) !== ownId) {
+        ids.add(String(value));
+      }
+    }
+  }
+  return [...ids].sort();
+}
+
 export function rawEvidence(rawValue: unknown): { lines: string[]; coverage: EvidenceCoverage } {
   const raw = obj(rawValue);
   const lines: string[] = [];
@@ -157,6 +171,7 @@ export function buildTaskContext(task: TaskRecord): TaskContext {
         createdAt: comment.clickupCreatedAt
       })),
     extraEvidence: evidence.lines,
+    dependencyTaskIds: dependencyTaskIds(task.rawPayload, task.clickupTaskId),
     coverage: evidence.coverage
   };
 }
