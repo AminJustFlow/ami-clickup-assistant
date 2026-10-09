@@ -168,7 +168,7 @@ npm run dev
 npm run clickup:auto:voth
 ```
 
-The worker checks ClickUp every five minutes by default. It polls the VOTH Lists for new/updated/deleted tasks, refreshes assignees and comments for changed tasks, and consumes pending signed ClickUp webhook events (including comment changes that do not change a task's `date_updated`). It reuses the AI source fingerprint to avoid repeating AI calls for unchanged evidence. Related-task changes can also invalidate fingerprints. The worker updates `Client.lastSyncedAt` only after a successful pass; the dashboard displays the last successful VOTH sync time and warns when it is more than 15 minutes old.
+The worker checks ClickUp every five minutes by default. It polls the VOTH Lists for new/updated/deleted tasks, refreshes assignees and comments for changed tasks, and consumes pending signed ClickUp webhook events (including comment changes that do not change a task's `date_updated`). The worker does NOT call OpenAI. AI analysis requires a separate explicit approval and cost preview. The worker updates `Client.lastSyncedAt` only after a successful pass; the dashboard displays the last successful VOTH sync time and warns when it is more than 15 minutes old.
 
 To run a single cycle and inspect the result:
 
@@ -203,15 +203,23 @@ npm run clients:import -- --folder-id YOUR_FOLDER_ID
 
 3. Refresh the dashboard. The client appears with an imported task count and an **Imported — awaiting AI analysis** section. Importing alone does **not** generate AI recommendations.
 
-4. Analyze a controlled batch of tasks (50 model calls maximum per run by default):
+4. Preview the estimated cost with your model's **current official API rates** (USD per million input/output tokens):
 
 ```bash
-npm run clients:analyze -- --max-ai 25
+npm run clients:estimate -- --input-rate INPUT_RATE --output-rate OUTPUT_RATE --include-voth
 ```
 
-For a particular client, use `npm run clients:analyze -- --client CLIENT_SLUG --max-ai 25`; the slug is visible in the client URL after importing. The analyzer skips tasks whose saved AI fingerprint still matches the evidence. Rerun to continue with more tasks.
+5. Only after reviewing the estimate, explicitly authorize a limited batch:
 
-5. After verifying the first additional client, import all eligible folders:
+```bash
+npm run clients:analyze -- --input-rate INPUT_RATE --output-rate OUTPUT_RATE --max-ai 25 --max-usd 5 --execute
+```
+
+The analyzer defaults to a dry-run estimate. Without `--execute` and `--max-usd`, no AI requests are made. The budget gate uses conservative **estimated** tokens and is NOT a guaranteed API billing cap; retries and actual output tokens may exceed estimates. For strict billing protection, also set an API project budget/usage alert with the provider.
+
+For a particular client, use `npm run clients:analyze -- --client CLIENT_SLUG --max-ai 25`; the slug is visible in the client URL after importing. The analyzer skips tasks whose saved AI fingerprint still matches the evidence. Rerun to continue with more tasks. Cost estimates are calculated from the imported data, not the live ClickUp API. They include complete chronological task comments but only excerpts from related tasks, and do not include attachment contents, checklist items, custom fields, external files, or time tracking. These gaps are shown in the coverage audit; do not represent the current AI output as complete ClickUp context until those sources are ingested and validated.
+
+6. After verifying the first additional client, import all eligible folders:
 
 ```bash
 npm run clients:import
@@ -220,3 +228,7 @@ npm run clients:import
 Or limit the import to a Space or a few folders with `--space-id SPACE_ID` and `--limit-clients 3`. Run `npm run clients:preview -- --space-id SPACE_ID` to inspect the same selection without writing anything.
 
 **Important:** This is an onboarding import, not yet a multi-client continuous sync worker. The automatic refresh worker still covers **VOTH only**. Do not assume newly imported clients update automatically until the multi-client refresh worker is implemented. AI analysis uses your OpenAI API key and may incur charges; `--max-ai` limits the number of successful AI calls in a run (failures may also initiate calls). No changes are written to ClickUp.
+
+## AI cost and context safeguards
+
+The cost estimator runs entirely offline against PostgreSQL; it does not call OpenAI. It reports imported tasks, cached analyses, pending model calls, comments, attachment references, checklists and custom fields per client. Pass the latest provider rates explicitly with `--input-rate` and `--output-rate` (USD per million tokens). The default model is controlled by `OPENAI_INTELLIGENCE_MODEL`; verify that it exists and check its current pricing before approval. The character-to-token estimate uses a safety multiplier but cannot guarantee final charges or context-window fit. `npm run clients:analyze` also performs the estimate before any call and requires `--execute --max-usd N`. The VOTH background worker syncs data only; it no longer automatically spends on AI.
