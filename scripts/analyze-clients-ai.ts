@@ -29,7 +29,7 @@ async function main() {
   const upperEstimate = Math.min(maxAI, plan.pending) * ((plan.maxTaskInputTokens * options.inputRate + options.outputTokens * options.outputRate) / 1_000_000);
   if (upperEstimate > budget) throw new Error('Estimated worst-case batch  throw new Error('OPENAI_API_KEY is required');
   const clients = await prisma.client.findMany({
-    where: { active: true, ...(clientSlug ? { slug: clientSlug } : { slug: { not: 'voth' } }) },
+    where: { active: true, ...(clientSlug ? { slug: clientSlug } : options.includeVoth ? {} : { slug: { not: 'voth' } }) },
     orderBy: { name: 'asc' }
   });
   if (!clients.length) throw new Error('No imported clients found. Import clients first, or check --client slug.');
