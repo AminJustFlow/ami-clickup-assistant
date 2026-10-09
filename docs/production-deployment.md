@@ -6,6 +6,8 @@ The production stack is Next.js, PostgreSQL 17, a multi-client ClickUp sync work
 
 Copy `.env.example` to `.env.production` on the server and set strong secret values. Required keys are `POSTGRES_PASSWORD`, `DATABASE_URL` (use host `postgres`), `APP_DOMAIN`, `APP_URL`, `APP_AUTH_USER`, `APP_AUTH_PASSWORD`, `CLICKUP_API_TOKEN`, `CLICKUP_WORKSPACE_ID`, `CLICKUP_WEBHOOK_SECRET`, `OPENAI_API_KEY`, `OPENAI_INTELLIGENCE_MODEL`, and all AI budget/pricing keys. Never commit this file.
 
+Production DNS is an `A` record for `intelligence.justflownh.com` pointing to the Lightsail static IP `34.224.54.213`.
+
 ## Safe database migration
 
 Export the validated local data without changing it: `pg_dump --format=custom --no-owner --no-acl --dbname "$env:DATABASE_URL" --file ami-local.dump`. On the new empty production database, start PostgreSQL, restore with `pg_restore -U ami -d ami_assistant --no-owner --no-acl`, then run `docker compose -f docker-compose.prod.yml run --rm migrate`. Compare `TaskIntelligence` counts before and after. Do not start the AI worker until counts match and budgets are set.

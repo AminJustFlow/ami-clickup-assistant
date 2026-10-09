@@ -10,8 +10,8 @@ auth_password=$(openssl rand -hex 16)
 cat >.env.production <<EOF
 POSTGRES_PASSWORD=${postgres_password}
 DATABASE_URL=postgresql://ami:${postgres_password}@postgres:5432/ami_assistant
-APP_DOMAIN=ami.34.224.54.213.sslip.io
-APP_URL=https://ami.34.224.54.213.sslip.io
+APP_DOMAIN=intelligence.justflownh.com
+APP_URL=https://intelligence.justflownh.com
 APP_AUTH_USER=ami
 APP_AUTH_PASSWORD=${auth_password}
 CLICKUP_API_TOKEN=${CLICKUP_API_TOKEN}
