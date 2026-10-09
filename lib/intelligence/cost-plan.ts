@@ -25,6 +25,9 @@ export type CostRow = {
   attachments: number;
   checklists: number;
   customFields: number;
+  checklistItems: number;
+  linkedTasks: number;
+  dependencies: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
   estimatedUSD: number;
@@ -65,14 +68,16 @@ export async function calculateCostPlan(options: CostOptions): Promise<CostPlan>
       include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } }
     });
     const contexts = tasks.map(buildTaskContext);
-    const row: CostRow = { client: client.name, slug: client.slug, imported: tasks.length, cached: 0, pending: 0, comments: 0, attachments: 0, checklists: 0, customFields: 0, estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedUSD: 0, largestTaskTokens: 0 };
+    const row: CostRow = { client: client.name, slug: client.slug, imported: tasks.length, cached: 0, pending: 0, comments: 0, attachments: 0, checklists: 0, customFields: 0, checklistItems: 0, linkedTasks: 0, dependencies: 0, estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedUSD: 0, largestTaskTokens: 0 };
     for (const task of tasks) {
       row.comments += task.comments.length;
-      const raw = task.rawPayload && typeof task.rawPayload === 'object' && !Array.isArray(task.rawPayload) ? task.rawPayload as Record<string, unknown> : {};
-      row.attachments += Array.isArray(raw.attachments) ? raw.attachments.length : 0;
-      row.checklists += Array.isArray(raw.checklists) ? raw.checklists.length : 0;
-      row.customFields += Array.isArray(raw.custom_fields) ? raw.custom_fields.length : 0;
       const context = buildTaskContext(task);
+      row.attachments += context.coverage.attachments;
+      row.checklists += context.coverage.checklistCount;
+      row.checklistItems += context.coverage.checklistItems;
+      row.customFields += context.coverage.customFields;
+      row.linkedTasks += context.coverage.linkedTasks;
+      row.dependencies += context.coverage.dependencies;
       const related = findRelatedTasks(context, contexts);
       const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
       if (task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === expectedVersion) { row.cached++; continue; }
@@ -108,9 +113,10 @@ export function printCostPlan(plan: CostPlan, options: CostOptions) {
   console.log('Model: ' + plan.model);
   console.log('Rates: $' + options.inputRate + '/M input; $' + options.outputRate + '/M output; expected ' + options.outputTokens + ' output tokens/task');
   console.log('Assumptions: ' + options.charsPerToken + ' chars/input token, ' + options.inputSafetyMultiplier + 'x input safety multiplier');
-  for (const r of plan.rows) console.log(r.client + ' [' + r.slug + '] · ' + r.imported + ' imported · ' + r.comments + ' comments · ' + r.attachments + ' attachment refs · ' + r.checklists + ' checklists · ' + r.customFields + ' custom fields · ' + r.pending + ' AI calls · ' + r.cached + ' cached · $' + r.estimatedUSD.toFixed(4) + ' estimated');
+  for (const r of plan.rows) console.log(r.client + ' [' + r.slug + '] · ' + r.imported + ' imported · ' + r.comments + ' comments · ' + r.attachments + ' attachment refs · ' + r.checklists + ' checklists (' + r.checklistItems + ' items) · ' + r.customFields + ' custom fields · ' + r.dependencies + ' dependencies · ' + r.linkedTasks + ' links · ' + r.pending + ' AI calls · ' + r.cached + ' cached · $' + r.estimatedUSD.toFixed(4) + ' estimated');
   console.log('TOTAL: ' + plan.pending + ' pending calls, ' + plan.cached + ' cached, ~' + plan.estimatedInputTokens.toLocaleString() + ' input tokens, ~' + plan.estimatedOutputTokens.toLocaleString() + ' output tokens, $' + plan.estimatedUSD.toFixed(2) + ' estimated');
+  console.log('EVIDENCE COVERAGE: ' + plan.rows.reduce((n,r) => n+r.comments,0) + ' comments, ' + plan.rows.reduce((n,r) => n+r.checklistItems,0) + ' checklist items, ' + plan.rows.reduce((n,r) => n+r.customFields,0) + ' custom field entries, ' + plan.rows.reduce((n,r) => n+r.attachments,0) + ' attachment references, ' + plan.rows.reduce((n,r) => n+r.dependencies,0) + ' dependencies.');
   console.log('Largest estimated task input: ' + plan.maxTaskInputTokens.toLocaleString() + ' tokens (check model context limit).');
   console.log('WARNING: This is a conservative character-based approximation, NOT a quote or hard spending cap. Actual tokenization, reasoning/output tokens, retries, and provider rates may differ.');
-  console.log('Coverage: all imported task descriptions and chronological comments are included in the primary task context. Related-task excerpts are limited by the current analyzer. Attachments, external linked files, time tracking and some ClickUp custom fields are NOT yet parsed into the AI prompt.');
+  console.log('Coverage: all imported task descriptions and chronological comments are included in the primary task context. Related-task excerpts are limited by the current analyzer. Checklist items, custom field values, dependency references and attachment metadata ARE now included when present in the stored raw task. Attachment FILE CONTENTS, external linked documents, full time entries, and activity outside imported comments are NOT included. Zero attachment references may indicate incomplete list-task API payloads; run npm run clickup:audit-detail to compare with full task API.');
 }
