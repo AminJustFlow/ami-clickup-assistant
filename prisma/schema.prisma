@@ -126,6 +126,7 @@ model Task {
   intelligence        TaskIntelligence?
   intelligenceChanges IntelligenceChange[]
   reviewFeedback      IntelligenceReview?
+  attentionDisposition AttentionDisposition?
   analysisJob         AnalysisJob?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -288,4 +289,21 @@ model IntelligenceReview {
   notes      String?
   analyzedAt DateTime?
   reviewedAt DateTime  @default(now()) @updatedAt
+}
+
+enum AttentionDecision {
+  REVIEWED
+  DISMISSED
+}
+
+// Human inbox triage, independent of AI-quality reviews and ClickUp task state.
+// The fingerprint ties a decision to one exact intelligence assessment.
+model AttentionDisposition {
+  id                Int               @id @default(autoincrement())
+  taskId            Int               @unique
+  task              Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  decision          AttentionDecision
+  sourceFingerprint String
+  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime          @default(now())
 }
