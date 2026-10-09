@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma';
+import { analysisClientGroups } from './client-scope';
 import { buildTaskContext, contextText } from './context';
 import { findRelatedTasks, relatedEvidenceText } from './related';
 import { intelligenceFingerprint } from './fingerprint';
@@ -54,21 +55,18 @@ export function parseCostOptions(args: string[]): CostOptions {
 export async function calculateCostPlan(options: CostOptions): Promise<CostPlan> {
   const model = process.env.OPENAI_INTELLIGENCE_MODEL ?? DEFAULT_INTELLIGENCE_MODEL;
   const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
-  const clients = await prisma.client.findMany({
-    where: { active: true, ...(options.clientSlug ? { slug: options.clientSlug } : options.includeVoth ? {} : { slug: { not: 'voth' } }) },
-    orderBy: { name: 'asc' }
-  });
+  const clients = await analysisClientGroups(options);
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(e => e.name);
   const rows: CostRow[] = [];
   // Include schema size and system instructions. These are approximations, not API token counts.
   const sharedChars = TASK_ANALYZER_SYSTEM.length + JSON.stringify(taskIntelligenceSchema.shape).length + 1000;
   for (const client of clients) {
     const tasks = await prisma.task.findMany({
-      where: { clientId: client.id, deleted: false },
+      where: { clientId: { in: client.folders.map(folder => folder.id) }, deleted: false },
       include: { list: true, intelligence: true, assignees: { include: { employee: true } }, comments: { orderBy: { clickupCreatedAt: 'asc' } } }
     });
     const contexts = tasks.map(buildTaskContext);
-    const row: CostRow = { client: client.name, slug: client.slug, imported: tasks.length, cached: 0, pending: 0, comments: 0, attachments: 0, checklists: 0, customFields: 0, checklistItems: 0, linkedTasks: 0, dependencies: 0, estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedUSD: 0, largestTaskTokens: 0 };
+    const row: CostRow = { client: client.canonical.name, slug: client.canonical.slug, imported: tasks.length, cached: 0, pending: 0, comments: 0, attachments: 0, checklists: 0, customFields: 0, checklistItems: 0, linkedTasks: 0, dependencies: 0, estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedUSD: 0, largestTaskTokens: 0 };
     for (const task of tasks) {
       row.comments += task.comments.length;
       const context = buildTaskContext(task);
@@ -118,5 +116,6 @@ export function printCostPlan(plan: CostPlan, options: CostOptions) {
   console.log('EVIDENCE COVERAGE: ' + plan.rows.reduce((n,r) => n+r.comments,0) + ' comments, ' + plan.rows.reduce((n,r) => n+r.checklistItems,0) + ' checklist items, ' + plan.rows.reduce((n,r) => n+r.customFields,0) + ' custom field entries, ' + plan.rows.reduce((n,r) => n+r.attachments,0) + ' attachment references, ' + plan.rows.reduce((n,r) => n+r.dependencies,0) + ' dependencies.');
   console.log('Largest estimated task input: ' + plan.maxTaskInputTokens.toLocaleString() + ' tokens (check model context limit).');
   console.log('WARNING: This is a conservative character-based approximation, NOT a quote or hard spending cap. Actual tokenization, reasoning/output tokens, retries, and provider rates may differ.');
+  console.log('Client scope: related ClickUp folders are consolidated by verified IDs or unique client codes; tasks remain in their original folders. Dependency task IDs now prioritize cross-task evidence within each group.');
   console.log('Coverage: all imported task descriptions and chronological comments are included in the primary task context. Related-task excerpts are limited by the current analyzer. Checklist items, custom field values, dependency references and attachment metadata ARE now included when present in the stored raw task. Attachment FILE CONTENTS, external linked documents, full time entries, and activity outside imported comments are NOT included. Zero attachment references may indicate incomplete list-task API payloads; run npm run clickup:audit-detail to compare with full task API.');
 }
