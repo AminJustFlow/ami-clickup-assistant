@@ -22,7 +22,7 @@ function dependencyIds(raw: unknown): string[] {
   });
 }
 async function main() {
-  const clients = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true, name: true } });
+  const clients = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const groups = groupClientFolders(clients);
   const selected = clientSlug ? groups.filter(group => group.folders.some(folder => folder.slug === clientSlug)) : groups.filter(group => group.folders.length > 1).slice(0, limit);
   if (clientSlug && !selected.length) throw new Error('Client folder not found: ' + clientSlug);
