@@ -2,6 +2,7 @@ import { TaskDetailsButton } from './components/task-details';
 import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
+import { groupClientFolders } from '@/lib/clients/grouping';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,17 +44,26 @@ export default async function Home() {
 
   const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number }>();
   const allClients = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true, name: true } });
+  const groups = groupClientFolders(allClients);
+  const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
   const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false }, _count: { _all: true } });
   const totalsByClient = new Map(importedCounts.map(row => [row.clientId, row._count._all]));
-  for (const client of allClients) clientRows.set(client.slug, { name: client.name, total: totalsByClient.get(client.id) ?? 0, analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 });
+  for (const group of groups) {
+    clientRows.set(group.canonical.slug, {
+      name: group.canonical.name,
+      total: group.folders.reduce((sum, folder) => sum + (totalsByClient.get(folder.id) ?? 0), 0),
+      analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0
+    });
+  }
   for (const task of tasks) {
-    const row = clientRows.get(task.client.slug) ?? { name: task.client.name, total: 0, analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0 };
+    const slug = canonicalById.get(task.clientId) ?? task.client.slug;
+    const row = clientRows.get(slug);
+    if (!row) continue;
     row.analyzed += 1;
     if (task.intelligence?.needsAmi) row.needsAmi += 1;
     if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
     if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
     if (staleIds.has(task.id)) row.stale += 1;
-    clientRows.set(task.client.slug, row);
   }
 
   const employeeRows = new Map<string, { id: number; total: number; waiting: number; needsAmi: number; stale: number }>();
