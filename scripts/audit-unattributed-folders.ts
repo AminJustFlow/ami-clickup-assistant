@@ -1,6 +1,6 @@
 import { loadEnvConfig } from '@next/env';
 import { prisma } from '../lib/db/prisma';
-import { needsClientAttribution } from '../lib/clients/grouping';
+import { groupClientFolders, needsClientAttribution } from '../lib/clients/grouping';
 
 loadEnvConfig(process.cwd());
 async function main() {
@@ -8,7 +8,14 @@ async function main() {
     where: { active: true, space: { name: 'JF Corporate' } },
     select: { id: true, name: true, slug: true, clickupFolderId: true }
   });
-  const unknown = folders.filter(folder => needsClientAttribution(folder.name));
+  const groups = groupClientFolders(folders);
+  const unknown = groups.filter(group => needsClientAttribution(group.canonical.name)).map(group => group.canonical);
+  const attributed = folders.filter(folder => needsClientAttribution(folder.name) && !unknown.some(item => item.id === folder.id));
+  console.log('Attributed generic invoicing folders: ' + attributed.length + '; still unattributed: ' + unknown.length);
+  for (const folder of attributed) {
+    const group = groups.find(group => group.folders.some(item => item.id === folder.id));
+    console.log('  VERIFIED: folder ' + folder.clickupFolderId + ' -> ' + group?.canonical.name);
+  }
   console.log('READ-ONLY UNATTRIBUTED INVOICING FOLDER REVIEW');
   console.log('No ClickUp API calls, OpenAI calls or database changes.');
   for (const folder of unknown) {
