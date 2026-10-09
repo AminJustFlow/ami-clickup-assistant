@@ -269,3 +269,19 @@ npm run clients:audit-groups -- --limit 20
 ```
 
 This audit reads the local database only and never calls OpenAI or modifies records. Dependencies are reported as **references**, not interpreted as blockers or approvals. The AI analyzer still limits related-task retrieval to its conservative matching rules; this dashboard consolidation does not yet imply cross-folder AI evidence ingestion. Attachments and linked documents remain an explicit coverage gap.
+
+## Dependency-aware consolidated client analysis
+
+The AI cost estimator and opt-in analyzer now use the same consolidated client grouping as the dashboard. Exact ClickUp dependency task IDs are ranked above title similarity when selecting related evidence, but dependencies do not prove an active blocker or approval requirement. The analyzer continues to use at most three related-task excerpts per task, and unrelated client folders are not searched. The prompt is versioned to invalidate previous cached analyses when the evidence logic changes.
+
+Before any paid analysis, validate locally:
+
+```bash
+npm run typecheck
+npm run build
+npm run intelligence:test-dependencies
+npm run intelligence:audit-related -- --client fimbel-garage-doors-fmb-90146979789 --limit 5
+npm run clients:estimate -- --client fimbel-garage-doors-fmb-90146979789 --input-rate YOUR_VERIFIED_RATE --output-rate YOUR_VERIFIED_RATE
+```
+
+All of these commands are read-only with respect to OpenAI and the database. The input/output rates are user-supplied assumptions, not verified live model prices. Never add `--execute` to the analyzer until the user explicitly approves a paid pilot and the model/prices are checked. Attachment contents and external linked documents remain outside the evidence set.
