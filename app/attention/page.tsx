@@ -163,6 +163,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
             <div className="attention-row-actions">
               <TaskDetailsButton taskId={task.id} label="Review context" />
               {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
+              {view === 'history' && task.recorded && !task.closed && <form action={setAttentionDecision} className="attention-decision-form">
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="fingerprint" value={fingerprint(intel)} />
+                <input type="hidden" name="returnTo" value="/attention" />
+                <button type="submit" name="decision" value="REOPEN">Reopen decision</button>
+              </form>}
               {view === 'active' && <form action={setAttentionDecision} className="attention-decision-form">
                 <input type="hidden" name="taskId" value={task.id} />
                 <input type="hidden" name="fingerprint" value={fingerprint(intel)} />
