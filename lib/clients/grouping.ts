@@ -5,8 +5,18 @@
  * Matching requires a unique explicit code from the canonical folder name.
  * Ambiguous generic "Invoiced Projects" folders are never assigned.
  */
-export type ClientFolder = { id: number; name: string; slug: string };
+export type ClientFolder = { id: number; name: string; slug: string; clickupFolderId?: string };
 export type ClientGroup = { canonical: ClientFolder; folders: ClientFolder[] };
+
+// Verified from the imported ClickUp lists and task titles (Oct 9, 2026).
+// Do not infer ownership from the generic folder name.
+const verifiedGenericFolderCodes: Readonly<Record<string, string>> = {
+  '90149466751': 'MPT',
+  '90148194796': 'IBE',
+  '90148170982': '900',
+  '90148149268': 'CIC',
+  '90147831069': 'RAD'
+};
 
 const auxiliaryCode = (name: string): string | null => {
   const match = name.trim().match(/^([A-Za-z0-9]{2,6})\s+(?:Invoic(?:ed|ing)(?: Projects)?|Monthly Budget|NO GO Projects)\s*$/i);
@@ -37,7 +47,7 @@ export function groupClientFolders(clients: ClientFolder[]): ClientGroup[] {
   const groups = new Map<number, ClientGroup>();
   for (const client of clients) groups.set(client.id, { canonical: client, folders: [client] });
   for (const folder of clients) {
-    const code = auxiliaryCode(folder.name);
+    const code = (folder.clickupFolderId ? verifiedGenericFolderCodes[folder.clickupFolderId] : undefined) ?? auxiliaryCode(folder.name);
     if (!code) continue;
     const matches = byCode.get(code) ?? [];
     if (matches.length !== 1) continue;
