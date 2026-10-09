@@ -5,3 +5,6 @@ node_modules
 *.log
 prisma/dev.db
 data/clickup-discovery.json
+data/ai-worker-budget.json
+data/ai-worker-budget.json.tmp
+data/ai-worker.lock
