@@ -4,6 +4,7 @@ import { groupClientFolders } from '@/lib/clients/grouping';
 import { AppNav } from '../components/app-nav';
 import { TaskDetailsButton } from '../components/task-details';
 import { setAttentionDecision } from './actions';
+import { attentionFingerprint, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,9 +13,6 @@ type Priority = 'all' | 'overdue' | 'high' | 'recent';
 type View = 'active' | 'history';
 type Filters = { client?: string; priority?: string; q?: string; page?: string; view?: string; notice?: string };
 const priorities: Priority[] = ['all', 'overdue', 'high', 'recent'];
-const isClosed = (status: string | null) => /^(done|complete|completed|closed|cancelled|canceled)$/i.test(status?.trim() ?? '');
-const fingerprint = (intel: { sourceFingerprint: string | null; analyzedAt: Date | null }) =>
-  intel.sourceFingerprint ?? `analyzed:${intel.analyzedAt?.toISOString() ?? 'unknown'}`;
 const dateLabel = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 function urlFor(filters: { client: string; priority: Priority; q: string; view: View }, page = 1) {
@@ -67,7 +65,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         attentionDisposition: { select: { decision: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
           amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
-          amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true
+          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true
         } }
       },
       orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
@@ -78,14 +76,14 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
 
   const categorized = candidates.map(task => {
     const intel = task.intelligence!;
-    const closed = intel.agentState === 'COMPLETED' || isClosed(task.clickupStatus);
-    const recorded = task.attentionDisposition && task.attentionDisposition.sourceFingerprint === fingerprint(intel)
+    const closed = intel.agentState === 'COMPLETED' || isClosedClickUpStatus(task.clickupStatus);
+    const recorded = task.attentionDisposition && task.attentionDisposition.sourceFingerprint === attentionFingerprint(intel)
       ? task.attentionDisposition.decision : null;
     const overdue = !closed && !!task.dueDate && task.dueDate < now;
     const urgency = overdue ? 'Overdue' : intel.amiAttentionScore >= 70 ? 'High priority' : 'Normal';
     return { ...task, closed, recorded, overdue, urgency };
   });
-  const active = categorized.filter(task => !task.closed && !task.recorded);
+  const active = categorized.filter(isOpenAttentionTask);
   const history = categorized.filter(task => task.closed || !!task.recorded);
   const selected = (view === 'active' ? active : history)
     .filter(task => priority !== 'overdue' || task.overdue)
@@ -165,13 +163,13 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
               {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
               {view === 'history' && task.recorded && !task.closed && <form action={setAttentionDecision} className="attention-decision-form">
                 <input type="hidden" name="taskId" value={task.id} />
-                <input type="hidden" name="fingerprint" value={fingerprint(intel)} />
+                <input type="hidden" name="fingerprint" value={attentionFingerprint(intel)} />
                 <input type="hidden" name="returnTo" value="/attention" />
                 <button type="submit" name="decision" value="REOPEN">Reopen decision</button>
               </form>}
               {view === 'active' && <form action={setAttentionDecision} className="attention-decision-form">
                 <input type="hidden" name="taskId" value={task.id} />
-                <input type="hidden" name="fingerprint" value={fingerprint(intel)} />
+                <input type="hidden" name="fingerprint" value={attentionFingerprint(intel)} />
                 <input type="hidden" name="returnTo" value={returnTo} />
                 <button type="submit" name="decision" value="REVIEWED" title="Remove from open inbox; no changes to ClickUp">Mark reviewed</button>
                 <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this AI recommendation; no changes to ClickUp">Dismiss</button>

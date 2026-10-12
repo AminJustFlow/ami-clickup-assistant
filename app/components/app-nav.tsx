@@ -5,8 +5,8 @@ export function AppNav({ current }: { current: 'overview' | 'attention' | 'activ
       <a href="/" aria-current={current === 'overview' ? 'page' : undefined}>Dashboard</a>
       <a href="/attention" aria-current={current === 'attention' ? 'page' : undefined}>Needs Ami</a>
       <a href="/changes" aria-current={current === 'activity' ? 'page' : undefined}>Recent updates</a>
-      <a href="/#clients" aria-current={current === 'clients' ? 'page' : undefined}>Clients</a>
-      <a href="/#team" aria-current={current === 'team' ? 'page' : undefined}>Team</a>
+      <a href="/clients" aria-current={current === 'clients' ? 'page' : undefined}>Clients</a>
+      <a href="/team" aria-current={current === 'team' ? 'page' : undefined}>Team</a>
     </div>
     <a href="/search" className="nav-search-link" aria-label="Search tasks, clients and team members">⌕ Search</a>
   </nav></>;
