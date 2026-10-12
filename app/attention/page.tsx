@@ -135,8 +135,28 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       <div className="attention-rows">
         <div className="attention-row">
           <div className="attention-row-main">
-            <h3>First decisions to review</h3>
-            {brief.topReady.length ? brief.topReady.map(task => <p key={task.id}><strong>{task.client.name}:</strong> {task.name} — {task.intelligence?.amiAction || 'Review current task context.'} <TaskDetailsButton taskId={task.id} label="Evidence" /></p>) : <p>No recommendations currently meet the verification threshold.</p>}
+            <h3>Next decisions for Ami</h3>
+            <p>Review a recommendation, then dismiss it or mark it reviewed to bring the next decision into view.</p>
+            {brief.topReady.length ? brief.topReady.map((task, index) => <article className="attention-row" key={task.id}>
+              <div className="attention-row-main">
+                <div className="attention-row-byline"><span>Decision {index + 1} of {brief.topReady.length} · {task.client.name}</span>{task.overdue && <span className="attention-urgency overdue">Overdue</span>}</div>
+                <h3>{task.name}</h3>
+                <p className="attention-row-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
+                <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
+              </div>
+              <div className="attention-row-actions">
+                <TaskDetailsButton taskId={task.id} label="Review evidence" />
+                {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
+                <form action={setAttentionDecision} className="attention-decision-form">
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <input type="hidden" name="fingerprint" value={attentionFingerprint(task.intelligence!)} />
+                  <input type="hidden" name="returnTo" value="/attention" />
+                  <button type="submit" name="decision" value="REVIEWED" title="Archive this recommendation without changing ClickUp">Mark reviewed</button>
+                  <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this recommendation and show the next one">Dismiss</button>
+                </form>
+              </div>
+            </article>) : <p>You're caught up with the currently analyzed recommendations.</p>}
+            {brief.ready > brief.topReady.length && <p className="dashboard-note">{brief.ready - brief.topReady.length} more ready decisions will appear as these are reviewed.</p>}
           </div>
         </div>
         {brief.topToVerify.length > 0 && <div className="attention-row">
