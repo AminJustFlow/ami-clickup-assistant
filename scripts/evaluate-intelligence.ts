@@ -25,6 +25,27 @@ const base = (name: string, body: string): TaskContext => ({
 
 const cases: Case[] = [
   {
+    name: 'Negated completion is not a completed task',
+    context: base('Website launch', 'The website is not done yet. We are still working on it.'),
+    expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
+    name: 'ClickUp closed status overrides old Ami request',
+    context: { ...base('Final sign approval', "@Ami D'Amelio can you please approve this?"), status: 'closed' },
+    expected: { state: 'COMPLETED', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
+    name: 'Chronological order overrides shuffled comments',
+    context: {
+      ...base('Website fix', 'placeholder'),
+      comments: [
+        { id: 2, authorName: 'Amin', body: 'This is all set and published now.', createdAt: new Date('2026-10-07T12:00:00Z') },
+        { id: 1, authorName: 'Amin', body: "@Ami D'Amelio can you please confirm this approach?", createdAt: new Date('2026-10-07T10:00:00Z') }
+      ]
+    },
+    expected: { state: 'COMPLETED', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
     name: 'FluentBooking support escalation',
     context: base('Individual Booking Calendars Setup', 'Hi @Ami D\'Amelio, FluentBooking is still asking for consent. I reached out to FluentBooking Support for further guidance and will post any updates here once I hear back.'),
     expected: { state: 'WAITING_ON_VENDOR', needsAmi: false, waitingOnType: 'VENDOR' }
