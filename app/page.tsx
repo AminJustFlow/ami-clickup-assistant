@@ -3,6 +3,7 @@ import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
 import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
+import { isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,26 +21,23 @@ const stateLabel: Record<string, string> = {
 };
 
 export default async function Home() {
-  const [syncState, workerState, jobCounts, todayUsage] = await Promise.all([
-    prisma.client.aggregate({ where: { active: true }, _min: { lastSyncedAt: true } }),
-    prisma.workerHeartbeat.findMany(), prisma.analysisJob.groupBy({ by: ['status'], _count: true }),
-    prisma.aiBudgetDay.findUnique({ where: { day: new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z') } })
-  ]);
-  const lastSync = syncState._min.lastSyncedAt ?? null;
-  const staleSync = !lastSync || Date.now() - lastSync.getTime() > 15 * 60 * 1000;
-  const syncLabel = lastSync ? lastSync.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET' : 'Not yet synced';
   const tasks = await prisma.task.findMany({
     where: { deleted: false, client: { space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
     include: {
       client: true,
       intelligence: true,
+      attentionDisposition: true,
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
       assignees: { include: { employee: true } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
 
-  const needsAmi = tasks.filter((task) => task.intelligence?.needsAmi);
+  const needsAmi = tasks.filter(isOpenAttentionTask);
+  const openAmiIds = new Set(needsAmi.map(task => task.id));
+  const today = new Date();
+  const overdueAmi = needsAmi.filter(task => task.dueDate && task.dueDate < today);
+  const prioritizedAmi = [...needsAmi].sort((a,b) => Number(!!b.dueDate && b.dueDate < today) - Number(!!a.dueDate && a.dueDate < today) || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
   const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
   const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
   const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
@@ -64,7 +62,7 @@ export default async function Home() {
     const row = clientRows.get(slug);
     if (!row) continue;
     row.analyzed += 1;
-    if (task.intelligence?.needsAmi) row.needsAmi += 1;
+    if (openAmiIds.has(task.id)) row.needsAmi += 1;
     if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
     if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
     if (staleIds.has(task.id)) row.stale += 1;
@@ -76,7 +74,7 @@ export default async function Home() {
       const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0, stale: 0 };
       row.total += 1;
       if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
-      if (task.intelligence?.needsAmi) row.needsAmi += 1;
+      if (openAmiIds.has(task.id)) row.needsAmi += 1;
       if (staleIds.has(task.id)) row.stale += 1;
       employeeRows.set(employee.name, row);
     }
@@ -97,6 +95,9 @@ export default async function Home() {
   const unattributedFolders = [...clientRows.entries()].filter(([, client]) => needsClientAttribution(client.name)).sort((a,b) => b[1].total - a[1].total);
   const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
+  const featuredClients = orderedClients.slice(0, 8);
+  const featuredEmployees = orderedEmployees.slice(0, 6);
+  const featuredWaiting = groupedWaiting.slice(0, 5);
 
   return <main className="ops-shell dashboard-shell">
     <AppNav current="overview" />
@@ -106,10 +107,8 @@ export default async function Home() {
       <a className="quiet-action" href="/attention">Open Ami action inbox <span aria-hidden="true">↗</span></a>
     </header>
 
-    <div className={"sync-status " + (staleSync ? "sync-status-warning" : "sync-status-current")} role="status"><span aria-hidden="true">{staleSync ? "◷" : "✓"}</span><span>{staleSync ? "One or more client syncs may be out of date" : "All active clients synced"} · Oldest successful sync: {syncLabel}</span></div>
-
     <section className="dashboard-metrics" aria-label="Work summary">
-      <a href="/attention" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>Open the decision inbox ↗</small></a>
+      <a href="/attention" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>{overdueAmi.length} overdue · Open inbox ↗</small></a>
       <a href="#waiting-title" className="overview-stat metric-link"><span>Waiting on others</span><strong>{externalWaiting.length}</strong><small>Team, clients and vendors ↓</small></a>
       <div className="overview-stat"><span>In progress</span><strong>{active.length}</strong><small>{stale.length} may need a follow-up</small></div>
       <div className="overview-stat"><span>Completed</span><strong>{completed.length}</strong><small>Of {tasks.length} analyzed tasks</small></div>
@@ -120,8 +119,8 @@ export default async function Home() {
         <section className="clean-panel" aria-labelledby="attention-title">
           <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><a className="task-action" href="/attention">Open full action inbox ↗</a><span className="panel-count">{needsAmi.length}</span></div>
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
-            <div className="clean-task-list">{needsAmi.slice(0, 5).map(task => <article className="clean-task" key={task.id}>
-              <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">Action needed</span></div>
+            <div className="clean-task-list">{prioritizedAmi.slice(0, 5).map(task => <article className="clean-task" key={task.id}>
+              <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">{task.dueDate && task.dueDate < today ? "Overdue" : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? "High priority" : "Needs decision"}</span></div>
               <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
               <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
             </article>)}{needsAmi.length > 5 && <div className="dashboard-list-more"><span>{needsAmi.length - 5} more AI-flagged tasks</span><a href="/attention">View action inbox ↗</a></div>}</div>}
@@ -130,30 +129,28 @@ export default async function Home() {
         <section className="clean-panel" aria-labelledby="waiting-title">
           <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
-            <div className="waiting-groups">{groupedWaiting.map(([key, group], index) => {
+            <div className="waiting-groups compact-dependencies">{featuredWaiting.map(([key, group]) => {
               const kind = group[0].intelligence?.waitingOnType ?? 'OTHER';
               const name = group[0].intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
-              return <details className="waiting-person" key={key} open={index < 3}>
+              return <details className="waiting-person" key={key}>
                 <summary><span className="waiting-person-title"><strong>{name}</strong><small>{kind === 'TEAM' ? 'Team' : kind === 'CLIENT' ? 'Client' : kind === 'VENDOR' ? 'Vendor' : 'Other dependency'}</small></span><span className="panel-count">{group.length}</span></summary>
-                <div className="clean-task-list">{group.slice(0, 3).map(task => <article className="clean-task" key={task.id}>
-                  <div className="task-topline"><span>{task.client.name}</span>{task.intelligence?.needsAmi && <span className="status-pill attention-pill">Also needs Ami</span>}</div>
-                  <h3>{task.name}</h3><p className="next-step-label">What we're waiting for</p><p>{task.intelligence?.currentSummary || 'Awaiting an update.'}</p>
-                  <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp ↗</a>}
-                </article>)}{group.length > 3 && <div className="dashboard-list-more"><span>{group.length - 3} additional tasks in this group</span><a href="/search">Search tasks ↗</a></div>}</div>
+                <div className="dependency-preview">
+                  <p className="dependency-preview-client">{group[0].client.name}</p>
+                  <strong>{group[0].name}</strong>
+                  <p>{group[0].intelligence?.currentSummary || 'Awaiting an update.'}</p>
+                  <TaskDetailsButton taskId={group[0].id} />
+                  {group[0].clickupUrl && <a className="task-action" href={group[0].clickupUrl} target="_blank" rel="noreferrer">ClickUp ↗</a>}
+                  {group.length > 1 && <p className="dashboard-note">{group.length - 1} more task{group.length - 1 === 1 ? '' : 's'} for this contact. <a href="/search">Search tasks ↗</a></p>}
+                </div>
               </details>;
-            })}</div>}
+            })}{groupedWaiting.length > 5 && <div className="dashboard-list-more"><span>{groupedWaiting.length - 5} additional contacts</span><a href="/search">Find waiting tasks ↗</a></div>}</div>}
         </section>
       </div>
 
       <aside className="dashboard-sidebar">
-        <section className="clean-panel" aria-labelledby="worker-title"><div className="panel-heading"><div><p className="eyebrow">AUTOMATION</p><h2 id="worker-title">Worker health</h2></div></div><div className="dashboard-note">
-          {workerState.length ? workerState.map(worker => <p key={worker.name}><strong>{worker.name}</strong>: {worker.status} · seen {worker.lastSeenAt.toLocaleString('en-US', { timeZone: 'America/New_York' })} ET{worker.lastError ? ` · ${worker.lastError}` : ''}</p>) : <p>Workers have not reported yet.</p>}
-          <p>AI jobs: {jobCounts.map(row => `${row.status.toLowerCase()} ${row._count}`).join(' · ') || 'none queued'}</p>
-          <p>Today: ${Number(todayUsage?.reservedUsd ?? 0).toFixed(4)} reserved · ${Number(todayUsage?.actualEstimatedUsd ?? 0).toFixed(4)} estimated actual · {String(todayUsage?.inputTokens ?? 0)} input / {String(todayUsage?.outputTokens ?? 0)} output tokens.</p>
-        </div></section>
         <section className="clean-panel" id="clients" aria-labelledby="clients-title">
           <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">How are our clients doing?</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <div className="entity-list">{orderedClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} imported · {client.analyzed} analyzed · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}</div>
+          <div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} imported · {client.analyzed} analyzed · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}{orderedClients.length > 8 && <div className="dashboard-list-more"><span>{orderedClients.length - 8} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
         </section>
         {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
           <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
@@ -162,9 +159,9 @@ export default async function Home() {
         </details>}
         <section className="clean-panel" id="team" aria-labelledby="team-title">
           <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
-          <div className="entity-list">{orderedEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.total} assigned · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}</div>
+          <div className="entity-list">{featuredEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.total} assigned · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}{orderedEmployees.length > 6 && <div className="dashboard-list-more"><span>{orderedEmployees.length - 6} more team members</span><a href="/team">View full team ↗</a></div>}</div>
         </section>
-        <div className="dashboard-note">Intelligence is inferred from ClickUp tasks and comments. Open a task to verify its latest details.</div>
+        <div className="dashboard-note">Intelligence is inferred from ClickUp tasks and comments. Open a task to verify its latest details. <a href="/system">System status and AI usage ↗</a></div>
       </aside>
     </div>
   </main>;
