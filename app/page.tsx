@@ -39,11 +39,11 @@ export default async function Home() {
   const isOverdue = (task: (typeof tasks)[number]) => !!task.dueDate && task.dueDate < today && task.intelligence?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus);
   const overdueAmi = needsAmi.filter(isOverdue);
   const prioritizedAmi = [...needsAmi].sort((a,b) => Number(isOverdue(b)) - Number(isOverdue(a)) || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
-  const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
-  const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
+  const waiting = tasks.filter((task) => !isClosedClickUpStatus(task.clickupStatus) && task.intelligence && waitingStates.includes(task.intelligence.agentState));
+  const active = tasks.filter((task) => !isClosedClickUpStatus(task.clickupStatus) && task.intelligence?.agentState === 'ACTIVE');
   const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
   const staleIds = new Set(stale.map(t => t.id));
-  const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
+  const completed = tasks.filter((task) => isClosedClickUpStatus(task.clickupStatus) || task.intelligence?.agentState === 'COMPLETED');
 
   const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number; overdue: number; blocked: number }>();
   const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
@@ -65,9 +65,9 @@ export default async function Home() {
     row.analyzed += 1;
     if (openAmiIds.has(task.id)) row.needsAmi += 1;
     if (isOverdue(task)) row.overdue += 1;
-    if (task.intelligence?.agentState === 'BLOCKED' || task.intelligence?.agentState === 'ISSUE') row.blocked += 1;
-    if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
-    if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
+    if (!isClosedClickUpStatus(task.clickupStatus) && (task.intelligence?.agentState === 'BLOCKED' || task.intelligence?.agentState === 'ISSUE')) row.blocked += 1;
+    if (!isClosedClickUpStatus(task.clickupStatus) && task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
+    if (!isClosedClickUpStatus(task.clickupStatus) && task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
     if (staleIds.has(task.id)) row.stale += 1;
   }
 
@@ -76,7 +76,7 @@ export default async function Home() {
     for (const { employee } of task.assignees) {
       const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0, stale: 0 };
       row.total += 1;
-      if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
+      if (!isClosedClickUpStatus(task.clickupStatus) && task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
       if (openAmiIds.has(task.id)) row.needsAmi += 1;
       if (staleIds.has(task.id)) row.stale += 1;
       employeeRows.set(employee.name, row);
