@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { isOpenAttentionTask } from '@/lib/attention/triage';
 import { prisma } from '@/lib/db/prisma';
 import { markDigestChecked } from './actions';
 import { AppNav } from '../components/app-nav';
@@ -44,11 +45,12 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
       orderBy: { clickupCreatedAt: 'desc' }, take: 250
     }),
     prisma.task.findMany({
-      where: { deleted: false, intelligence: { needsAmi: true } },
-      include: { client: true, intelligence: true },
-      orderBy: { intelligence: { amiAttentionScore: 'desc' } }, take: 30
+      where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, intelligence: { needsAmi: true } },
+      include: { client: true, intelligence: true, attentionDisposition: true },
+      orderBy: { intelligence: { amiAttentionScore: 'desc' } }
     })
   ]);
+  const openDecisions = needsAmi.filter(isOpenAttentionTask);
   const items: ChangeItem[] = [];
   for (const e of events) {
     if (!e.task || !e.occurredAt) continue;
@@ -102,17 +104,17 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
       <div><strong>{items.length}</strong><span>Recorded updates</span></div>
       <div><strong>{items.filter(i => i.category === 'comment').length}</strong><span>New comments</span></div>
       <div><strong>{items.filter(i => i.category === 'status').length}</strong><span>Status changes</span></div>
-      <div><strong>{needsAmi.length}</strong><span>AI-flagged for Ami (sample)</span></div>
+      <div><strong>{openDecisions.length}</strong><span>Open decisions for Ami</span></div>
     </div>
     <section className="clean-panel compact-activity-priority">
       <div className="panel-heading"><div><p className="eyebrow">CURRENT PRIORITIES</p><h2>Decisions still needing attention</h2>
         <p>Open decisions are tracked separately from the activity timeline.</p></div>
         <a className="task-action" href="/attention">Open action inbox →</a></div>
-      <div className="compact-intel-list">{needsAmi.slice(0, 4).map(task => <article key={task.id} className="compact-activity-decision">
+      <div className="compact-intel-list">{openDecisions.slice(0, 4).map(task => <article key={task.id} className="compact-activity-decision">
         <span>{task.client.name}</span><strong>{task.name}</strong><p>{task.intelligence?.amiAction || task.intelligence?.currentSummary}</p>
         {task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
       </article>)}
-      {needsAmi.length === 0 && <p className="simple-empty">No AI-flagged decisions in this sample.</p>}</div>
+      {needsAmi.length === 0 && <p className="simple-empty">No open decisions at the moment.</p>}</div>
     </section>
     <section className="clean-panel compact-activity-panel" id="activity-timeline">
       <div className="panel-heading activity-heading"><div><p className="eyebrow">TIMELINE</p><h2>Recent updates</h2>
