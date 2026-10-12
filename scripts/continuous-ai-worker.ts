@@ -8,8 +8,11 @@ import { analyzeWithAI } from '../lib/intelligence/ai';
 import { saveTaskIntelligence } from '../lib/intelligence/change-history';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
 import { groupClientFolders } from '../lib/clients/grouping';
+import { aiRequestIdempotencyKey, expiredLeaseOutcome, nextUtcBudgetDay, utcBudgetDay } from '../lib/intelligence/worker-state';
+import type { Prisma } from '@prisma/client';
+import { pathToFileURL } from 'node:url';
 
-loadEnvConfig(process.cwd());
+if (!process.env.DATABASE_URL) loadEnvConfig(process.cwd());
 const once = process.argv.includes('--once');
 const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
@@ -33,7 +36,70 @@ if (reservation > batchBudget) throw new Error('One task reservation exceeds AI_
 let stopping = false;
 process.on('SIGTERM', () => { stopping = true; });
 process.on('SIGINT', () => { stopping = true; });
-const day = () => new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+const leaseMilliseconds = Number(process.env.AI_JOB_LEASE_MINUTES || '30') * 60_000;
+if (!Number.isFinite(leaseMilliseconds) || leaseMilliseconds < 5 * 60_000) throw new Error('AI_JOB_LEASE_MINUTES must be at least 5');
+
+type LockedJob = { id: number; taskId: number; attempts: number; estimatedReservedUsd: Prisma.Decimal; reservationDay: Date | null };
+
+function isRetryableTransactionError(error: unknown): boolean {
+  const value = error as { code?: string; meta?: { code?: string } };
+  return value?.code === 'P2034' || (value?.code === 'P2010' && ['40001', '40P01'].includes(value.meta?.code ?? ''));
+}
+
+async function serializable<T>(client: typeof prisma, operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await client.$transaction(operation, { isolationLevel: 'Serializable' });
+    } catch (error) {
+      if (!isRetryableTransactionError(error) || attempt === 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 10 * (2 ** attempt)));
+    }
+  }
+  throw new Error('Serializable transaction failed after retries');
+}
+
+async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<LockedJob, 'estimatedReservedUsd' | 'reservationDay'>) {
+  if (!job.reservationDay || Number(job.estimatedReservedUsd) <= 0) return;
+  const reservationDay = job.reservationDay.toISOString().slice(0, 10);
+  await tx.$executeRaw`UPDATE "AiBudgetDay"
+    SET "reservedUsd" = GREATEST(0, "reservedUsd" - ${job.estimatedReservedUsd}), "updatedAt" = NOW()
+    WHERE day = ${reservationDay}::date`;
+}
+
+/** Recover interrupted work before leasing anything new. Row locks make this safe with multiple workers. */
+export async function recoverExpiredLeases(now = new Date(), client = prisma) {
+  let recovered = 0, failed = 0;
+  for (;;) {
+    const changed = await serializable(client, async tx => {
+      const rows = await tx.$queryRaw<LockedJob[]>`
+        SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay"
+        FROM "AnalysisJob"
+        WHERE status = 'LEASED' AND "leaseExpiresAt" < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+        ORDER BY "leaseExpiresAt", id FOR UPDATE SKIP LOCKED LIMIT 50`;
+      if (!rows.length) return { count: 0, recovered: 0, failed: 0 };
+      let batchRecovered = 0, batchFailed = 0;
+      for (const job of rows) {
+        await releaseReservation(tx, job);
+        const outcome = expiredLeaseOutcome(job.attempts, maxRetries);
+        await tx.analysisJob.update({ where: { id: job.id }, data: {
+          status: outcome,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          reservationDay: null,
+          estimatedReservedUsd: 0,
+          nextAttemptAt: outcome === 'PENDING' ? now : undefined,
+          completedAt: outcome === 'FAILED' ? now : null,
+          lastError: outcome === 'FAILED' ? 'Worker lease expired after maximum attempts' : 'Worker lease expired; safely released for retry'
+        } });
+        if (outcome === 'FAILED') batchFailed++; else batchRecovered++;
+      }
+      return { count: rows.length, recovered: batchRecovered, failed: batchFailed };
+    });
+    recovered += changed.recovered; failed += changed.failed;
+    if (changed.count < 50) break;
+  }
+  return { recovered, failed };
+}
 
 async function refreshQueue() {
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(x => x.name);
@@ -54,23 +120,55 @@ async function refreshQueue() {
   return teamNames;
 }
 
-async function leaseJob() {
-  return prisma.$transaction(async tx => {
+export async function leaseJob(client = prisma) {
+  return serializable(client, async tx => {
+    const now = new Date();
+    const budgetDay = utcBudgetDay(now);
+    const budgetDayText = budgetDay.toISOString().slice(0, 10);
     const rows = await tx.$queryRaw<Array<{ id: number; taskId: number }>>`
       SELECT id, "taskId" FROM "AnalysisJob"
-      WHERE (status = 'PENDING' OR (status = 'LEASED' AND "leaseExpiresAt" < NOW()))
-        AND "nextAttemptAt" <= NOW() AND attempts < ${maxRetries}
+      WHERE status = 'PENDING' AND "nextAttemptAt" <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') AND attempts < ${maxRetries}
       ORDER BY "nextAttemptAt", id FOR UPDATE SKIP LOCKED LIMIT 1`;
     const job = rows[0]; if (!job) return null;
-    await tx.aiBudgetDay.upsert({ where: { day: day() }, create: { day: day() }, update: {} });
-    const reserved = await tx.$executeRaw`UPDATE "AiBudgetDay" SET "reservedUsd" = "reservedUsd" + ${reservation}, "updatedAt" = NOW() WHERE day = ${day()} AND "reservedUsd" + ${reservation} <= ${dailyBudget}`;
+    await tx.aiBudgetDay.upsert({ where: { day: budgetDay }, create: { day: budgetDay }, update: {} });
+    const reserved = await tx.$executeRaw`UPDATE "AiBudgetDay"
+      SET "reservedUsd" = "reservedUsd" + ${reservation}, "updatedAt" = NOW()
+      WHERE day = ${budgetDayText}::date AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget}`;
     if (!reserved) {
-      const tomorrow = new Date(day().getTime() + 24 * 60 * 60_000);
-      await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: tomorrow } }); return null;
+      await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now) } }); return null;
     }
-    await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(Date.now() + 15 * 60_000), attempts: { increment: 1 }, estimatedReservedUsd: reservation } });
+    await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds), attempts: { increment: 1 }, estimatedReservedUsd: reservation, reservationDay: budgetDay } });
     return job;
   });
+}
+
+export async function renewOwnedLease(jobId: number, now = new Date(), client = prisma): Promise<boolean> {
+  const [updated] = await client.$transaction([
+    client.analysisJob.updateMany({ where: { id: jobId, status: 'LEASED', leaseOwner: workerId }, data: { leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds) } }),
+    client.workerHeartbeat.updateMany({ where: { name: 'ai-worker' }, data: { status: 'PROCESSING', lastSeenAt: now } })
+  ]);
+  return updated.count === 1;
+}
+
+async function withLeaseRenewal<T>(jobId: number, operation: () => Promise<T>): Promise<T> {
+  const intervalMs = Math.max(30_000, Math.min(60_000, Math.floor(leaseMilliseconds / 3)));
+  let renewalInFlight: Promise<void> | null = null;
+  let renewalError: Error | null = null;
+  const renew = () => {
+    if (renewalInFlight || renewalError) return;
+    renewalInFlight = renewOwnedLease(jobId).then(owned => {
+      if (!owned) renewalError = new Error('Worker lost job lease during AI request');
+    }).catch(error => { renewalError = error instanceof Error ? error : new Error(String(error)); }).finally(() => { renewalInFlight = null; });
+  };
+  const timer = setInterval(renew, intervalMs);
+  try {
+    const result = await operation();
+    if (renewalInFlight) await renewalInFlight;
+    if (renewalError) throw renewalError;
+    return result;
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 async function processJob(job: { id: number; taskId: number }, teamNames: string[]) {
@@ -88,34 +186,62 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     }
   });
   const context = buildTaskContext(task); const related = findRelatedTasks(context, scopeTasks.map(buildTaskContext));
+  const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
   try {
-    const result = await analyzeWithAI(context, { model, teamNames, related });
+    // If a prior worker saved the exact result and died before finalizing the job,
+    // finalize without paying for duplicate analysis.
+    if (task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === TASK_ANALYZER_PROMPT_VERSION + ':' + model) {
+      // The provider may have completed before the previous worker crashed.
+      // With no persisted token counts, convert the full reservation to actual
+      // spend so the hard cap remains conservative rather than recording $0.
+      await completeJob(job.id, { input: 0, output: 0, actual: null });
+      return;
+    }
+    await prisma.analysisJob.updateMany({ where: { id: job.id, status: 'LEASED', leaseOwner: workerId }, data: { sourceFingerprint: fingerprint } });
+    const result = await withLeaseRenewal(job.id, () => analyzeWithAI(context, { model, teamNames, related, idempotencyKey: aiRequestIdempotencyKey(job.id, fingerprint) }));
     if (result.source !== 'AI') throw new Error('OpenAI analysis did not complete');
-    const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
+    const stillOwned = await prisma.analysisJob.count({ where: { id: job.id, status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } } });
+    if (!stillOwned) throw new Error('Worker lost job lease before result could be committed');
     await saveTaskIntelligence(task.id, { agentState: result.agentState, headline: result.headline, currentSummary: result.currentSummary, needsAmi: result.needsAmi, amiAction: result.amiAction, waitingOnType: result.waitingOnType, waitingOnName: result.waitingOnName, importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore, riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange, lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence, promptVersion: TASK_ANALYZER_PROMPT_VERSION + ':' + model, analyzedAt: new Date(), sourceFingerprint: fingerprint });
     const input = result.usage?.inputTokens ?? 0, output = result.usage?.outputTokens ?? 0;
     const actual = (input * inputRate + output * outputRate) / 1_000_000;
-    await prisma.$transaction([
-      prisma.analysisJob.update({ where: { id: job.id }, data: { status: 'SUCCEEDED', leaseOwner: null, leaseExpiresAt: null, actualInputTokens: input, actualOutputTokens: output, actualEstimatedUsd: actual, completedAt: new Date(), lastError: null } }),
-      prisma.aiBudgetDay.update({ where: { day: day() }, data: { actualEstimatedUsd: { increment: actual }, inputTokens: { increment: input }, outputTokens: { increment: output }, successfulJobs: { increment: 1 } } })
-    ]);
+    await completeJob(job.id, { input, output, actual });
   } catch (error) {
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
     const current = await prisma.analysisJob.findUniqueOrThrow({ where: { id: job.id } });
     const terminal = current.attempts >= maxRetries;
-    await prisma.$transaction([
-      prisma.analysisJob.update({ where: { id: job.id }, data: { status: terminal ? 'FAILED' : 'PENDING', leaseOwner: null, leaseExpiresAt: null, lastError: message, nextAttemptAt: new Date(Date.now() + Math.min(3600, 30 * (2 ** current.attempts)) * 1000) } }),
-      prisma.aiBudgetDay.update({ where: { day: day() }, data: { failedJobs: { increment: 1 } } })
-    ]);
+    await serializable(prisma, async tx => {
+      const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay" FROM "AnalysisJob" WHERE id = ${job.id} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
+      if (!locked) return;
+      await releaseReservation(tx, locked);
+      if (locked.reservationDay) await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { failedJobs: { increment: 1 } } });
+      await tx.analysisJob.update({ where: { id: job.id }, data: { status: terminal ? 'FAILED' : 'PENDING', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, lastError: message, completedAt: terminal ? new Date() : null, nextAttemptAt: new Date(Date.now() + Math.min(3600, 30 * (2 ** current.attempts)) * 1000) } });
+    });
   }
+}
+
+export async function completeJob(jobId: number, usage: { input: number; output: number; actual: number | null }, client = prisma) {
+  await serializable(client, async tx => {
+    const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay" FROM "AnalysisJob" WHERE id = ${jobId} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
+    if (!locked) return;
+    await releaseReservation(tx, locked);
+    if (!locked.reservationDay) throw new Error('Leased job has no reservation day');
+    const actual = usage.actual ?? Number(locked.estimatedReservedUsd);
+    await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { actualEstimatedUsd: { increment: actual }, inputTokens: { increment: usage.input }, outputTokens: { increment: usage.output }, successfulJobs: { increment: 1 } } });
+    await tx.analysisJob.update({ where: { id: jobId }, data: { status: 'SUCCEEDED', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, actualInputTokens: usage.actual === null ? null : usage.input, actualOutputTokens: usage.actual === null ? null : usage.output, actualEstimatedUsd: actual, completedAt: new Date(), lastError: null } });
+  });
 }
 
 async function cycle() {
   await prisma.analysisJob.updateMany({ where: { status: 'PAUSED_BUDGET', nextAttemptAt: { lte: new Date() } }, data: { status: 'PENDING' } });
+  const recovery = await recoverExpiredLeases();
+  await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), metadata: { recovery } }, update: { status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), lastError: null, metadata: { recovery } } });
   const teamNames = await refreshQueue(); let attempts = 0; let batchReserved = 0;
-  while (!stopping && attempts < maxJobs && batchReserved + reservation <= batchBudget + 1e-9) { const job = await leaseJob(); if (!job) break; attempts++; batchReserved += reservation; await processJob(job, teamNames); }
+  while (!stopping && attempts < maxJobs && batchReserved + reservation <= batchBudget + 1e-9) { const job = await leaseJob(); if (!job) break; attempts++; batchReserved += reservation; await processJob(job, teamNames); await prisma.workerHeartbeat.update({ where: { name: 'ai-worker' }, data: { lastSeenAt: new Date() } }); }
   const counts = await prisma.analysisJob.groupBy({ by: ['status'], _count: true });
   await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'IDLE', lastStartedAt: new Date(), lastSeenAt: new Date(), lastSuccessAt: new Date(), metadata: { counts } }, update: { status: 'IDLE', lastSeenAt: new Date(), lastSuccessAt: new Date(), lastError: null, metadata: { counts } } });
 }
 async function main() { do { await cycle(); if (once || stopping) break; await new Promise(r => setTimeout(r, intervalSeconds * 1000)); } while (!stopping); }
-main().catch(async error => { console.error(error); await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'FAILED', lastSeenAt: new Date(), lastError: String(error) }, update: { status: 'FAILED', lastSeenAt: new Date(), lastError: String(error) } }); process.exitCode = 1; }).finally(() => prisma.$disconnect());
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(async error => { console.error(error); await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'FAILED', lastSeenAt: new Date(), lastError: String(error) }, update: { status: 'FAILED', lastSeenAt: new Date(), lastError: String(error) } }); process.exitCode = 1; }).finally(() => prisma.$disconnect());
+}

@@ -1,0 +1,165 @@
+name: Controlled AI pipeline recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deployed_sha:
+        description: Exact currently deployed production SHA
+        required: true
+      expected_leased:
+        description: Read-only preflight LEASED count
+        required: true
+      expected_paused:
+        description: Read-only preflight PAUSED_BUDGET count
+        required: true
+      expected_retryable:
+        description: LEASED jobs below max retries
+        required: true
+      expected_exhausted:
+        description: LEASED jobs at or above max retries
+        required: true
+      max_retries:
+        description: Existing production AI_MAX_JOB_RETRIES
+        required: true
+      daily_budget:
+        description: Existing production AI_DAILY_BUDGET_USD (do not raise)
+        required: true
+      approval:
+        description: Type APPROVE_AI_PIPELINE_RECOVERY after backup/SQL review approval
+        required: true
+
+concurrency:
+  group: ami-clickup-assistant-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      AI_WORKER_TEST_DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ami_assistant_ai_worker_test_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run worker:test-integration
+      - run: npm run build
+
+  recover-and-deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate approved inputs
+        env:
+          APPROVAL: ${{ inputs.approval }}
+          EXPECTED_SHA: ${{ inputs.expected_deployed_sha }}
+          EXPECTED_LEASED: ${{ inputs.expected_leased }}
+          EXPECTED_PAUSED: ${{ inputs.expected_paused }}
+          EXPECTED_RETRYABLE: ${{ inputs.expected_retryable }}
+          EXPECTED_EXHAUSTED: ${{ inputs.expected_exhausted }}
+          MAX_RETRIES: ${{ inputs.max_retries }}
+          DAILY_BUDGET: ${{ inputs.daily_budget }}
+        run: |
+          test "$APPROVAL" = APPROVE_AI_PIPELINE_RECOVERY
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          for value in "$EXPECTED_LEASED" "$EXPECTED_PAUSED" "$EXPECTED_RETRYABLE" "$EXPECTED_EXHAUSTED" "$MAX_RETRIES"; do [[ "$value" =~ ^[0-9]+$ ]]; done
+          [[ "$DAILY_BUDGET" =~ ^[0-9]+([.][0-9]+)?$ ]]
+          test $((EXPECTED_RETRYABLE + EXPECTED_EXHAUSTED)) -eq "$EXPECTED_LEASED"
+      - name: Configure dedicated SSH identity
+        env:
+          PROD_SSH_KEY_B64: ${{ secrets.PROD_SSH_KEY_B64 }}
+        run: |
+          test -n "$PROD_SSH_KEY_B64"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$PROD_SSH_KEY_B64" | base64 --decode > ~/.ssh/ami-production
+          chmod 600 ~/.ssh/ami-production
+          ssh-keygen -y -f ~/.ssh/ami-production > /dev/null
+          printf '%s\n' '34.224.54.213 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIltYrYu9bNie7dBrX7nPEMiuzqTRHjwp1SDMjt0UM3U' > ~/.ssh/known_hosts
+      - name: Package and upload reviewed release
+        run: |
+          tar -czf "/tmp/ami-${GITHUB_SHA}.tar.gz" --exclude=.git --exclude=node_modules --exclude=.next --exclude=.env --exclude=.env.production .
+          scp -i ~/.ssh/ami-production "/tmp/ami-${GITHUB_SHA}.tar.gz" ubuntu@34.224.54.213:"/tmp/ami-${GITHUB_SHA}.tar.gz"
+      - name: Backup, reconcile, migrate, and deploy under one lock
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ inputs.expected_deployed_sha }}
+          EXPECTED_LEASED: ${{ inputs.expected_leased }}
+          EXPECTED_PAUSED: ${{ inputs.expected_paused }}
+          EXPECTED_RETRYABLE: ${{ inputs.expected_retryable }}
+          EXPECTED_EXHAUSTED: ${{ inputs.expected_exhausted }}
+          MAX_RETRIES: ${{ inputs.max_retries }}
+          DAILY_BUDGET: ${{ inputs.daily_budget }}
+        run: |
+          ssh -i ~/.ssh/ami-production ubuntu@34.224.54.213 \
+            "DEPLOY_SHA=$DEPLOY_SHA EXPECTED_SHA=$EXPECTED_SHA EXPECTED_LEASED=$EXPECTED_LEASED EXPECTED_PAUSED=$EXPECTED_PAUSED EXPECTED_RETRYABLE=$EXPECTED_RETRYABLE EXPECTED_EXHAUSTED=$EXPECTED_EXHAUSTED MAX_RETRIES=$MAX_RETRIES DAILY_BUDGET=$DAILY_BUDGET bash -s" <<'REMOTE'
+          set -euo pipefail
+          exec 9>/tmp/ami-clickup-deploy.lock
+          flock -n 9 || { echo 'Another deployment or maintenance operation is running'; exit 1; }
+          cd /opt/ami-clickup-assistant
+          test -s .env.production
+          test "$(cat .deployed-commit)" = "$EXPECTED_SHA"
+          archive="/tmp/ami-${DEPLOY_SHA}.tar.gz"
+          test -s "$archive"
+          tar -xOf "$archive" ./deploy/ai-recovery-preflight.sh > /tmp/ai-recovery-preflight.sh
+          tar -xOf "$archive" ./deploy/ai-recovery-reconcile.sql > /tmp/ai-recovery-reconcile.sql
+          chmod 700 /tmp/ai-recovery-preflight.sh
+          bash /tmp/ai-recovery-preflight.sh
+          bash ./deploy/backup.sh </dev/null
+          latest_backup=$(find backups -type f -name 'ami-*.dump' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+          test -n "$latest_backup" -a -s "$latest_backup"
+          docker compose -f docker-compose.prod.yml exec -T postgres pg_restore --list < "$latest_backup" > /dev/null
+          docker compose -f docker-compose.prod.yml stop -t 1800 ai-worker </dev/null
+          test -z "$(docker compose -f docker-compose.prod.yml ps -q --status running ai-worker)"
+          bash /tmp/ai-recovery-preflight.sh
+          docker compose -f docker-compose.prod.yml exec -T postgres psql -X -v ON_ERROR_STOP=1 -U ami -d ami_assistant \
+            -v approval=APPROVE_AI_PIPELINE_RECOVERY -v expected_leased="$EXPECTED_LEASED" -v expected_paused="$EXPECTED_PAUSED" \
+            -v expected_retryable="$EXPECTED_RETRYABLE" -v expected_exhausted="$EXPECTED_EXHAUSTED" \
+            -v max_retries="$MAX_RETRIES" -v daily_budget="$DAILY_BUDGET" < /tmp/ai-recovery-reconcile.sql
+          tar -xzf "$archive" -C /opt/ami-clickup-assistant
+          docker compose -f docker-compose.prod.yml build </dev/null
+          docker compose -f docker-compose.prod.yml run --rm -T migrate </dev/null
+          docker compose -f docker-compose.prod.yml up -d postgres web sync-worker ai-worker caddy </dev/null
+          docker compose -f docker-compose.prod.yml restart caddy </dev/null
+          printf '%s\n' "$DEPLOY_SHA" > .deployed-commit
+          for attempt in $(seq 1 60); do
+            if docker compose -f docker-compose.prod.yml exec -T web curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then break; fi
+            test "$attempt" -lt 60
+            sleep 5
+          done
+          printf '%s recovered_from=%s\n' "$DEPLOY_SHA" "$EXPECTED_SHA" > .ai-pipeline-recovery-complete
+          rm -f "$archive" /tmp/ai-recovery-preflight.sh /tmp/ai-recovery-reconcile.sql
+          REMOTE
+      - name: Verify exact commit and readiness
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          actual=$(ssh -i ~/.ssh/ami-production ubuntu@34.224.54.213 'cat /opt/ami-clickup-assistant/.deployed-commit')
+          test "$actual" = "$DEPLOY_SHA"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error https://intelligence.justflownh.com/api/health; then exit 0; fi
+            sleep 5
+          done
+          exit 1

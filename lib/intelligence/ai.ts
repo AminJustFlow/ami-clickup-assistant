@@ -106,7 +106,7 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
 
 export async function analyzeWithAI(
   context: TaskContext,
-  options: { model?: string; now?: Date; client?: OpenAI; teamNames?: string[]; related?: RelatedEvidence[] } = {}
+  options: { model?: string; now?: Date; client?: OpenAI; teamNames?: string[]; related?: RelatedEvidence[]; idempotencyKey?: string } = {}
 ): Promise<HybridIntelligence> {
   const now = options.now ?? new Date();
   const rules = analyzeWithRules(context, now);
@@ -130,7 +130,7 @@ ${contextText(context)}
 Related task evidence (independent scope; do not assume shared completion):
 ${relatedEvidenceText(options.related ?? []) || 'No strongly related tasks identified.'}`,
       text: { format: zodTextFormat(taskIntelligenceSchema, 'task_intelligence') }
-    });
+    }, options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : undefined);
 
     if (!response.output_parsed) throw new Error('OpenAI returned no parsed intelligence output.');
     return {

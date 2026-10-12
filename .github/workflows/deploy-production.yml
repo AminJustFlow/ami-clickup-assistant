@@ -59,6 +59,10 @@ jobs:
           flock -n 9 || { echo 'Another production deployment is running'; exit 1; }
           cd /opt/ami-clickup-assistant
           test -s .env.production
+          test -f .ai-pipeline-recovery-complete || {
+            echo 'AI pipeline recovery gate is closed. Run the approved controlled recovery workflow before normal deployments.'
+            exit 1
+          }
           # Do not let subprocesses consume the SSH heredoc containing the remaining commands.
           # Invoke with bash: tar/git file modes may not preserve executable permission.
           bash ./deploy/backup.sh </dev/null
