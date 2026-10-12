@@ -3,7 +3,7 @@ import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
 import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
-import { isOpenAttentionTask } from '@/lib/attention/triage';
+import { isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,15 +36,16 @@ export default async function Home() {
   const needsAmi = tasks.filter(isOpenAttentionTask);
   const openAmiIds = new Set(needsAmi.map(task => task.id));
   const today = new Date();
-  const overdueAmi = needsAmi.filter(task => task.dueDate && task.dueDate < today);
-  const prioritizedAmi = [...needsAmi].sort((a,b) => Number(!!b.dueDate && b.dueDate < today) - Number(!!a.dueDate && a.dueDate < today) || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
+  const isOverdue = (task: (typeof tasks)[number]) => !!task.dueDate && task.dueDate < today && task.intelligence?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus);
+  const overdueAmi = needsAmi.filter(isOverdue);
+  const prioritizedAmi = [...needsAmi].sort((a,b) => Number(isOverdue(b)) - Number(isOverdue(a)) || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
   const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
   const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
   const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
   const staleIds = new Set(stale.map(t => t.id));
   const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
 
-  const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number }>();
+  const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number; overdue: number; blocked: number }>();
   const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const groups = groupClientFolders(allClients);
   const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
@@ -54,7 +55,7 @@ export default async function Home() {
     clientRows.set(group.canonical.slug, {
       name: group.canonical.name,
       total: group.folders.reduce((sum, folder) => sum + (totalsByClient.get(folder.id) ?? 0), 0),
-      analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0
+      analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0, overdue: 0, blocked: 0
     });
   }
   for (const task of tasks) {
@@ -63,6 +64,8 @@ export default async function Home() {
     if (!row) continue;
     row.analyzed += 1;
     if (openAmiIds.has(task.id)) row.needsAmi += 1;
+    if (isOverdue(task)) row.overdue += 1;
+    if (task.intelligence?.agentState === 'BLOCKED' || task.intelligence?.agentState === 'ISSUE') row.blocked += 1;
     if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
     if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
     if (staleIds.has(task.id)) row.stale += 1;
@@ -93,7 +96,7 @@ export default async function Home() {
   }
   const groupedWaiting = [...waitingGroups.entries()].sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   const unattributedFolders = [...clientRows.entries()].filter(([, client]) => needsClientAttribution(client.name)).sort((a,b) => b[1].total - a[1].total);
-  const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
+  const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => b[1].overdue-a[1].overdue || b[1].blocked-a[1].blocked || b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
   const featuredClients = orderedClients.slice(0, 8);
   const featuredEmployees = orderedEmployees.slice(0, 6);
@@ -120,12 +123,29 @@ export default async function Home() {
           <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><a className="task-action" href="/attention">Open full action inbox ↗</a><span className="panel-count">{needsAmi.length}</span></div>
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
             <div className="clean-task-list">{prioritizedAmi.slice(0, 5).map(task => <article className="clean-task" key={task.id}>
-              <div className="task-topline"><span>{task.client.name}</span><span className="status-pill attention-pill">{task.dueDate && task.dueDate < today ? "Overdue" : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? "High priority" : "Needs decision"}</span></div>
+              <div className="task-topline"><span>{task.client.name}</span><span className={`status-pill attention-pill ${isOverdue(task) ? 'priority-overdue' : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? 'priority-high' : 'priority-standard'}`}>{isOverdue(task) ? "Overdue" : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? "High priority" : "Needs decision"}</span></div>
               <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
               <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
             </article>)}{needsAmi.length > 5 && <div className="dashboard-list-more"><span>{needsAmi.length - 5} more AI-flagged tasks</span><a href="/attention">View action inbox ↗</a></div>}</div>}
         </section>
 
+
+      </div>
+
+      <aside className="dashboard-sidebar">
+        <section className="clean-panel" id="clients" aria-labelledby="clients-title">
+          <div className="panel-heading"><div><p className="eyebrow">CLIENT HEALTH</p><h2 id="clients-title">Clients needing attention</h2></div><span className="panel-count">{orderedClients.length}</span></div>
+          <p className="client-health-note">Based on analyzed tasks only; incomplete coverage may hide issues.</p><div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.analyzed} analyzed / {client.total} imported</small><span className="client-health-signals">{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} overdue</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.needsAmi > 0 && <span className="client-signal decision">{client.needsAmi} for Ami</span>}{client.overdue === 0 && client.blocked === 0 && client.needsAmi === 0 && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}</span></span><span className="entity-arrow">›</span></a>)}{orderedClients.length > 8 && <div className="dashboard-list-more"><span>{orderedClients.length - 8} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
+        </section>
+        {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
+          <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
+          <p className="section-explainer">These ClickUp folders have generic names, so we cannot safely identify their client. Their tasks remain imported and accessible, but they are not counted as separate clients.</p>
+          <div className="entity-list">{unattributedFolders.map(([slug, folder]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">?</span><span className="entity-copy"><strong>{folder.name}</strong><small>{folder.total} imported tasks · Identify client before grouping</small></span><span className="entity-arrow">›</span></a>)}</div>
+        </details>}
+        <section className="clean-panel" id="team" aria-labelledby="team-title">
+          <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
+          <div className="entity-list">{featuredEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.total} assigned · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}{orderedEmployees.length > 6 && <div className="dashboard-list-more"><span>{orderedEmployees.length - 6} more team members</span><a href="/team">View full team ↗</a></div>}</div>
+        </section>
         <section className="clean-panel" aria-labelledby="waiting-title">
           <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
           {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
@@ -144,22 +164,6 @@ export default async function Home() {
                 </div>
               </details>;
             })}{groupedWaiting.length > 5 && <div className="dashboard-list-more"><span>{groupedWaiting.length - 5} additional contacts</span><a href="/search">Find waiting tasks ↗</a></div>}</div>}
-        </section>
-      </div>
-
-      <aside className="dashboard-sidebar">
-        <section className="clean-panel" id="clients" aria-labelledby="clients-title">
-          <div className="panel-heading"><div><p className="eyebrow">AT A GLANCE</p><h2 id="clients-title">How are our clients doing?</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.total} imported · {client.analyzed} analyzed · {client.waiting} waiting</small></span>{client.needsAmi > 0 && <span className="entity-alert">{client.needsAmi} for Ami</span>}<span className="entity-arrow">›</span></a>)}{orderedClients.length > 8 && <div className="dashboard-list-more"><span>{orderedClients.length - 8} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
-        </section>
-        {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
-          <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
-          <p className="section-explainer">These ClickUp folders have generic names, so we cannot safely identify their client. Their tasks remain imported and accessible, but they are not counted as separate clients.</p>
-          <div className="entity-list">{unattributedFolders.map(([slug, folder]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">?</span><span className="entity-copy"><strong>{folder.name}</strong><small>{folder.total} imported tasks · Identify client before grouping</small></span><span className="entity-arrow">›</span></a>)}</div>
-        </details>}
-        <section className="clean-panel" id="team" aria-labelledby="team-title">
-          <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
-          <div className="entity-list">{featuredEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.total} assigned · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}{orderedEmployees.length > 6 && <div className="dashboard-list-more"><span>{orderedEmployees.length - 6} more team members</span><a href="/team">View full team ↗</a></div>}</div>
         </section>
         <div className="dashboard-note">Intelligence is inferred from ClickUp tasks and comments. Open a task to verify its latest details. <a href="/system">System status and AI usage ↗</a></div>
       </aside>
