@@ -6,7 +6,7 @@ import { attentionVerificationReasons, isClosedClickUpStatus } from '@/lib/atten
 
 export const dynamic = 'force-dynamic';
 
-const isDone = (status: string | null) => /^(done|complete|completed|closed)$/i.test(status?.trim() ?? '');
+const isDone = isClosedClickUpStatus;
 const format = (value: string | null | undefined) => value?.replaceAll('_', ' ') ?? 'Unknown';
 
 export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
@@ -31,7 +31,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     if (ai && rules.agentState !== saved.agentState) notes.push('AI and rules infer different states');
     if (ai && rules.needsAmi !== saved.needsAmi) notes.push('AI and rules disagree about Ami');
     if (ai && rules.waitingOnType !== saved.waitingOnType) notes.push('AI and rules infer different dependencies');
-    if (isDone(task.clickupStatus) && saved.agentState !== 'COMPLETED') flags.push({ priority: true, title: 'ClickUp done but AI finds outstanding work' });
+    if (isDone(task.clickupStatus) && saved.agentState !== 'COMPLETED') notes.push('Historical AI state differs from current completed ClickUp status');
     if (!isDone(task.clickupStatus) && saved.agentState === 'COMPLETED') notes.push('AI says complete while ClickUp remains open');
     if (saved.needsAmi && (!saved.amiAction || !saved.amiAction.trim())) flags.push({ priority: true, title: 'Missing concrete Ami action' });
     if (saved.agentState === 'WAITING_ON_AMI' && (!saved.needsAmi || saved.waitingOnType !== 'AMI')) flags.push({ priority: true, title: 'Inconsistent Ami dependency' });
@@ -93,7 +93,8 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
             </tbody>
           </table>
         </div>
-        <p><strong>Saved summary:</strong> {saved.currentSummary ?? 'None'}</p>
+        {isDone(task.clickupStatus) && <p><strong>Current operational state: COMPLETED.</strong> ClickUp is authoritative; the saved AI assessment below is historical and cannot reopen this task.</p>}
+        <p><strong>Saved summary (historical):</strong> {saved.currentSummary ?? 'None'}</p>
         {saved.amiAction && <p><strong>Ami action:</strong> {saved.amiAction}</p>}
         <p className="muted">Confidence: {saved.confidence == null ? 'Unknown' : Math.round(saved.confidence * 100) + '%'} · Prompt: {saved.promptVersion ?? 'Unknown'} · Analyzed: {saved.analyzedAt?.toLocaleString('en-US', { timeZone: 'America/New_York' }) ?? 'Unknown'}</p>
         {task.clickupUrl && <p><a href={task.clickupUrl} target="_blank" rel="noreferrer">Open in ClickUp</a></p>}
