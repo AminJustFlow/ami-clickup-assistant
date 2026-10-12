@@ -537,3 +537,37 @@ button{font-family:inherit}
 @media(min-width:1120px){.dashboard-main{grid-template-columns:minmax(0,1.65fr) minmax(340px,1fr)}}
 @media(max-width:820px){.directory-grid,.system-status-grid{grid-template-columns:1fr}}
 @media(max-width:720px){.dashboard-primary .clean-task-list>.clean-task{padding:15px}.dashboard-primary .dashboard-list-more,.dashboard-sidebar .dashboard-list-more{padding:14px 16px}.directory-grid{padding:8px 14px 16px}.compact-dependencies{padding:8px 12px 12px}}
+
+
+/* Final dashboard pass: client risk signals and balanced sidebar */
+.dashboard-sidebar>.clean-panel{margin-bottom:0}
+.dashboard-sidebar>.dashboard-note{margin-top:0}
+.client-health-note{font-size:11px;line-height:1.5;color:#738590;margin:0;padding:0 20px 12px}
+.client-health-signals{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.client-signal{display:inline-flex;align-items:center;white-space:nowrap;font-size:10px;font-weight:750;border-radius:5px;padding:3px 6px;background:#eef4f7;color:#54717f}
+.client-signal.overdue{background:#fff0e8;color:#a64017}
+.client-signal.blocked{background:#fff3dd;color:#8c5700}
+.client-signal.decision{background:#eaf5fc;color:#066d96}
+.client-signal.quiet{background:#f1f5f6;color:#758690;font-weight:600}
+.dashboard-sidebar .entity-row{align-items:flex-start;gap:10px}
+.dashboard-sidebar .entity-avatar{margin-top:2px}
+.dashboard-sidebar .entity-arrow{margin-top:3px}
+.dashboard-sidebar .compact-dependencies{padding:8px 13px 13px}
+.dashboard-sidebar .compact-dependencies .waiting-person summary{padding:11px 12px;min-height:56px}
+.dashboard-sidebar .compact-dependencies .dependency-preview{padding:12px}
+.dashboard-sidebar .compact-dependencies .dependency-preview>p{overflow-wrap:anywhere}
+.dashboard-primary .priority-overdue{background:#fff0e8;color:#a64017}
+.dashboard-primary .priority-high{background:#fff3dd;color:#8c5700}
+.dashboard-primary .priority-standard{background:#eef4f7;color:#4d6978}
+.dashboard-primary .clean-task:has(.priority-overdue){border-left:3px solid #dc8052}
+.dashboard-primary .clean-task:has(.priority-high){border-left:3px solid #d9ad57}
+.dashboard-primary .clean-task:has(.priority-standard){border-left:3px solid transparent}
+@media(max-width:920px){
+  .dashboard-sidebar .entity-row{gap:8px}
+  .client-health-signals{gap:4px}
+}
+@media(max-width:720px){
+  .dashboard-sidebar>.clean-panel{margin-bottom:0}
+  .dashboard-sidebar .compact-dependencies{padding:8px 12px 12px}
+  .client-health-note{padding:0 16px 12px}
+}
