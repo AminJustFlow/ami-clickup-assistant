@@ -59,16 +59,23 @@ jobs:
           flock -n 9 || { echo 'Another production deployment is running'; exit 1; }
           cd /opt/ami-clickup-assistant
           test -s .env.production
-          ./deploy/backup.sh
+          # Do not let subprocesses consume the SSH heredoc containing the remaining commands.
+          ./deploy/backup.sh </dev/null
           tar -xzf "/tmp/ami-${DEPLOY_SHA}.tar.gz" -C /opt/ami-clickup-assistant
-          docker compose -f docker-compose.prod.yml build
-          docker compose -f docker-compose.prod.yml run --rm migrate
-          docker compose -f docker-compose.prod.yml up -d postgres web sync-worker ai-worker caddy
-          docker compose -f docker-compose.prod.yml restart caddy
-          docker compose -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.prod.yml build </dev/null
+          docker compose -f docker-compose.prod.yml run --rm -T migrate </dev/null
+          docker compose -f docker-compose.prod.yml up -d postgres web sync-worker ai-worker caddy </dev/null
+          docker compose -f docker-compose.prod.yml restart caddy </dev/null
+          docker compose -f docker-compose.prod.yml ps </dev/null
           printf '%s\n' "$DEPLOY_SHA" > .deployed-commit
           rm -f "/tmp/ami-${DEPLOY_SHA}.tar.gz"
           REMOTE
+      - name: Verify deployed commit
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          actual=$(ssh -i ~/.ssh/ami-production ubuntu@34.224.54.213 'cat /opt/ami-clickup-assistant/.deployed-commit')
+          test "$actual" = "$DEPLOY_SHA" || { echo "::error::Production commit mismatch: expected $DEPLOY_SHA, got $actual"; exit 1; }
       - name: Verify production
         run: |
           for attempt in $(seq 1 12); do
