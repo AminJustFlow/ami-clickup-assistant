@@ -304,6 +304,7 @@ model AttentionDisposition {
   taskId            Int               @unique
   task              Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
   decision          AttentionDecision
+  reason            String?
   sourceFingerprint String
   updatedAt         DateTime          @updatedAt
   createdAt         DateTime          @default(now())
