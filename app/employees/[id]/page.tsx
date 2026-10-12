@@ -1,4 +1,5 @@
 import { isStaleActive } from '@/lib/intelligence/staleness';
+import { isOpenAttentionTask, isClosedClickUpStatus } from '@/lib/attention/triage';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../../components/app-nav';
@@ -21,7 +22,7 @@ export default async function EmployeePage({ params, searchParams }: {
   const tasks = await prisma.task.findMany({
     where: { deleted: false, intelligence: { isNot: null }, assignees: { some: { employeeId } } },
     include: {
-      client: true, intelligence: true, list: true,
+      client: true, intelligence: true, attentionDisposition: true, list: true,
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
       assignees: { include: { employee: true } }
     },
@@ -37,17 +38,19 @@ export default async function EmployeePage({ params, searchParams }: {
     (!filters.client || String(t.clientId) === filters.client) &&
     (!filters.status || t.intelligence?.agentState === filters.status);
   const filtered = tasks.filter(matches);
-  const needsAmi = filtered.filter(t => t.intelligence?.needsAmi);
-  const waiting = filtered.filter(t => !t.intelligence?.needsAmi &&
+  const needsAmi = filtered.filter(isOpenAttentionTask);
+  const isClosed = (t: (typeof tasks)[number]) => t.intelligence?.agentState === 'COMPLETED' || isClosedClickUpStatus(t.clickupStatus);
+  const waiting = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
     t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI');
-  const active = filtered.filter(t => !t.intelligence?.needsAmi && !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');
+  const active = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) && !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');
   const stale = active.filter(t => isStaleActive({
     state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt,
     commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
   }));
   const recent = active.filter(t => !stale.includes(t));
-  const notStarted = filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !needsAmi.includes(t) && !waiting.includes(t));
-  const completed = filtered.filter(t => t.intelligence?.agentState === 'COMPLETED' && !needsAmi.includes(t) && !waiting.includes(t));
+  const notStarted = filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
+  const completed = filtered.filter(t => isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
+  const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !active.includes(t) && !notStarted.includes(t));
   const query = new URLSearchParams();
   for (const key of ['q', 'client', 'status'] as const) if (filters[key]) query.set(key, filters[key]);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
@@ -76,6 +79,7 @@ export default async function EmployeePage({ params, searchParams }: {
       <CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recent} sectionId="active" {...sectionProps} />
       <CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} />
       <CompactTaskSection title="Not started" tasks={notStarted} sectionId="not-started" collapsed {...sectionProps} />
+      <CompactTaskSection title="Other analyzed tasks" tasks={other} sectionId="other" collapsed {...sectionProps} />
       <CompactTaskSection title="Completed" tasks={completed} sectionId="completed" collapsed {...sectionProps} />
     </div>
   </main>;
