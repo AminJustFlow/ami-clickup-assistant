@@ -568,3 +568,28 @@ button{font-family:inherit}
   .dashboard-sidebar .compact-dependencies{padding:8px 12px 12px}
   .client-health-note{padding:0 16px 12px}
 }
+
+
+/* Operations UI refresh: compact, scannable task rows */
+.compact-intel-sections{max-width:none}
+.compact-intel-section{scroll-margin-top:20px}
+.compact-intel-section .panel-heading{padding-bottom:15px}
+.compact-intel-list{padding:0 22px 6px}
+.compact-intel-row{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding:15px 2px;border-top:1px solid #eaf0f2}
+.compact-intel-main{flex:1;min-width:0}
+.compact-intel-meta{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#70828d;font-size:11px;font-weight:650}
+.compact-intel-meta .status-pill{padding:3px 8px;font-size:10px}
+.compact-intel-overdue{color:#ad4d2b;background:#fff1ea;border-radius:999px;padding:3px 8px;font-size:10px}
+.compact-intel-row h3{font-size:14px;line-height:1.4;letter-spacing:-.1px;margin:6px 0;color:#1b303c}
+.compact-intel-row p{margin:5px 0 0;font-size:12px;line-height:1.5;color:#5b6d78;max-width:90ch;overflow-wrap:anywhere}
+.compact-intel-row .compact-intel-action{font-weight:650;color:#2b4955}
+.compact-intel-subline{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:11px;color:#81909a}
+.compact-intel-controls{flex:none;display:flex;gap:9px;align-items:center;padding-top:4px}
+.compact-intel-controls>a{font-size:12px;font-weight:700;color:#177a9c;text-decoration:none}
+.compact-intel-controls>a:hover{text-decoration:underline}
+.compact-intel-more{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 24px;border-top:1px solid #eaf0f2;color:#81909a;font-size:12px}
+.compact-intel-more a{font-weight:750;color:#1179a0;text-decoration:none}
+.compact-intel-folders{margin-bottom:16px;padding:14px 18px;font-size:12px;color:#657781}
+.compact-intel-folders summary{font-weight:750;cursor:pointer}
+.compact-intel-folders p{line-height:1.6}
+@media(max-width:700px){.compact-intel-list{padding:0 15px 5px}.compact-intel-row{display:block}.compact-intel-controls{padding:10px 0 0}.compact-intel-more{padding:12px 16px}.compact-intel-subline{gap:4px 10px}}
