@@ -22,7 +22,7 @@ const stateLabel: Record<string, string> = {
 
 export default async function Home() {
   const tasks = await prisma.task.findMany({
-    where: { deleted: false, client: { space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
+    where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
     include: {
       client: true,
       intelligence: true,
@@ -48,7 +48,7 @@ export default async function Home() {
   const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const groups = groupClientFolders(allClients);
   const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
-  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { space: { name: 'JF Corporate' } } }, _count: { _all: true } });
+  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } }, _count: { _all: true } });
   const totalsByClient = new Map(importedCounts.map(row => [row.clientId, row._count._all]));
   for (const group of groups) {
     clientRows.set(group.canonical.slug, {
