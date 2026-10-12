@@ -593,3 +593,28 @@ button{font-family:inherit}
 .compact-intel-folders summary{font-weight:750;cursor:pointer}
 .compact-intel-folders p{line-height:1.6}
 @media(max-width:700px){.compact-intel-list{padding:0 15px 5px}.compact-intel-row{display:block}.compact-intel-controls{padding:10px 0 0}.compact-intel-more{padding:12px 16px}.compact-intel-subline{gap:4px 10px}}
+
+
+/* Directory and recent-activity improvements */
+.directory-filters{margin:0 18px 8px}
+.directory-result-count{padding:0 23px 12px;margin:0;font-size:12px;color:#71818b}
+.directory-empty{padding:16px 24px 25px}
+.compact-activity-priority{margin-bottom:18px;max-width:940px}
+.compact-activity-decision{border-top:1px solid #eaf0f2;padding:13px 0}
+.compact-activity-decision>span{display:block;color:#7b8b95;font-size:11px;margin-bottom:4px}
+.compact-activity-decision>strong{display:block;font-size:13px;color:#1b303c}
+.compact-activity-decision>p{font-size:12px;color:#61717c;line-height:1.5;margin:4px 0}
+.compact-activity-decision>a{font-size:11px;font-weight:700;text-decoration:none;color:#177a9c}
+.compact-activity-panel{scroll-margin-top:18px}
+.compact-activity-filters{margin:0 18px 12px}
+.compact-activity-count{padding:0 24px;margin:8px 0 14px;font-size:12px;color:#81909a}
+.compact-activity-list{padding:0 24px}
+.compact-activity-row{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-top:1px solid #eaf0f2}
+.compact-activity-row .activity-dot{flex:none;margin-top:8px}
+.compact-activity-copy{flex:1;min-width:0}
+.compact-activity-row h3{font-size:13px;line-height:1.4;margin:6px 0 3px}
+.compact-activity-row p{font-size:12px;line-height:1.5;color:#687a85;margin:0;overflow-wrap:anywhere}
+.compact-activity-row>a{flex:none;align-self:center;font-size:11px;font-weight:700;color:#177a9c;text-decoration:none}
+.compact-activity-pagination{display:flex;justify-content:space-between;padding:16px 24px;border-top:1px solid #eaf0f2}
+.compact-activity-pagination a{color:#177a9c;font-size:12px;font-weight:750;text-decoration:none}
+@media(max-width:700px){.directory-filters,.compact-activity-filters{margin:0 12px 12px}.compact-activity-list{padding:0 15px}.compact-activity-row{flex-wrap:wrap}.compact-activity-row>a{margin-left:20px}.compact-activity-count{padding:0 15px}.directory-result-count{padding:0 15px 12px}}
