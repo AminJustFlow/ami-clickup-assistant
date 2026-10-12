@@ -75,6 +75,10 @@ Covered cases:
 - missing/stale/failed heartbeat and stale leases make readiness fail;
 - current budget-limited worker does not fail solely because backlog is old;
 - UTC timestamp behavior is correct on a non-UTC database session.
+- lease ownership is renewed during long model requests and cannot be renewed after completion;
+- concurrent lease/completion transactions retry PostgreSQL serialization failures without exceeding the cap;
+- a crash after intelligence persistence conservatively converts the full reservation to actual spend rather than recording zero;
+- the audited production shape of 70 legacy leases and 499 paused jobs reconciles to zero leases, 35 bounded retries, 35 terminal failures, 499 still paused, zero reservation leakage, and unchanged actual spend in the isolated database.
 
 ## Remaining risks
 

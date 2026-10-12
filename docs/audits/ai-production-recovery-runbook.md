@@ -43,18 +43,12 @@ Do not proceed if backup verification fails.
 ## Step 3 — Stop only the AI worker
 
 ```powershell
-ssh.exe -i $SshKey -o StrictHostKeyChecking=yes ubuntu@34.224.54.213 'cd /opt/ami-clickup-assistant && sudo docker compose -f docker-compose.prod.yml stop ai-worker'
+ssh.exe -i $SshKey -o StrictHostKeyChecking=yes ubuntu@34.224.54.213 'cd /opt/ami-clickup-assistant && sudo docker compose -f docker-compose.prod.yml stop -t 1800 ai-worker'
 ```
 
-Verify no AI worker container/process remains active. This prevents new leases while accounting is reconciled. Do not stop PostgreSQL.
+The long stop timeout lets the current request finish after SIGTERM instead of cutting it off. Verify no AI worker container/process remains active. Repeat the lease preflight and stop if any unexpired lease remains; its provider outcome is ambiguous and requires individual review. This prevents new leases while accounting is reconciled. Do not stop PostgreSQL.
 
-## Step 4 — Deploy code and additive migration
-
-Use the reviewed deployment workflow. The migration only adds nullable `reservationDay` and an index. Do not start the AI worker yet if using a manual maintenance deployment. Verify the deployed SHA and schema column/index.
-
-The normal workflow currently starts all services; for this recovery, use a reviewed maintenance variant or immediately stop AI before reconciliation. Do not improvise commands during the window.
-
-## Step 5 — Reconcile legacy leases and reservations
+## Step 4 — Reconcile legacy leases and reservations on the old schema
 
 First repeat the preflight queries. Substitute the configured retry limit below; do not assume `3` if production differs.
 
@@ -75,7 +69,6 @@ UPDATE "AnalysisJob"
 SET status='FAILED',
     "leaseOwner"=NULL,
     "leaseExpiresAt"=NULL,
-    "reservationDay"=NULL,
     "estimatedReservedUsd"=0,
     "completedAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     "lastError"='Recovered legacy expired lease after maximum attempts'
@@ -86,24 +79,20 @@ UPDATE "AnalysisJob"
 SET status='PENDING',
     "leaseOwner"=NULL,
     "leaseExpiresAt"=NULL,
-    "reservationDay"=NULL,
     "estimatedReservedUsd"=0,
     "nextAttemptAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     "completedAt"=NULL,
     "lastError"='Recovered legacy expired lease for retry'
 WHERE status='LEASED' AND attempts < :approved_max_retries;
 
--- Rebuild each budget reservation from active, attributable leases only.
-UPDATE "AiBudgetDay" b
-SET "reservedUsd" = COALESCE((
-  SELECT SUM(j."estimatedReservedUsd")
-  FROM "AnalysisJob" j
-  WHERE j.status='LEASED' AND j."reservationDay"=b.day
-), 0),
-"updatedAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC');
+-- The worker is stopped and every legacy lease above has been terminalized or
+-- returned to pending, so no active reservation remains. Clear leaked totals.
+UPDATE "AiBudgetDay"
+SET "reservedUsd"=0,
+    "updatedAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC');
 
--- Safety assertions: these must return zero rows / true before COMMIT.
-SELECT count(*) FROM "AnalysisJob" WHERE status='LEASED' AND "reservationDay" IS NULL;
+-- Safety assertions: leased count must be zero and the cap invariant true.
+SELECT count(*) FROM "AnalysisJob" WHERE status='LEASED';
 SELECT bool_and("reservedUsd" >= 0 AND "actualEstimatedUsd" + "reservedUsd" <= :approved_daily_budget)
 FROM "AiBudgetDay";
 
@@ -115,7 +104,15 @@ Use the SQL client’s variable mechanism for the approved numeric values; do no
 
 Do **not** immediately move all 499 `PAUSED_BUDGET` jobs to pending. Their `nextAttemptAt` preserves the spending boundary. The repaired worker will resume them when due.
 
-## Step 6 — Controlled restart
+## Step 5 — Deploy code and additive migration
+
+Only after the legacy transaction commits, run the reviewed deployment workflow. The migration adds nullable `reservationDay` plus an index and does not rewrite existing rows. The workflow performs another backup, migrates, starts all services, verifies the exact commit, and polls readiness.
+
+Verify the deployed SHA and the new column/index. The reconciled database contains no legacy leased job, so the newly started worker cannot race the reconciliation. A fresh worker writes `PROCESSING` before its first model request; `/api/health` permits that expected startup state while still failing for expired leases or a stale heartbeat.
+
+If deployment fails before the new worker starts, do not restart the old AI worker: it contains the reservation leak. Keep AI stopped, leave ClickUp sync/web available, and either correct the release or restore the verified backup under the rollback decision below.
+
+## Step 6 — Controlled verification
 
 1. Start one AI worker replica only.
 2. Confirm heartbeat becomes `PROCESSING` or `IDLE` within five minutes.

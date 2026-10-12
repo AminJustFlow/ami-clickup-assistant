@@ -50,6 +50,7 @@ export function assessAiReadiness(input: AiReadinessInput): { ready: boolean; re
   }
   if (input.staleLeaseCount > 0) reasons.push('ai_stale_leases');
   const noRecentSuccessfulCycle = !input.heartbeat?.lastSuccessAt || input.now.getTime() - input.heartbeat.lastSuccessAt.getTime() > input.queueMaxAgeMs;
-  if (input.oldestEligibleAt && input.now.getTime() - input.oldestEligibleAt.getTime() > input.queueMaxAgeMs && (heartbeatStale || noRecentSuccessfulCycle)) reasons.push('ai_queue_stale');
+  const activelyProcessing = input.heartbeat?.status === 'PROCESSING' && !heartbeatStale;
+  if (input.oldestEligibleAt && input.now.getTime() - input.oldestEligibleAt.getTime() > input.queueMaxAgeMs && !activelyProcessing && (heartbeatStale || noRecentSuccessfulCycle)) reasons.push('ai_queue_stale');
   return { ready: reasons.length === 0, reasons };
 }

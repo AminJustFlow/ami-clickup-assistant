@@ -33,7 +33,7 @@ const migration = spawnSync(process.execPath, ['node_modules/prisma/build/index.
 if (migration.status !== 0) throw new Error('Migration failed:\n' + migration.stdout + '\n' + migration.stderr);
 
 const { prisma } = await import('../lib/db/prisma');
-const { completeJob, leaseJob, recoverExpiredLeases } = await import('./continuous-ai-worker');
+const { completeJob, leaseJob, recoverExpiredLeases, renewOwnedLease } = await import('./continuous-ai-worker');
 const db = prisma as PrismaClient;
 
 await db.analysisJob.deleteMany();
@@ -73,6 +73,9 @@ assert.ok(leased);
 const leasedRow = await db.analysisJob.findUniqueOrThrow({ where: { id: leased!.id } });
 assert.equal(leasedRow.status, 'LEASED');
 assert.ok(leasedRow.reservationDay);
+const originalExpiry = leasedRow.leaseExpiresAt!;
+assert.equal(await renewOwnedLease(leased!.id, new Date(originalExpiry.getTime()), db), true);
+assert.ok((await db.analysisJob.findUniqueOrThrow({ where: { id: leased!.id } })).leaseExpiresAt! > originalExpiry);
 await completeJob(leased!.id, { input: 100, output: 20, actual: 0.01 }, db);
 const completed = await db.analysisJob.findUniqueOrThrow({ where: { id: pending.id } });
 assert.equal(completed.status, 'SUCCEEDED');
@@ -81,7 +84,56 @@ const completedBudget = await db.aiBudgetDay.findUniqueOrThrow({ where: { day: l
 assert.equal(Number(completedBudget.reservedUsd), 0);
 assert.equal(Number(completedBudget.actualEstimatedUsd), 0.01);
 
-console.log('AI worker PostgreSQL integration tests passed: interrupted lease recovery, retry exhaustion, atomic reservation release, and completion accounting.');
+const cachedJob = await makeJob('cached');
+const cachedLease = await leaseJob(db);
+assert.equal(cachedLease?.id, cachedJob.id);
+const cachedBefore = await db.analysisJob.findUniqueOrThrow({ where: { id: cachedJob.id } });
+const conservativeCharge = Number(cachedBefore.estimatedReservedUsd);
+await completeJob(cachedJob.id, { input: 0, output: 0, actual: null }, db);
+const cachedAfter = await db.analysisJob.findUniqueOrThrow({ where: { id: cachedJob.id } });
+assert.equal(Number(cachedAfter.actualEstimatedUsd), conservativeCharge);
+assert.equal(cachedAfter.actualInputTokens, null);
+assert.equal(await renewOwnedLease(cachedJob.id, new Date(), db), false);
+
+const concurrentA = await makeJob('concurrent-a');
+const concurrentB = await makeJob('concurrent-b');
+const concurrent = await Promise.all([leaseJob(db), leaseJob(db)]);
+assert.deepEqual(new Set(concurrent.map(job => job?.id)), new Set([concurrentA.id, concurrentB.id]));
+const concurrentRows = await db.analysisJob.findMany({ where: { id: { in: [concurrentA.id, concurrentB.id] } } });
+const concurrentReserved = concurrentRows.reduce((sum, job) => sum + Number(job.estimatedReservedUsd), 0);
+const concurrentDay = concurrentRows[0].reservationDay!;
+assert.equal(Number((await db.aiBudgetDay.findUniqueOrThrow({ where: { day: concurrentDay } })).reservedUsd), concurrentReserved);
+await Promise.all(concurrent.map(job => completeJob(job!.id, { input: 1, output: 1, actual: 0.001 }, db)));
+assert.equal(Number((await db.aiBudgetDay.findUniqueOrThrow({ where: { day: concurrentDay } })).reservedUsd), 0);
+
+// Exercise the production runbook's legacy reconciliation shape at audited scale.
+await db.analysisJob.deleteMany();
+await db.task.deleteMany();
+await db.aiBudgetDay.deleteMany();
+const legacyTasks = Array.from({ length: 569 }, (_, index) => ({ clickupTaskId: 'legacy-task-' + index, clientId: client.id, listId: list.id, name: 'Legacy ' + index, rawPayload: {} }));
+await db.task.createMany({ data: legacyTasks });
+const legacyRows = await db.task.findMany({ where: { clickupTaskId: { startsWith: 'legacy-task-' } }, orderBy: { clickupTaskId: 'asc' }, select: { id: true } });
+await db.analysisJob.createMany({ data: [
+  ...legacyRows.slice(0, 35).map(task => ({ taskId: task.id, status: 'LEASED' as const, attempts: 3, leaseOwner: 'legacy', leaseExpiresAt: new Date(Date.now() - 86_400_000), estimatedReservedUsd: 0.002 })),
+  ...legacyRows.slice(35, 70).map(task => ({ taskId: task.id, status: 'LEASED' as const, attempts: 1, leaseOwner: 'legacy', leaseExpiresAt: new Date(Date.now() - 86_400_000), estimatedReservedUsd: 0.002 })),
+  ...legacyRows.slice(70).map(task => ({ taskId: task.id, status: 'PAUSED_BUDGET' as const, attempts: 0, nextAttemptAt: new Date(Date.now() + 86_400_000) }))
+] });
+await db.aiBudgetDay.create({ data: { day: new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z'), reservedUsd: 1.9968, actualEstimatedUsd: 0.238709 } });
+await db.$transaction(async tx => {
+  await tx.$executeRaw`UPDATE "AnalysisJob" SET status='FAILED', "leaseOwner"=NULL, "leaseExpiresAt"=NULL, "estimatedReservedUsd"=0, "completedAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), "lastError"='Recovered legacy expired lease after maximum attempts' WHERE status='LEASED' AND attempts >= 3`;
+  await tx.$executeRaw`UPDATE "AnalysisJob" SET status='PENDING', "leaseOwner"=NULL, "leaseExpiresAt"=NULL, "estimatedReservedUsd"=0, "nextAttemptAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), "completedAt"=NULL, "lastError"='Recovered legacy expired lease for retry' WHERE status='LEASED' AND attempts < 3`;
+  await tx.$executeRaw`UPDATE "AiBudgetDay" SET "reservedUsd"=0, "updatedAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')`;
+});
+const legacyCounts = new Map((await db.analysisJob.groupBy({ by: ['status'], _count: true })).map(row => [row.status, row._count]));
+assert.equal(legacyCounts.get('LEASED') ?? 0, 0);
+assert.equal(legacyCounts.get('FAILED'), 35);
+assert.equal(legacyCounts.get('PENDING'), 35);
+assert.equal(legacyCounts.get('PAUSED_BUDGET'), 499);
+const reconciledBudget = await db.aiBudgetDay.findFirstOrThrow();
+assert.equal(Number(reconciledBudget.reservedUsd), 0);
+assert.equal(Number(reconciledBudget.actualEstimatedUsd), 0.238709);
+
+console.log('AI worker PostgreSQL integration tests passed: interruption recovery, retry exhaustion, lease renewal/ownership, concurrent reservations, conservative crash accounting, completion settlement, and 70/499 legacy reconciliation.');
 await db.$disconnect();
 }
 

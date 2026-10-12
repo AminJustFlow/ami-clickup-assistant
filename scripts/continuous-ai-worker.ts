@@ -41,6 +41,23 @@ if (!Number.isFinite(leaseMilliseconds) || leaseMilliseconds < 5 * 60_000) throw
 
 type LockedJob = { id: number; taskId: number; attempts: number; estimatedReservedUsd: Prisma.Decimal; reservationDay: Date | null };
 
+function isRetryableTransactionError(error: unknown): boolean {
+  const value = error as { code?: string; meta?: { code?: string } };
+  return value?.code === 'P2034' || (value?.code === 'P2010' && ['40001', '40P01'].includes(value.meta?.code ?? ''));
+}
+
+async function serializable<T>(client: typeof prisma, operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await client.$transaction(operation, { isolationLevel: 'Serializable' });
+    } catch (error) {
+      if (!isRetryableTransactionError(error) || attempt === 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 10 * (2 ** attempt)));
+    }
+  }
+  throw new Error('Serializable transaction failed after retries');
+}
+
 async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<LockedJob, 'estimatedReservedUsd' | 'reservationDay'>) {
   if (!job.reservationDay || Number(job.estimatedReservedUsd) <= 0) return;
   const reservationDay = job.reservationDay.toISOString().slice(0, 10);
@@ -53,7 +70,7 @@ async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<Locked
 export async function recoverExpiredLeases(now = new Date(), client = prisma) {
   let recovered = 0, failed = 0;
   for (;;) {
-    const changed = await client.$transaction(async tx => {
+    const changed = await serializable(client, async tx => {
       const rows = await tx.$queryRaw<LockedJob[]>`
         SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay"
         FROM "AnalysisJob"
@@ -77,7 +94,7 @@ export async function recoverExpiredLeases(now = new Date(), client = prisma) {
         if (outcome === 'FAILED') batchFailed++; else batchRecovered++;
       }
       return { count: rows.length, recovered: batchRecovered, failed: batchFailed };
-    }, { isolationLevel: 'Serializable' });
+    });
     recovered += changed.recovered; failed += changed.failed;
     if (changed.count < 50) break;
   }
@@ -104,7 +121,7 @@ async function refreshQueue() {
 }
 
 export async function leaseJob(client = prisma) {
-  return client.$transaction(async tx => {
+  return serializable(client, async tx => {
     const now = new Date();
     const budgetDay = utcBudgetDay(now);
     const budgetDayText = budgetDay.toISOString().slice(0, 10);
@@ -123,6 +140,35 @@ export async function leaseJob(client = prisma) {
     await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds), attempts: { increment: 1 }, estimatedReservedUsd: reservation, reservationDay: budgetDay } });
     return job;
   });
+}
+
+export async function renewOwnedLease(jobId: number, now = new Date(), client = prisma): Promise<boolean> {
+  const [updated] = await client.$transaction([
+    client.analysisJob.updateMany({ where: { id: jobId, status: 'LEASED', leaseOwner: workerId }, data: { leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds) } }),
+    client.workerHeartbeat.updateMany({ where: { name: 'ai-worker' }, data: { status: 'PROCESSING', lastSeenAt: now } })
+  ]);
+  return updated.count === 1;
+}
+
+async function withLeaseRenewal<T>(jobId: number, operation: () => Promise<T>): Promise<T> {
+  const intervalMs = Math.max(30_000, Math.min(60_000, Math.floor(leaseMilliseconds / 3)));
+  let renewalInFlight: Promise<void> | null = null;
+  let renewalError: Error | null = null;
+  const renew = () => {
+    if (renewalInFlight || renewalError) return;
+    renewalInFlight = renewOwnedLease(jobId).then(owned => {
+      if (!owned) renewalError = new Error('Worker lost job lease during AI request');
+    }).catch(error => { renewalError = error instanceof Error ? error : new Error(String(error)); }).finally(() => { renewalInFlight = null; });
+  };
+  const timer = setInterval(renew, intervalMs);
+  try {
+    const result = await operation();
+    if (renewalInFlight) await renewalInFlight;
+    if (renewalError) throw renewalError;
+    return result;
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 async function processJob(job: { id: number; taskId: number }, teamNames: string[]) {
@@ -145,11 +191,14 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     // If a prior worker saved the exact result and died before finalizing the job,
     // finalize without paying for duplicate analysis.
     if (task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === TASK_ANALYZER_PROMPT_VERSION + ':' + model) {
-      await completeJob(job.id, { input: 0, output: 0, actual: 0 });
+      // The provider may have completed before the previous worker crashed.
+      // With no persisted token counts, convert the full reservation to actual
+      // spend so the hard cap remains conservative rather than recording $0.
+      await completeJob(job.id, { input: 0, output: 0, actual: null });
       return;
     }
     await prisma.analysisJob.updateMany({ where: { id: job.id, status: 'LEASED', leaseOwner: workerId }, data: { sourceFingerprint: fingerprint } });
-    const result = await analyzeWithAI(context, { model, teamNames, related, idempotencyKey: aiRequestIdempotencyKey(job.id, fingerprint) });
+    const result = await withLeaseRenewal(job.id, () => analyzeWithAI(context, { model, teamNames, related, idempotencyKey: aiRequestIdempotencyKey(job.id, fingerprint) }));
     if (result.source !== 'AI') throw new Error('OpenAI analysis did not complete');
     const stillOwned = await prisma.analysisJob.count({ where: { id: job.id, status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } } });
     if (!stillOwned) throw new Error('Worker lost job lease before result could be committed');
@@ -161,25 +210,26 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
     const current = await prisma.analysisJob.findUniqueOrThrow({ where: { id: job.id } });
     const terminal = current.attempts >= maxRetries;
-    await prisma.$transaction(async tx => {
+    await serializable(prisma, async tx => {
       const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay" FROM "AnalysisJob" WHERE id = ${job.id} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
       if (!locked) return;
       await releaseReservation(tx, locked);
       if (locked.reservationDay) await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { failedJobs: { increment: 1 } } });
       await tx.analysisJob.update({ where: { id: job.id }, data: { status: terminal ? 'FAILED' : 'PENDING', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, lastError: message, completedAt: terminal ? new Date() : null, nextAttemptAt: new Date(Date.now() + Math.min(3600, 30 * (2 ** current.attempts)) * 1000) } });
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 }
 
-export async function completeJob(jobId: number, usage: { input: number; output: number; actual: number }, client = prisma) {
-  await client.$transaction(async tx => {
+export async function completeJob(jobId: number, usage: { input: number; output: number; actual: number | null }, client = prisma) {
+  await serializable(client, async tx => {
     const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay" FROM "AnalysisJob" WHERE id = ${jobId} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
     if (!locked) return;
     await releaseReservation(tx, locked);
     if (!locked.reservationDay) throw new Error('Leased job has no reservation day');
-    await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { actualEstimatedUsd: { increment: usage.actual }, inputTokens: { increment: usage.input }, outputTokens: { increment: usage.output }, successfulJobs: { increment: 1 } } });
-    await tx.analysisJob.update({ where: { id: jobId }, data: { status: 'SUCCEEDED', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, actualInputTokens: usage.input, actualOutputTokens: usage.output, actualEstimatedUsd: usage.actual, completedAt: new Date(), lastError: null } });
-  }, { isolationLevel: 'Serializable' });
+    const actual = usage.actual ?? Number(locked.estimatedReservedUsd);
+    await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { actualEstimatedUsd: { increment: actual }, inputTokens: { increment: usage.input }, outputTokens: { increment: usage.output }, successfulJobs: { increment: 1 } } });
+    await tx.analysisJob.update({ where: { id: jobId }, data: { status: 'SUCCEEDED', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, actualInputTokens: usage.actual === null ? null : usage.input, actualOutputTokens: usage.actual === null ? null : usage.output, actualEstimatedUsd: actual, completedAt: new Date(), lastError: null } });
+  });
 }
 
 async function cycle() {
