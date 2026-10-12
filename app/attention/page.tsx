@@ -63,7 +63,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       select: {
         id: true, name: true, dueDate: true, clickupUpdatedAt: true, clickupUrl: true, clickupStatus: true,
         client: { select: { name: true } },
-        attentionDisposition: { select: { decision: true, sourceFingerprint: true, updatedAt: true } },
+        attentionDisposition: { select: { decision: true, reason: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
           amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
           needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true
@@ -101,6 +101,10 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const verifyCount = active.filter(task => task.verificationReasons.length > 0).length;
   const returnTo = urlFor(activeFilters, currentPage);
   const brief = dailyBrief(active);
+  const reviewedCount = history.filter(task => task.recorded === 'REVIEWED').length;
+  const dismissedCount = history.filter(task => task.recorded === 'DISMISSED').length;
+  const triagedCount = reviewedCount + dismissedCount;
+  const triageTotal = active.length + triagedCount;
 
   return <main className="ops-shell dashboard-shell" id="main-content">
     <AppNav current="attention" />
@@ -132,6 +136,10 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <div><strong>{brief.verify}</strong><span>Verify AI evidence</span></div>
         <div><strong>{brief.overdueReady}</strong><span>Past due and ready for review</span></div>
       </div>
+      <div className="attention-progress" aria-label="Review progress">
+        <p><strong>{triagedCount} of {triageTotal}</strong> current recommendations triaged · {reviewedCount} reviewed · {dismissedCount} dismissed · {active.length} remaining</p>
+        <progress value={triagedCount} max={Math.max(1, triageTotal)} style={{ width: '100%', height: 12 }} />
+      </div>
       <div className="attention-rows">
         <div className="attention-row">
           <div className="attention-row-main">
@@ -148,6 +156,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <TaskDetailsButton taskId={task.id} label="Review evidence" />
                 {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
                 <form action={setAttentionDecision} className="attention-decision-form">
+                  <label>Dismissal reason (optional)<select name="reason" defaultValue=""><option value="">Choose a reason</option><option value="ALREADY_HANDLED">Already handled</option><option value="NOT_RELEVANT">Not relevant</option><option value="INCORRECT_AI">Incorrect AI recommendation</option><option value="OTHER">Other</option></select></label>
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="fingerprint" value={attentionFingerprint(task.intelligence!)} />
                   <input type="hidden" name="returnTo" value="/attention" />
