@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { attentionFingerprint, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
+import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
 
@@ -13,6 +13,17 @@ assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, a
 assert.equal(isOpenAttentionTask({ clickupStatus: 'closed', intelligence: intel, attentionDisposition: null }), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DONE' } }), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: { ...intel, sourceFingerprint: 'fp-2' }, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DONE' } }), true);
+
+const qualityTask = { clickupUpdatedAt: new Date('2026-10-10T12:05:00Z'), intelligence: { ...intel, confidence: 0.65, amiAction: null } };
+assert.deepEqual(attentionVerificationReasons(qualityTask), [
+  'ClickUp changed after the AI analysis',
+  'Low or unknown AI confidence',
+  'No specific action for Ami'
+]);
+assert.deepEqual(attentionVerificationReasons({
+  clickupUpdatedAt: analyzedAt,
+  intelligence: { ...intel, confidence: 0.94, amiAction: 'Confirm launch date' }
+}), []);
 
 const before = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'open' }, assignees: [{ id: 2 }], due_date: '1', description: 'A' });
 const after = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'done' }, assignees: [{ id: 3 }], due_date: '1', description: 'A' });

@@ -4,15 +4,15 @@ import { groupClientFolders } from '@/lib/clients/grouping';
 import { AppNav } from '../components/app-nav';
 import { TaskDetailsButton } from '../components/task-details';
 import { setAttentionDecision } from './actions';
-import { attentionFingerprint, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 12;
-type Priority = 'all' | 'overdue' | 'high' | 'recent';
+type Priority = 'all' | 'overdue' | 'high' | 'recent' | 'verify';
 type View = 'active' | 'history';
 type Filters = { client?: string; priority?: string; q?: string; page?: string; view?: string; notice?: string };
-const priorities: Priority[] = ['all', 'overdue', 'high', 'recent'];
+const priorities: Priority[] = ['all', 'overdue', 'high', 'recent', 'verify'];
 const dateLabel = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 function urlFor(filters: { client: string; priority: Priority; q: string; view: View }, page = 1) {
@@ -65,7 +65,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         attentionDisposition: { select: { decision: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
           amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
-          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true
+          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true
         } }
       },
       orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
@@ -80,14 +80,15 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     const recorded = task.attentionDisposition && task.attentionDisposition.sourceFingerprint === attentionFingerprint(intel)
       ? task.attentionDisposition.decision : null;
     const overdue = !closed && !!task.dueDate && task.dueDate < now;
-    const urgency = overdue ? 'Overdue' : intel.amiAttentionScore >= 70 ? 'High priority' : 'Normal';
-    return { ...task, closed, recorded, overdue, urgency };
+    const verificationReasons = attentionVerificationReasons(task);
+    const urgency = verificationReasons.length ? 'Verify recommendation' : overdue ? 'Overdue' : intel.amiAttentionScore >= 70 ? 'High priority' : 'Normal';
+    return { ...task, closed, recorded, overdue, urgency, verificationReasons };
   });
   const active = categorized.filter(isOpenAttentionTask);
   const history = categorized.filter(task => task.closed || !!task.recorded);
   const selected = (view === 'active' ? active : history)
-    .filter(task => priority !== 'overdue' || task.overdue)
-    .sort((a, b) => Number(b.overdue) - Number(a.overdue)
+    .filter(task => (priority !== 'overdue' || task.overdue) && (priority !== 'verify' || task.verificationReasons.length > 0))
+    .sort((a, b) => Number(a.verificationReasons.length > 0) - Number(b.verificationReasons.length > 0) || Number(b.overdue) - Number(a.overdue)
       || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0)
       || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0) || a.id - b.id);
   const total = selected.length;
@@ -96,6 +97,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const tasks = selected.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const highCount = active.filter(task => task.urgency === 'High priority' || task.overdue).length;
   const overdueCount = active.filter(task => task.overdue).length;
+  const verifyCount = active.filter(task => task.verificationReasons.length > 0).length;
   const returnTo = urlFor(activeFilters, currentPage);
 
   return <main className="ops-shell dashboard-shell" id="main-content">
@@ -109,6 +111,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       <div><strong>{active.length}</strong><span>Open decisions in current scope</span></div>
       <div><strong>{overdueCount}</strong><span>Past due</span></div>
       <div><strong>{highCount}</strong><span>High priority or overdue</span></div>
+      <div><strong>{verifyCount}</strong><span>Recommendations to verify</span></div>
       <div><strong>{importedCount ? Math.round(100 * analyzedCount / importedCount) : 0}%</strong><span>AI analysis coverage</span></div>
     </section>
     <p className="dashboard-note attention-coverage">{analyzedCount.toLocaleString()} of {importedCount.toLocaleString()} imported tasks analyzed across active clients. Unanalyzed tasks cannot appear here. Human reviews are stored only in this app.</p>
@@ -136,6 +139,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
             <option value="overdue">Past due date</option>
             <option value="high">Attention score 70+</option>
             <option value="recent">Updated in last 7 days</option>
+            <option value="verify">Needs verification</option>
           </select>
         </label>
         <label className="attention-search-label">Search
@@ -149,13 +153,15 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
           const intel = task.intelligence!;
           return <article className="attention-row" key={task.id}>
             <div className="attention-row-main">
-              <div className="attention-row-byline"><span>{task.client.name}</span><span className={task.overdue ? 'attention-urgency overdue' : intel.amiAttentionScore >= 70 ? 'attention-urgency high' : 'attention-urgency normal'}>{task.closed ? 'Completed in ClickUp / AI' : task.recorded ? (task.recorded === 'REVIEWED' ? 'Reviewed' : 'Dismissed') : task.urgency}</span></div>
+              <div className="attention-row-byline"><span>{task.client.name}</span><span className={task.verificationReasons.length ? 'attention-urgency normal' : task.overdue ? 'attention-urgency overdue' : intel.amiAttentionScore >= 70 ? 'attention-urgency high' : 'attention-urgency normal'}>{task.closed ? 'Completed in ClickUp / AI' : task.recorded ? (task.recorded === 'REVIEWED' ? 'Reviewed' : 'Dismissed') : task.urgency}</span></div>
               <h3>{task.name}</h3>
               <p className="attention-row-action">{intel.amiAction || intel.currentSummary || 'Review the task for next steps.'}</p>
+              {task.verificationReasons.length > 0 && <p className="attention-notice" role="note"><strong>Verify before acting:</strong> {task.verificationReasons.join('; ')}. Check the latest ClickUp comments and task status.</p>}
               <div className="attention-meta">
                 {task.dueDate && <span className={task.overdue ? 'attention-overdue' : ''}>{task.overdue ? 'Past due' : 'Due'}: {dateLabel(task.dueDate)}</span>}
                 {intel.waitingOnName && <span>Waiting on: {intel.waitingOnName}</span>}
                 {intel.analyzedAt && <span>Analyzed: {dateLabel(intel.analyzedAt)}</span>}
+                {intel.confidence != null && <span>AI confidence: {Math.round(intel.confidence * 100)}%</span>}
               </div>
             </div>
             <div className="attention-row-actions">
@@ -182,6 +188,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <div>{currentPage > 1 && <Link href={urlFor(activeFilters, currentPage - 1)}>← Previous</Link>}{currentPage < totalPages && <Link href={urlFor(activeFilters, currentPage + 1)}>Next →</Link>}</div>
       </nav>
     </section>
+    <p className="dashboard-note">Items marked for verification remain visible, but should not be treated as confirmed current requests. The AI may have missed later comments or have incomplete context.</p>
     <p className="dashboard-note">Reviewing or dismissing an AI recommendation does not close, update, or acknowledge a ClickUp task. New AI assessments may bring a previously reviewed task back into the open inbox.</p>
   </main>;
 }

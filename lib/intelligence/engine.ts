@@ -45,6 +45,13 @@ function knownVendor(text: string): string | null {
   return names.find((name) => new RegExp(`\\b${name.replace(' ', '\\s+')}\\b`, 'i').test(text)) ?? null;
 }
 
+function isConfirmedCompletion(text: string): boolean {
+  if (!completion.test(text)) return false;
+  // Do not interpret explicit negations as completed work.
+  if (/\b(?:not|isn['’]t|wasn['’]t|never|still not)\s+(?:(?:yet|fully|completely)\s+)?(?:done|complete|completed|fixed|resolved|published|live|finished)\b/i.test(text)) return false;
+  return true;
+}
+
 function clearAmi() {
   return { needsAmi: false, amiAction: null as string | null };
 }
@@ -61,11 +68,11 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
   let lastMeaningfulChangeAt: Date | null = null;
   let lastMeaningfulChange: string | null = null;
 
-  for (const comment of context.comments) {
+  for (const comment of [...context.comments].sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || a.id - b.id)) {
     const text = clean(comment.body);
     let meaningful = false;
 
-    if (completion.test(text)) {
+    if (isConfirmedCompletion(text)) {
       state = 'COMPLETED';
       waitingOnType = 'NONE';
       waitingOnName = null;
@@ -135,6 +142,14 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
       lastMeaningfulChange = text;
       lastMeaningfulChangeAt = comment.createdAt;
     }
+  }
+
+  // The current ClickUp closed status is authoritative over older comment requests.
+  if (clickupDone) {
+    state = 'COMPLETED';
+    waitingOnType = 'NONE';
+    waitingOnName = null;
+    ({ needsAmi, amiAction } = clearAmi());
   }
 
   const blocked = ['BLOCKED', 'ISSUE', 'WAITING_ON_VENDOR', 'WAITING_ON_CLIENT'].includes(state);
