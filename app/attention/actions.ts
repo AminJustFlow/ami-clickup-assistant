@@ -8,6 +8,9 @@ export async function setAttentionDecision(formData: FormData) {
   const taskId = Number(formData.get('taskId'));
   const decision = formData.get('decision');
   const fingerprint = formData.get('fingerprint');
+  const submittedReason = formData.get('reason');
+  const allowedReasons = ['ALREADY_HANDLED', 'NOT_RELEVANT', 'INCORRECT_AI', 'OTHER'];
+  const reason = decision === 'DISMISSED' && typeof submittedReason === 'string' && allowedReasons.includes(submittedReason) ? submittedReason : null;
   const returnTo = formData.get('returnTo');
   const safeReturn = typeof returnTo === 'string' && /^\/attention(?:\?(?!\/)[^#]*)?$/.test(returnTo)
     ? returnTo : '/attention';
@@ -36,8 +39,8 @@ export async function setAttentionDecision(formData: FormData) {
 
   await prisma.attentionDisposition.upsert({
     where: { taskId },
-    create: { taskId, decision, sourceFingerprint: currentFingerprint },
-    update: { decision, sourceFingerprint: currentFingerprint }
+    create: { taskId, decision, reason, sourceFingerprint: currentFingerprint },
+    update: { decision, reason, sourceFingerprint: currentFingerprint }
   });
   revalidatePath('/attention');
   redirect(safeReturn);
