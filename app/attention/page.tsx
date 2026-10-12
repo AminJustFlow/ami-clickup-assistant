@@ -4,6 +4,7 @@ import { groupClientFolders } from '@/lib/clients/grouping';
 import { AppNav } from '../components/app-nav';
 import { TaskDetailsButton } from '../components/task-details';
 import { setAttentionDecision } from './actions';
+import { dailyBrief } from '@/lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
@@ -99,6 +100,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const overdueCount = active.filter(task => task.overdue).length;
   const verifyCount = active.filter(task => task.verificationReasons.length > 0).length;
   const returnTo = urlFor(activeFilters, currentPage);
+  const brief = dailyBrief(active);
 
   return <main className="ops-shell dashboard-shell" id="main-content">
     <AppNav current="attention" />
@@ -116,6 +118,37 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     </section>
     <p className="dashboard-note attention-coverage">{analyzedCount.toLocaleString()} of {importedCount.toLocaleString()} imported tasks analyzed across active clients. Unanalyzed tasks cannot appear here. Human reviews are stored only in this app.</p>
     {params.notice === 'stale' && <p className="attention-notice" role="status">This task's AI assessment changed. Review its latest context before updating it.</p>}
+    <section className="clean-panel attention-panel" aria-labelledby="daily-brief-title">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">DAILY DECISION BRIEF</p>
+          <h2 id="daily-brief-title">Ami's priorities</h2>
+          <p>Based on currently analyzed, open recommendations in {selectedGroup ? selectedGroup.canonical.name : 'active JF Corporate clients'}. Review ClickUp evidence before taking action.</p>
+        </div>
+        <Link href="/review?filter=unreviewed" className="task-action">Audit AI recommendations ↗</Link>
+      </div>
+      <div className="detail-stat-strip" aria-label="Daily decision summary">
+        <div><strong>{brief.ready}</strong><span>Ready for review</span></div>
+        <div><strong>{brief.verify}</strong><span>Verify AI evidence</span></div>
+        <div><strong>{brief.overdueReady}</strong><span>Past due and ready for review</span></div>
+      </div>
+      <div className="attention-rows">
+        <div className="attention-row">
+          <div className="attention-row-main">
+            <h3>First decisions to review</h3>
+            {brief.topReady.length ? brief.topReady.map(task => <p key={task.id}><strong>{task.client.name}:</strong> {task.name} — {task.intelligence?.amiAction || 'Review current task context.'} <TaskDetailsButton taskId={task.id} label="Evidence" /></p>) : <p>No recommendations currently meet the verification threshold.</p>}
+          </div>
+        </div>
+        {brief.topToVerify.length > 0 && <div className="attention-row">
+          <div className="attention-row-main">
+            <h3>Validate before acting</h3>
+            {brief.topToVerify.map(task => <p key={task.id}><strong>{task.client.name}:</strong> {task.name} — {task.verificationReasons.join('; ')}. <TaskDetailsButton taskId={task.id} label="Review context" /></p>)}
+            <Link href={urlFor({ ...activeFilters, priority: 'verify', view: 'active' })}>See all {brief.verify} recommendations needing verification →</Link>
+          </div>
+        </div>}
+      </div>
+      <p className="dashboard-note">This is a rule-based summary, not a new AI analysis. Counts exclude tasks without saved intelligence and do not establish that all client work has been reviewed.</p>
+    </section>
     <section className="clean-panel attention-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
         <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Needs Ami' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Open decisions, with past-due items first.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>

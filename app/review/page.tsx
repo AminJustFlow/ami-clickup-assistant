@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma';
 import { buildTaskContext } from '@/lib/intelligence/context';
 import { analyzeWithRules } from '@/lib/intelligence/engine';
 import { saveReview } from './actions';
+import { attentionVerificationReasons, isClosedClickUpStatus } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     const team = new Set(task.assignees.map(a => a.employee.name.toLowerCase()));
     if ((saved.waitingOnType === 'CLIENT' || saved.waitingOnType === 'VENDOR') && saved.waitingOnName && team.has(saved.waitingOnName.toLowerCase())) flags.push({ priority: true, title: 'Internal assignee labeled external' });
     if (ai && saved.confidence != null && saved.confidence < 0.8) flags.push({ priority: false, title: 'Low model confidence' });
+    const verificationReasons = attentionVerificationReasons(task);
+    if (saved.needsAmi && !isClosedClickUpStatus(task.clickupStatus)) {
+      for (const reason of verificationReasons) flags.push({ priority: reason.includes('changed after') || reason.includes('No specific'), title: reason });
+    }
     const feedback = task.reviewFeedback;
     const staleReview = !!feedback && (feedback.analyzedAt?.getTime() ?? 0) !== (saved.analyzedAt?.getTime() ?? 0);
     return { task, rules, saved, ai, flags, notes, feedback, staleReview };
@@ -46,7 +51,8 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const flagged = rows.filter(r => r.flags.length > 0).length;
   const reviewed = rows.filter(r => r.feedback && !r.staleReview).length;
   const critical = rows.filter(r => r.flags.some(f => f.priority)).length;
-  const visible = rows.filter(r => filter === 'all' || (filter === 'critical' ? r.flags.some(f => f.priority) : filter === 'unreviewed' ? !r.feedback || r.staleReview : r.flags.length > 0));
+  const visible = rows.filter(r => filter === 'all' || (filter === 'critical' ? r.flags.some(f => f.priority) : filter === 'unreviewed' ? !r.feedback || r.staleReview : filter === 'ami' ? r.saved.needsAmi && (!r.feedback || r.staleReview) && !isClosedClickUpStatus(r.task.clickupStatus) : r.flags.length > 0));
+  const amiUnreviewed = rows.filter(r => r.saved.needsAmi && (!r.feedback || r.staleReview) && !isClosedClickUpStatus(r.task.clickupStatus)).length;
 
   return <main className="ops-shell" style={{ maxWidth: 1100 }}>
     <header className="ops-header">
@@ -65,9 +71,11 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     <nav style={{ display: 'flex', gap: 18, margin: '22px 0' }}>
       <a href="/review?filter=disagreements">Disagreements ({flagged})</a>
       <a href="/review?filter=critical">Priority ({critical})</a>
+      <a href="/review?filter=ami">Needs Ami QA ({amiUnreviewed})</a>
       <a href="/review?filter=all">All ({rows.length})</a>
       <a href="/review?filter=unreviewed">Unreviewed ({rows.length - reviewed})</a>
     </nav>
+    <p className="muted">The Needs Ami QA view is a human-validation queue: check the latest ClickUp status and comments before marking a recommendation correct or incorrect. Human review does not edit ClickUp or rerun paid AI analysis.</p>
     <p className="muted">Rule classifications are recalculated now. Saved AI classifications may be older. Rule/AI differences are informational. Priority flags identify potentially contradictory evidence or inconsistent classifications.</p>
     {!visible.length && <div className="empty-state">No tasks match this filter.</div>}
     {visible.map(({ task, rules, saved, ai, flags, notes, feedback, staleReview }) =>
