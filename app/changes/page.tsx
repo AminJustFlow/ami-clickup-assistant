@@ -79,11 +79,27 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     (!filters.category || item.category === filters.category) &&
     (!search || [item.title, item.client, item.detail].some(s => s.toLowerCase().includes(search)))
   );
+  // Only collapse recognizable routine maintenance confirmations, never arbitrary comments.
+  // Keep every original event available inside its expandable group.
+  const routineMessage = /performed website maintenance today[,.]? everything is functioning as expected/i;
+  const activityGroups: { item: ChangeItem; entries: ChangeItem[]; routine: boolean }[] = [];
+  const routineGroups = new Map<string, (typeof activityGroups)[number]>();
+  for (const item of filtered) {
+    const routine = item.category === 'comment' && routineMessage.test(item.detail);
+    const key = routine ? [item.client, item.title, item.detail.replace(/^[^:]*:\s*/, '').trim().toLowerCase()].join('|') : '';
+    const existing = routine ? routineGroups.get(key) : undefined;
+    if (existing) existing.entries.push(item);
+    else {
+      const group = { item, entries: [item], routine };
+      activityGroups.push(group);
+      if (routine) routineGroups.set(key, group);
+    }
+  }
   const pageNumber = Math.max(1, Math.min(100, Number.isInteger(Number(filters.page)) ? Number(filters.page) : 1));
-  const perPage = 20;
-  const maxPage = Math.max(1, Math.ceil(filtered.length / perPage));
+  const perPage = 12;
+  const maxPage = Math.max(1, Math.ceil(activityGroups.length / perPage));
   const currentPage = Math.min(pageNumber, maxPage);
-  const shown = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const shown = activityGroups.slice((currentPage - 1) * perPage, currentPage * perPage);
   const query = new URLSearchParams();
   for (const key of ['client', 'category', 'range', 'q'] as const) if (filters[key]) query.set(key, filters[key]);
   const pageHref = (page: number) => {
@@ -91,36 +107,46 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     params.set('page', String(page));
     return '?' + params.toString() + '#activity-timeline';
   };
+  const tabHref = (category: string) => {
+    const params = new URLSearchParams(query);
+    if (category) params.set('category', category);
+    else params.delete('category');
+    params.delete('page');
+    const qs = params.toString();
+    return '/changes' + (qs ? '?' + qs : '') + '#activity-timeline';
+  };
+  const tabCounts = {
+    all: items.filter(item => (!filters.client || item.client === filters.client) && (!search || [item.title, item.client, item.detail].some(s => s.toLowerCase().includes(search)))).length,
+    comment: items.filter(item => item.category === 'comment').length,
+    status: items.filter(item => item.category === 'status').length,
+    assignment: items.filter(item => item.category === 'assignment').length
+  };
   const categoryLabel: Record<ChangeItem['category'], string> = {
     status: 'Status', comment: 'Comment', assignment: 'Assignment', admin: 'Update'
   };
   return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="activity" />
     <header className="detail-hero">
-      <p className="eyebrow">ACTIVITY</p><h1>What's changed?</h1>
-      <p>Showing recorded ClickUp changes since {since.toLocaleString('en-US')}.</p>
+      <p className="eyebrow">CLICKUP ACTIVITY</p><h1>Recent updates</h1>
+      <p>A clear view of what changed across your clients. Showing activity since {since.toLocaleString('en-US')}.</p>
     </header>
     <div className="detail-stat-strip activity-stats">
       <div><strong>{items.length}</strong><span>Recorded updates</span></div>
       <div><strong>{items.filter(i => i.category === 'comment').length}</strong><span>New comments</span></div>
       <div><strong>{items.filter(i => i.category === 'status').length}</strong><span>Status changes</span></div>
-      <div><strong>{openDecisions.length}</strong><span>Open decisions for Ami</span></div>
+      <a className="activity-decision-stat" href="/attention"><strong>{openDecisions.length}</strong><span>Needs Ami's decision ↗</span></a>
     </div>
-    <section className="clean-panel compact-activity-priority">
-      <div className="panel-heading"><div><p className="eyebrow">CURRENT PRIORITIES</p><h2>Decisions still needing attention</h2>
-        <p>Open decisions are tracked separately from the activity timeline.</p></div>
-        <a className="task-action" href="/attention">Open action inbox →</a></div>
-      <div className="compact-intel-list">{openDecisions.slice(0, 4).map(task => <article key={task.id} className="compact-activity-decision">
-        <span>{task.client.name}</span><strong>{task.name}</strong><p>{task.intelligence?.amiAction || task.intelligence?.currentSummary}</p>
-        {task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
-      </article>)}
-      {needsAmi.length === 0 && <p className="simple-empty">No open decisions at the moment.</p>}</div>
-    </section>
     <section className="clean-panel compact-activity-panel" id="activity-timeline">
-      <div className="panel-heading activity-heading"><div><p className="eyebrow">TIMELINE</p><h2>Recent updates</h2>
-        <p>Filter by client, type, or time period.</p></div>
+      <div className="panel-heading activity-heading"><div><p className="eyebrow">ACTIVITY FEED</p><h2>All changes</h2>
+        <p>Newest first · Routine maintenance confirmations are grouped when repeated.</p></div>
         <form action={markDigestChecked}><button className="digest-button" type="submit">Mark as read</button></form>
       </div>
+      <nav className="activity-tabs" aria-label="Filter activity type">
+        <a href={tabHref('')} aria-current={!filters.category ? 'page' : undefined}>All activity <span>{tabCounts.all}</span></a>
+        <a href={tabHref('comment')} aria-current={filters.category === 'comment' ? 'page' : undefined}>Comments <span>{tabCounts.comment}</span></a>
+        <a href={tabHref('status')} aria-current={filters.category === 'status' ? 'page' : undefined}>Status <span>{tabCounts.status}</span></a>
+        <a href={tabHref('assignment')} aria-current={filters.category === 'assignment' ? 'page' : undefined}>Assignments <span>{tabCounts.assignment}</span></a>
+      </nav>
       <form className="filter-bar clean-filters compact-activity-filters" method="GET">
         <label>Period<select name="range" defaultValue={filters.range ?? '7'}>
           <option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option>
@@ -133,20 +159,27 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
         <label className="search-label">Search<input type="search" name="q" defaultValue={filters.q ?? ''} placeholder="Task or update…" /></label>
         <button type="submit">Apply filters</button><a href="/changes">Clear</a>
       </form>
-      <p className="compact-activity-count">{filtered.length} matching updates · Page {currentPage} of {maxPage}</p>
-      <div className="compact-activity-list">{shown.map(item => <article className="compact-activity-row" key={item.key}>
-        <span className={`activity-dot activity-${item.category}`} aria-hidden="true" />
-        <div className="compact-activity-copy">
-          <div className="compact-intel-meta"><span>{item.client}</span><span>{item.date.toLocaleString('en-US')}</span>
-            <span className="status-pill">{categoryLabel[item.category]}</span></div>
-          <h3>{item.title}</h3><p>{item.detail}</p>
-        </div>
-        {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
-      </article>)}
-      {shown.length === 0 && <p className="simple-empty">No updates match these filters.</p>}</div>
+      <p className="compact-activity-count">{filtered.length} matching updates · {activityGroups.length} feed entries{activityGroups.length !== filtered.length ? ' (repeated maintenance grouped)' : ''} · Page {currentPage} of {maxPage}</p>
+      <div className="activity-feed-list">{shown.map(group => {
+        const item = group.item;
+        const grouped = group.entries.length > 1;
+        return <article className="activity-feed-item" key={item.key}>
+          <div className={`activity-feed-icon activity-feed-${item.category}`} aria-hidden="true">{item.category === 'comment' ? '✎' : item.category === 'status' ? '↻' : item.category === 'assignment' ? '◎' : '•'}</div>
+          <div className="activity-feed-content">
+            <div className="activity-feed-meta"><span className="activity-feed-client">{item.client}</span><span className="activity-feed-time">{item.date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><span className={`activity-feed-tag activity-feed-tag-${item.category}`}>{group.routine ? 'Routine' : categoryLabel[item.category]}</span></div>
+            <h3>{item.title}</h3>
+            <p className="activity-feed-detail">{item.detail}</p>
+            {grouped && <details className="activity-feed-group"><summary>{group.entries.length} similar maintenance updates · View all</summary>
+              <ul>{group.entries.map(entry => <li key={entry.key}><span>{entry.date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>{entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer">View in ClickUp ↗</a>}</li>)}</ul>
+            </details>}
+          </div>
+          {item.url && <a className="activity-feed-link" href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.title} in ClickUp`}>View in ClickUp ↗</a>}
+        </article>;
+      })}
+      {shown.length === 0 && <p className="simple-empty">No updates match these filters. Try a longer period or clear the filters.</p>}</div>
       <nav className="compact-activity-pagination" aria-label="Activity pages">
         {currentPage > 1 ? <a href={pageHref(currentPage - 1)}>← Previous</a> : <span />}
-        {currentPage < maxPage && <a href={pageHref(currentPage + 1)}>Next 20 →</a>}
+        {currentPage < maxPage && <a href={pageHref(currentPage + 1)}>Next 12 →</a>}
       </nav>
     </section>
     <p className="dashboard-note">Field changes are detected between ClickUp syncs, so exact edit times and authors may be unknown. Comments retain their ClickUp timestamps. Mark as read stores a browser checkpoint; use “Since last read” to view that period.</p>
