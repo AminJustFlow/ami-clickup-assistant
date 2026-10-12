@@ -559,9 +559,6 @@ button{font-family:inherit}
 .dashboard-primary .priority-overdue{background:#fff0e8;color:#a64017}
 .dashboard-primary .priority-high{background:#fff3dd;color:#8c5700}
 .dashboard-primary .priority-standard{background:#eef4f7;color:#4d6978}
-.dashboard-primary .clean-task:has(.priority-overdue){border-left:3px solid #dc8052}
-.dashboard-primary .clean-task:has(.priority-high){border-left:3px solid #d9ad57}
-.dashboard-primary .clean-task:has(.priority-standard){border-left:3px solid transparent}
 @media(max-width:920px){
   .dashboard-sidebar .entity-row{gap:8px}
   .client-health-signals{gap:4px}
