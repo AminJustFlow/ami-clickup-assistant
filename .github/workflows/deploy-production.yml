@@ -60,7 +60,8 @@ jobs:
           cd /opt/ami-clickup-assistant
           test -s .env.production
           # Do not let subprocesses consume the SSH heredoc containing the remaining commands.
-          ./deploy/backup.sh </dev/null
+          # Invoke with bash: tar/git file modes may not preserve executable permission.
+          bash ./deploy/backup.sh </dev/null
           tar -xzf "/tmp/ami-${DEPLOY_SHA}.tar.gz" -C /opt/ami-clickup-assistant
           docker compose -f docker-compose.prod.yml build </dev/null
           docker compose -f docker-compose.prod.yml run --rm -T migrate </dev/null
