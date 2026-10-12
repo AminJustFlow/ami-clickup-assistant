@@ -115,11 +115,15 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     const qs = params.toString();
     return '/changes' + (qs ? '?' + qs : '') + '#activity-timeline';
   };
+  const tabEligible = items.filter(item =>
+    (!filters.client || item.client === filters.client) &&
+    (!search || [item.title, item.client, item.detail].some(value => value.toLowerCase().includes(search)))
+  );
   const tabCounts = {
-    all: items.filter(item => (!filters.client || item.client === filters.client) && (!search || [item.title, item.client, item.detail].some(s => s.toLowerCase().includes(search)))).length,
-    comment: items.filter(item => item.category === 'comment').length,
-    status: items.filter(item => item.category === 'status').length,
-    assignment: items.filter(item => item.category === 'assignment').length
+    all: tabEligible.length,
+    comment: tabEligible.filter(item => item.category === 'comment').length,
+    status: tabEligible.filter(item => item.category === 'status').length,
+    assignment: tabEligible.filter(item => item.category === 'assignment').length
   };
   const categoryLabel: Record<ChangeItem['category'], string> = {
     status: 'Status', comment: 'Comment', assignment: 'Assignment', admin: 'Update'
