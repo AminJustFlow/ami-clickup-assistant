@@ -65,7 +65,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         attentionDisposition: { select: { decision: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
           amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
-          amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true
+          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true
         } }
       },
       orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
