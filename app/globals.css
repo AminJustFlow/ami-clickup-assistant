@@ -618,3 +618,48 @@ button{font-family:inherit}
 .compact-activity-pagination{display:flex;justify-content:space-between;padding:16px 24px;border-top:1px solid #eaf0f2}
 .compact-activity-pagination a{color:#177a9c;font-size:12px;font-weight:750;text-decoration:none}
 @media(max-width:700px){.directory-filters,.compact-activity-filters{margin:0 12px 12px}.compact-activity-list{padding:0 15px}.compact-activity-row{flex-wrap:wrap}.compact-activity-row>a{margin-left:20px}.compact-activity-count{padding:0 15px}.directory-result-count{padding:0 15px 12px}}
+
+
+/* Recent updates: legible chronological feed with progressive disclosure */
+.activity-decision-stat{display:flex;flex-direction:column;justify-content:center;text-decoration:none;color:var(--ui-text);background:#fff;border:1px solid var(--ui-border);border-radius:var(--ui-radius);padding:21px 23px;box-shadow:var(--ui-shadow)}
+.activity-decision-stat:hover{border-color:#9bcddf;background:#f8fcfe}
+.activity-decision-stat strong{font-size:30px;line-height:1.2;font-weight:800}
+.activity-decision-stat span{display:block;margin-top:5px;color:#16759b;font-size:12px;font-weight:750}
+.activity-tabs{display:flex;gap:7px;flex-wrap:wrap;padding:0 24px 18px}
+.activity-tabs a{display:inline-flex;gap:8px;align-items:center;padding:10px 13px;border:1px solid #e1e8ed;border-radius:9px;text-decoration:none;font-size:12px;font-weight:750;color:#5b7280;background:#f8fafb}
+.activity-tabs a:hover{background:#edf5f9}
+.activity-tabs a[aria-current=page]{color:#006e9a;background:#e6f4fb;border-color:#bcddec}
+.activity-tabs span{color:#7b909c;font-size:11px;font-weight:700}
+.activity-feed-list{padding:0 24px 6px}
+.activity-feed-item{display:flex;gap:16px;align-items:flex-start;border-top:1px solid #e9eff2;padding:20px 0}
+.activity-feed-item:hover{background:#fcfdfe}
+.activity-feed-icon{flex:0 0 34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;font-weight:750;background:#edf5f8;color:#297d9b}
+.activity-feed-status{background:#e8f5ef;color:#2e8060}
+.activity-feed-assignment{background:#f3eefb;color:#8056a4}
+.activity-feed-admin{background:#f1f3f5;color:#677884}
+.activity-feed-content{flex:1;min-width:0}
+.activity-feed-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin-bottom:7px;font-size:12px;color:#728491}
+.activity-feed-client{font-weight:800;color:#4d697a}
+.activity-feed-time{font-variant-numeric:tabular-nums}
+.activity-feed-tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:#eef4f7;color:#547483;font-size:10px;font-weight:800}
+.activity-feed-tag-status{background:#e8f5ef;color:#297250}
+.activity-feed-tag-assignment{background:#f3eefb;color:#7553a0}
+.activity-feed-item h3{font-size:15px;line-height:1.4;letter-spacing:-.1px;margin:0 0 8px;color:#203642}
+.activity-feed-detail{font-size:13px;line-height:1.65;color:#526b79;margin:0;overflow-wrap:anywhere;white-space:pre-wrap;max-width:95ch}
+.activity-feed-link{flex:none;align-self:center;text-decoration:none;color:#087da9;font-size:12px;font-weight:750;white-space:nowrap}
+.activity-feed-link:hover{text-decoration:underline}
+.activity-feed-group{margin-top:12px;padding:11px 13px;border:1px solid #e2eaf0;background:#f8fafb;border-radius:9px;font-size:12px;color:#627783}
+.activity-feed-group summary{cursor:pointer;font-weight:750;color:#316a85}
+.activity-feed-group ul{list-style:none;margin:11px 0 0;padding:0}
+.activity-feed-group li{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between;padding:8px 0;border-top:1px solid #e3eaee}
+.activity-feed-group a{font-weight:750;color:#087da9;text-decoration:none}
+@media(max-width:720px){
+  .activity-tabs{padding:0 15px 14px}
+  .activity-feed-list{padding:0 15px 5px}
+  .activity-feed-item{gap:11px;padding:17px 0;flex-wrap:wrap}
+  .activity-feed-icon{flex-basis:30px;height:30px}
+  .activity-feed-content{flex-basis:calc(100% - 41px)}
+  .activity-feed-link{margin-left:41px;align-self:flex-start}
+  .activity-feed-item h3{font-size:14px}
+  .activity-decision-stat{padding:16px}
+}
