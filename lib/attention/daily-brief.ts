@@ -4,9 +4,11 @@
  */
 export type BriefItem = {
   id: number;
+  name?: string;
+  client?: { name: string };
   overdue: boolean;
   verificationReasons: string[];
-  intelligence: { amiAttentionScore: number | null };
+  intelligence: { amiAttentionScore: number | null; amiAction?: string | null } | null;
 };
 
 export function dailyBrief<T extends BriefItem>(items: readonly T[]) {
@@ -14,7 +16,7 @@ export function dailyBrief<T extends BriefItem>(items: readonly T[]) {
   const verify = items.filter(item => item.verificationReasons.length > 0);
   const byPriority = (a: T, b: T) =>
     Number(b.overdue) - Number(a.overdue) ||
-    (b.intelligence.amiAttentionScore ?? 0) - (a.intelligence.amiAttentionScore ?? 0) ||
+    (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) ||
     a.id - b.id;
   const ordered = [...ready].sort(byPriority);
   return {
