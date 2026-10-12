@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { dailyBrief } from '../lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
@@ -24,6 +25,17 @@ assert.deepEqual(attentionVerificationReasons({
   clickupUpdatedAt: analyzedAt,
   intelligence: { ...intel, confidence: 0.94, amiAction: 'Confirm launch date' }
 }), []);
+
+const brief = dailyBrief([
+  { id: 1, overdue: true, verificationReasons: ['Low confidence'], intelligence: { amiAttentionScore: 95 } },
+  { id: 2, overdue: false, verificationReasons: [], intelligence: { amiAttentionScore: 70 } },
+  { id: 3, overdue: true, verificationReasons: [], intelligence: { amiAttentionScore: 30 } },
+  { id: 4, overdue: false, verificationReasons: [], intelligence: { amiAttentionScore: 80 } }
+]);
+assert.deepEqual({ open: brief.open, ready: brief.ready, verify: brief.verify, overdueReady: brief.overdueReady }, { open: 4, ready: 3, verify: 1, overdueReady: 1 });
+assert.deepEqual(brief.topReady.map(item => item.id), [3, 4, 2]);
+assert.deepEqual(brief.topToVerify.map(item => item.id), [1]);
+assert.deepEqual(dailyBrief([]).topReady, []);
 
 const before = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'open' }, assignees: [{ id: 2 }], due_date: '1', description: 'A' });
 const after = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'done' }, assignees: [{ id: 3 }], due_date: '1', description: 'A' });
