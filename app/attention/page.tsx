@@ -87,7 +87,9 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   });
   const active = categorized.filter(isOpenAttentionTask);
   const history = categorized.filter(task => task.closed || !!task.recorded);
-  const selected = (view === 'active' ? active : history)
+  const brief = dailyBrief(active);
+  const featuredIds = new Set(brief.topReady.map(task => task.id));
+  const selected = (view === 'active' ? active.filter(task => !featuredIds.has(task.id)) : history)
     .filter(task => (priority !== 'overdue' || task.overdue) && (priority !== 'verify' || task.verificationReasons.length > 0))
     .sort((a, b) => Number(a.verificationReasons.length > 0) - Number(b.verificationReasons.length > 0) || Number(b.overdue) - Number(a.overdue)
       || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0)
@@ -100,7 +102,6 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const overdueCount = active.filter(task => task.overdue).length;
   const verifyCount = active.filter(task => task.verificationReasons.length > 0).length;
   const returnTo = urlFor(activeFilters, currentPage);
-  const brief = dailyBrief(active);
   const reviewedCount = history.filter(task => task.recorded === 'REVIEWED').length;
   const dismissedCount = history.filter(task => task.recorded === 'DISMISSED').length;
   const triagedCount = reviewedCount + dismissedCount;
@@ -147,8 +148,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       <div className="attention-brief-content">
         <div className="attention-brief-section">
           <div className="attention-brief-section-body">
-            <h3>Next decisions for Ami</h3>
-            <p>Review a recommendation, then dismiss it or mark it reviewed to bring the next decision into view.</p>
+            <h3>Review these three decisions first</h3>
+            <p>Open the evidence, choose Mark reviewed or Dismiss, and the next priority automatically appears. Featured decisions are not repeated in the queue below.</p>
             {brief.topReady.length ? brief.topReady.map((task, index) => <article className="attention-brief-card" key={task.id}>
               <div className="attention-row-main">
                 <div className="attention-row-byline"><span className="attention-brief-index">{index + 1}</span><span>{task.client.name}</span>{task.overdue && <span className="attention-urgency overdue">Overdue</span>}</div>
@@ -157,7 +158,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
               </div>
               <div className="attention-row-actions">
-                <TaskDetailsButton taskId={task.id} label="Review evidence" />
+                <div className="attention-primary-review"><TaskDetailsButton taskId={task.id} label="Review evidence" /></div>
                 {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
                 <form action={setAttentionDecision} className="attention-decision-form">
                   <details className="attention-reason"><summary>Add dismissal reason (optional)</summary><label>Reason<select name="reason" defaultValue=""><option value="">No reason</option><option value="ALREADY_HANDLED">Already handled</option><option value="NOT_RELEVANT">Not relevant</option><option value="INCORRECT_AI">Incorrect AI recommendation</option><option value="OTHER">Other</option></select></label></details>
@@ -184,11 +185,11 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     </section>
     <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
-        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Needs Ami' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Open decisions, with past-due items first.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>
+        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Additional decisions not featured above. Past-due items first.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>
         <span className="panel-count">{total}</span>
       </div>
       <nav className="attention-view-tabs" aria-label="Inbox view">
-        <Link aria-current={view === 'active' ? 'page' : undefined} href={urlFor({ ...activeFilters, view: 'active' })}>Open decisions ({active.length})</Link>
+        <Link aria-current={view === 'active' ? 'page' : undefined} href={urlFor({ ...activeFilters, view: 'active' })}>Other open decisions ({active.length - brief.topReady.length})</Link>
         <Link aria-current={view === 'history' ? 'page' : undefined} href={urlFor({ ...activeFilters, view: 'history' })}>Reviewed & archived ({history.length})</Link>
       </nav>
       <form className="attention-filters" method="get" action="/attention">
@@ -231,7 +232,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
               </div>
             </div>
             <div className="attention-row-actions">
-              <TaskDetailsButton taskId={task.id} label="Review context" />
+              <div className="attention-queue-primary"><TaskDetailsButton taskId={task.id} label="Review context" /></div>
               {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
               {view === 'history' && task.recorded && !task.closed && <form action={setAttentionDecision} className="attention-decision-form">
                 <input type="hidden" name="taskId" value={task.id} />
@@ -239,13 +240,13 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <input type="hidden" name="returnTo" value="/attention" />
                 <button type="submit" name="decision" value="REOPEN">Reopen decision</button>
               </form>}
-              {view === 'active' && <form action={setAttentionDecision} className="attention-decision-form">
+              {view === 'active' && <details className="attention-queue-more"><summary>Decision options</summary><form action={setAttentionDecision} className="attention-decision-form">
                 <input type="hidden" name="taskId" value={task.id} />
                 <input type="hidden" name="fingerprint" value={attentionFingerprint(intel)} />
                 <input type="hidden" name="returnTo" value={returnTo} />
                 <button type="submit" name="decision" value="REVIEWED" title="Remove from open inbox; no changes to ClickUp">Mark reviewed</button>
                 <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this AI recommendation; no changes to ClickUp">Dismiss</button>
-              </form>}
+              </form></details>}
             </div>
           </article>;
         })}</div>}
