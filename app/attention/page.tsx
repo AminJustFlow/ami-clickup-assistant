@@ -106,7 +106,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const triagedCount = reviewedCount + dismissedCount;
   const triageTotal = active.length + triagedCount;
 
-  return <main className="ops-shell dashboard-shell" id="main-content">
+  return <main className="ops-shell dashboard-shell attention-workspace" id="main-content">
     <AppNav current="attention" />
     <header className="detail-hero attention-hero">
       <p className="eyebrow">AMI'S ACTION INBOX</p>
@@ -122,7 +122,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     </section>
     <p className="dashboard-note attention-coverage">{analyzedCount.toLocaleString()} of {importedCount.toLocaleString()} imported tasks analyzed across active clients. Unanalyzed tasks cannot appear here. Human reviews are stored only in this app.</p>
     {params.notice === 'stale' && <p className="attention-notice" role="status">This task's AI assessment changed. Review its latest context before updating it.</p>}
-    <section className="clean-panel attention-panel" aria-labelledby="daily-brief-title">
+    <section className="clean-panel attention-panel attention-brief-panel" aria-labelledby="daily-brief-title">
       <div className="panel-heading">
         <div>
           <p className="eyebrow">DAILY DECISION BRIEF</p>
@@ -140,14 +140,14 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <p><strong>{triagedCount} of {triageTotal}</strong> current recommendations triaged · {reviewedCount} reviewed · {dismissedCount} dismissed · {active.length} remaining</p>
         <progress value={triagedCount} max={Math.max(1, triageTotal)} style={{ width: '100%', height: 12 }} />
       </div>
-      <div className="attention-rows">
-        <div className="attention-row">
-          <div className="attention-row-main">
+      <div className="attention-brief-content">
+        <div className="attention-brief-section">
+          <div className="attention-brief-section-body">
             <h3>Next decisions for Ami</h3>
             <p>Review a recommendation, then dismiss it or mark it reviewed to bring the next decision into view.</p>
-            {brief.topReady.length ? brief.topReady.map((task, index) => <article className="attention-row" key={task.id}>
+            {brief.topReady.length ? brief.topReady.map((task, index) => <article className="attention-brief-card" key={task.id}>
               <div className="attention-row-main">
-                <div className="attention-row-byline"><span>Decision {index + 1} of {brief.topReady.length} · {task.client.name}</span>{task.overdue && <span className="attention-urgency overdue">Overdue</span>}</div>
+                <div className="attention-row-byline"><span className="attention-brief-index">{index + 1}</span><span>{task.client.name}</span>{task.overdue && <span className="attention-urgency overdue">Overdue</span>}</div>
                 <h3>{task.name}</h3>
                 <p className="attention-row-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
                 <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
@@ -156,7 +156,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <TaskDetailsButton taskId={task.id} label="Review evidence" />
                 {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
                 <form action={setAttentionDecision} className="attention-decision-form">
-                  <label>Dismissal reason (optional)<select name="reason" defaultValue=""><option value="">Choose a reason</option><option value="ALREADY_HANDLED">Already handled</option><option value="NOT_RELEVANT">Not relevant</option><option value="INCORRECT_AI">Incorrect AI recommendation</option><option value="OTHER">Other</option></select></label>
+                  <details className="attention-reason"><summary>Add dismissal reason (optional)</summary><label>Reason<select name="reason" defaultValue=""><option value="">No reason</option><option value="ALREADY_HANDLED">Already handled</option><option value="NOT_RELEVANT">Not relevant</option><option value="INCORRECT_AI">Incorrect AI recommendation</option><option value="OTHER">Other</option></select></label></details>
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="fingerprint" value={attentionFingerprint(task.intelligence!)} />
                   <input type="hidden" name="returnTo" value="/attention" />
@@ -168,8 +168,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
             {brief.ready > brief.topReady.length && <p className="dashboard-note">{brief.ready - brief.topReady.length} more ready decisions will appear as these are reviewed.</p>}
           </div>
         </div>
-        {brief.topToVerify.length > 0 && <div className="attention-row">
-          <div className="attention-row-main">
+        {brief.topToVerify.length > 0 && <div className="attention-brief-section attention-verify-section">
+          <div className="attention-brief-section-body">
             <h3>Validate before acting</h3>
             {brief.topToVerify.map(task => <p key={task.id}><strong>{task.client.name}:</strong> {task.name} — {task.verificationReasons.join('; ')}. <TaskDetailsButton taskId={task.id} label="Review context" /></p>)}
             <Link href={urlFor({ ...activeFilters, priority: 'verify', view: 'active' })}>See all {brief.verify} recommendations needing verification →</Link>
@@ -178,7 +178,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       </div>
       <p className="dashboard-note">This is a rule-based summary, not a new AI analysis. Counts exclude tasks without saved intelligence and do not establish that all client work has been reviewed.</p>
     </section>
-    <section className="clean-panel attention-panel" aria-labelledby="inbox-title">
+    <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
         <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Needs Ami' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Open decisions, with past-due items first.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>
         <span className="panel-count">{total}</span>
