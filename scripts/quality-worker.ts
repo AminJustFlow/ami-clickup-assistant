@@ -47,6 +47,11 @@ export function inspectQuality(task: {
   return { stale, closedAttention, invalidScores, needsVerification };
 }
 
+export function duplicateActionKey(clientId: number | null, action: string | null): string | null {
+  const normalized = action?.trim().toLowerCase().replace(/\s+/g, ' ');
+  return clientId != null && normalized ? clientId + ':' + normalized : null;
+}
+
 export async function auditOnce(): Promise<QualitySnapshot> {
   const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0 };
   const actionKeys = new Set<string>();
