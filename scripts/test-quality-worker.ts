@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { inspectQuality } from './quality-worker';
+import { inspectQuality, duplicateActionKey } from './quality-worker';
 
 const analyzedAt = new Date('2026-10-13T12:00:00Z');
 const base = {
@@ -20,4 +20,8 @@ assert.equal(inspectQuality({ ...base, clickupStatus: 'completed' }).closedAtten
 assert.equal(inspectQuality({ ...base, intelligence: { ...base.intelligence, importanceScore: 101 } }).invalidScores, true);
 assert.equal(inspectQuality({ ...base, intelligence: { ...base.intelligence, amiAction: 'N/A' } }).needsVerification, true);
 assert.equal(inspectQuality({ ...base, intelligence: { ...base.intelligence, confidence: 0.4 } }).needsVerification, true);
+assert.equal(duplicateActionKey(12, ' Confirm   launch DATE '), duplicateActionKey(12, 'confirm launch date'));
+assert.notEqual(duplicateActionKey(12, 'Confirm launch date'), duplicateActionKey(13, 'Confirm launch date'));
+assert.equal(duplicateActionKey(null, 'Confirm launch date'), null);
+assert.equal(duplicateActionKey(12, ' '), null);
 console.log('Quality audit deterministic regression checks passed');
