@@ -9,8 +9,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const query = (params.q ?? '').trim().slice(0, 120);
   const hasQuery = query.length > 0;
   const [clients, employees, tasks] = hasQuery ? await Promise.all([
-    prisma.client.findMany({ where: { name: { contains: query, mode: 'insensitive' } }, orderBy: { name: 'asc' }, take: 20 }),
-    prisma.employee.findMany({ where: { name: { contains: query, mode: 'insensitive' } }, orderBy: { name: 'asc' }, take: 20 }),
+    prisma.client.findMany({ where: { name: { contains: query, mode: 'insensitive' } }, select: { id: true, name: true, slug: true }, orderBy: { name: 'asc' }, take: 20 }),
+    prisma.employee.findMany({ where: { name: { contains: query, mode: 'insensitive' } }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 20 }),
     prisma.task.findMany({
       where: {
         deleted: false,
@@ -26,7 +26,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           ] } } }
         ]
       },
-      include: { client: true, intelligence: true, assignees: { include: { employee: true } } },
+      select: {
+        id: true, name: true, clickupStatus: true, clickupUpdatedAt: true, clickupUrl: true,
+        client: { select: { name: true, slug: true } },
+        intelligence: { select: { needsAmi: true, agentState: true, amiAction: true, currentSummary: true } },
+        assignees: { select: { employee: { select: { name: true } } } }
+      },
       orderBy: { clickupUpdatedAt: 'desc' },
       take: 60
     })
