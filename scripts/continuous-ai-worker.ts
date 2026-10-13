@@ -59,7 +59,7 @@ async function serializable<T>(client: typeof prisma, operation: (tx: Prisma.Tra
   throw new Error('Serializable transaction failed after retries');
 }
 
-async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<LockedJob, 'estimatedReservedUsd' | 'reservationDay'>) {
+async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<LockedJob, 'estimatedReservedUsd' | 'reservationDay' | 'freshAllowance'>) {
   if (!job.reservationDay || Number(job.estimatedReservedUsd) <= 0) return;
   const reservationDay = job.reservationDay.toISOString().slice(0, 10);
   await tx.$executeRaw`UPDATE "AiBudgetDay"
