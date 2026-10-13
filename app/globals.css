@@ -768,3 +768,18 @@ button{font-family:inherit}
 @media(max-width:1000px){.attention-workspace{width:min(100% - 32px,1440px)}.attention-workspace .attention-brief-card{grid-template-columns:minmax(0,1fr) 225px;gap:16px}}
 @media(max-width:760px){.attention-workspace{width:calc(100% - 24px)}.attention-workspace .attention-panel>.panel-heading{padding:20px}.attention-workspace .attention-brief-panel>.detail-stat-strip{margin:0 16px 16px}.attention-workspace .attention-progress{margin:0 16px 18px}.attention-workspace .attention-brief-content{padding:18px 16px}.attention-workspace .attention-brief-card{grid-template-columns:1fr;padding:18px;gap:14px}.attention-workspace .attention-queue-panel .attention-row{grid-template-columns:1fr;gap:12px;padding:18px 16px}.attention-workspace .attention-queue-panel .attention-row-actions{justify-content:flex-start}}
 @media(max-width:440px){.attention-workspace .attention-hero h1{font-size:30px}.attention-workspace .attention-brief-card .attention-row-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-workspace .attention-brief-card h3{font-size:18px}.attention-workspace .attention-brief-card .attention-row-action{font-size:14px}.attention-workspace .attention-progress-legend{gap:7px 12px}}
+
+
+/* Guided decision review */
+.attention-workspace .attention-primary-review{grid-column:1/-1}
+.attention-workspace .attention-primary-review>button{width:100%;min-height:43px;background:#087da9;color:#fff;border-color:#087da9;font-weight:750;font-size:13px}
+.attention-workspace .attention-primary-review>button:hover{background:#07688e}
+.attention-workspace .attention-queue-primary{grid-column:1/-1}
+.attention-workspace .attention-queue-primary>button{width:100%;min-height:39px;font-weight:750}
+.attention-workspace .attention-queue-more{grid-column:1/-1;border:1px solid #dce6eb;border-radius:8px;background:#fff}
+.attention-workspace .attention-queue-more>summary{cursor:pointer;text-align:center;padding:9px 12px;font-size:12px;font-weight:700;color:#486575}
+.attention-workspace .attention-queue-more[open]>summary{border-bottom:1px solid #e5ebef}
+.attention-workspace .attention-queue-more .attention-decision-form{padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.attention-workspace .attention-queue-panel .attention-row-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.attention-workspace .attention-queue-panel .attention-row-actions>*{min-width:0}
+@media(max-width:760px){.attention-workspace .attention-queue-panel .attention-row-actions{width:100%}}
