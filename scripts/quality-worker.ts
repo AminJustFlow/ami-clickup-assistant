@@ -34,7 +34,7 @@ export function inspectQuality(task: {
   };
 }): { stale: boolean; closedAttention: boolean; invalidScores: boolean; needsVerification: boolean } {
   const i = task.intelligence;
-  const stale = Boolean(task.clickupUpdatedAt && (!i.analyzedAt || task.clickupUpdatedAt > i.analyzedAt));
+  const stale = Boolean(task.clickupUpdatedAt && (!i.analyzedAt || task.clickupUpdatedAt.getTime() > i.analyzedAt.getTime() + 120_000));
   const closedAttention = i.needsAmi && isClosedClickUpStatus(task.clickupStatus);
   const invalidScores = !Number.isFinite(i.amiAttentionScore) || !Number.isFinite(i.importanceScore)
     || i.amiAttentionScore < 0 || i.amiAttentionScore > 100
