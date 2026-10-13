@@ -35,7 +35,7 @@ export function isOpenAttentionTask(task: {
 export function hasSpecificAmiAction(action: string | null): boolean {
   const value = action?.trim() ?? '';
   if (!value) return false;
-  return !/^(?:n\\/?a|none|unknown|tbd|to be determined|no action(?: needed| required)?|not applicable|\\.{2,}|[-–—]+)[.!]?$/i.test(value);
+  return !/^(?:n\/?a|none|unknown|tbd|to be determined|no action(?: needed| required)?|not applicable|\.{2,}|[-–—]+)[.!]?$/i.test(value);
 }
 
 /** Reasons to verify an AI recommendation before treating it as a current decision. */
