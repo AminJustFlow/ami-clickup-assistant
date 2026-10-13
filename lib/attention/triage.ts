@@ -28,6 +28,16 @@ export function isOpenAttentionTask(task: {
   return task.attentionDisposition?.sourceFingerprint !== attentionFingerprint(intel);
 }
 
+/**
+ * Reject non-actions that occasionally appear in model output. Keep this narrow:
+ * do not second-guess legitimate human-readable instructions.
+ */
+export function hasSpecificAmiAction(action: string | null): boolean {
+  const value = action?.trim() ?? '';
+  if (!value) return false;
+  return !/^(?:n\/?a|none|unknown|tbd|to be determined|no action(?: needed| required)?|not applicable|\.{2,}|[-–—]+)[.!]?$/i.test(value);
+}
+
 /** Reasons to verify an AI recommendation before treating it as a current decision. */
 export function attentionVerificationReasons(task: {
   clickupUpdatedAt: Date | null;
@@ -45,9 +55,9 @@ export function attentionVerificationReasons(task: {
   if (!intel.analyzedAt) reasons.push('Analysis timestamp unavailable');
   else if (task.clickupUpdatedAt && task.clickupUpdatedAt.getTime() > intel.analyzedAt.getTime() + 120_000)
     reasons.push('ClickUp changed after the AI analysis');
-  if (intel.confidence == null || intel.confidence < 0.75)
+  if (intel.confidence == null || !Number.isFinite(intel.confidence) || intel.confidence < 0.75 || intel.confidence > 1)
     reasons.push('Low or unknown AI confidence');
-  if (intel.needsAmi && !intel.amiAction?.trim())
+  if (intel.needsAmi && !hasSpecificAmiAction(intel.amiAction))
     reasons.push('No specific action for Ami');
   return reasons;
 }
