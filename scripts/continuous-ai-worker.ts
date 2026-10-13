@@ -16,7 +16,13 @@ if (!process.env.DATABASE_URL) loadEnvConfig(process.cwd());
 const once = process.argv.includes('--once');
 const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
-const dailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
+const standardDailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
+// Approved one-time $2 regular-budget supplement, only for 2026-10-13 UTC.
+// Reverts automatically at the next UTC day boundary without an env change.
+const oneTimeBudgetDay = '2026-10-13';
+const dailyBudgetFor = (now: Date = new Date()) =>
+  now.toISOString().slice(0, 10) === oneTimeBudgetDay ? standardDailyBudget + 2 : standardDailyBudget;
+const dailyBudget = dailyBudgetFor();
 const freshBudget = Number(process.env.AI_FRESH_ACTIVITY_BUDGET_USD || '3');
 const batchBudget = Number(process.env.AI_BATCH_BUDGET_USD);
 const maxJobs = Number(process.env.AI_MAX_ATTEMPTS_PER_CYCLE || '10');
@@ -332,6 +338,14 @@ export async function completeJob(jobId: number, usage: { input: number; output:
 
 async function cycle() {
   await prisma.analysisJob.updateMany({ where: { status: 'PAUSED_BUDGET', nextAttemptAt: { lte: new Date() } }, data: { status: 'PENDING' } });
+  // Release only regular-budget pauses for the approved one-time day.
+  // The reservation transaction still enforces the full daily cap.
+  if (new Date().toISOString().slice(0, 10) === oneTimeBudgetDay) {
+    await prisma.analysisJob.updateMany({
+      where: { status: 'PAUSED_BUDGET', lastError: 'regular_allowance_checked' },
+      data: { status: 'PENDING', nextAttemptAt: new Date() }
+    });
+  }
   const recovery = await recoverExpiredLeases();
   await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), metadata: { recovery } }, update: { status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), lastError: null, metadata: { recovery } } });
   const teamNames = await refreshQueue(); await recoverHistoricalFailures(); let attempts = 0; let batchReserved = 0;
