@@ -21,7 +21,7 @@
     "clients:audit-scope": "tsx scripts/audit-folder-scope.ts",
     "clients:audit-unattributed": "tsx scripts/audit-unattributed-folders.ts",
     "clients:test-groups": "tsx scripts/test-client-grouping.ts",
-    "test": "npm run clients:test-groups && npm run intelligence:test-dependencies && npm run intelligence:test-context && npm run app:test-core && npm run worker:test-state",
+    "test": "npm run clients:test-groups && npm run intelligence:test-dependencies && npm run intelligence:test-context && npm run app:test-core && npm run worker:test-state && npm run quality:test",
     "app:test-core": "tsx scripts/test-core-behavior.ts",
     "worker:test-state": "tsx scripts/test-ai-worker-state.ts",
     "worker:test-integration": "tsx scripts/test-ai-worker-integration.ts",
@@ -42,7 +42,10 @@
     "intelligence:refresh:voth": "npm run clickup:sync:voth && npm run intelligence:analyze:voth && npm run intelligence:analyze:voth:ai",
     "clients:auto": "tsx scripts/auto-analyze-clients.ts",
     "worker:ai": "tsx scripts/continuous-ai-worker.ts",
-    "worker:ai:once": "tsx scripts/continuous-ai-worker.ts --once"
+    "worker:ai:once": "tsx scripts/continuous-ai-worker.ts --once",
+    "quality:worker": "tsx scripts/quality-worker.ts",
+    "quality:once": "tsx scripts/quality-worker.ts --once",
+    "quality:test": "tsx scripts/test-quality-worker.ts"
   },
   "dependencies": {
     "@next/env": "^16.4.0",
