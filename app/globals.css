@@ -801,3 +801,40 @@ button{font-family:inherit}
 .attention-workspace .attention-queue-panel .attention-queue-more>summary{padding:7px 10px}
 .attention-workspace .attention-queue-panel .attention-row{padding-top:13px;padding-bottom:13px}
 @media(max-width:440px){.attention-workspace .attention-brief-card .attention-row-actions,.attention-workspace .attention-queue-panel .attention-row-actions{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}}
+
+
+/* Phase 32.1: dashboard-only visual hierarchy and compact scanning */
+.dashboard-shell{--dashboard-line:#dce6e9;--dashboard-muted:#586d78;--dashboard-accent:#087b9d}
+.dashboard-shell .dashboard-hero{margin-bottom:22px}
+.dashboard-shell .dashboard-hero h1{font-weight:800;letter-spacing:-1.2px}
+.dashboard-shell .dashboard-hero p:not(.eyebrow){color:var(--dashboard-muted)}
+.dashboard-shell .dashboard-metrics{gap:14px;margin-bottom:20px}
+.dashboard-shell .overview-stat{background:#fff;border-color:var(--dashboard-line);box-shadow:0 3px 12px rgba(21,62,69,.035);transition:border-color .15s,box-shadow .15s}
+.dashboard-shell .overview-stat.primary-stat{background:#087b9d;border-color:#087b9d;color:#fff}
+.dashboard-shell .overview-stat.primary-stat span,.dashboard-shell .overview-stat.primary-stat small{color:#e6f7fc}
+.dashboard-shell .metric-link:hover{border-color:#7ab8c7;box-shadow:0 6px 20px rgba(21,62,69,.09)}
+.dashboard-shell .clean-panel{background:#fff;border-color:var(--dashboard-line);box-shadow:0 3px 12px rgba(21,62,69,.035)}
+.dashboard-shell .panel-heading{padding:19px 21px 15px}
+.dashboard-shell .panel-heading h2{font-size:18px;line-height:1.3}
+.dashboard-shell .panel-heading p:not(.eyebrow){color:var(--dashboard-muted);line-height:1.5}
+.dashboard-shell .clean-task-list{padding:0 21px 5px}
+.dashboard-shell .clean-task{padding:14px 0 15px}
+.dashboard-shell .clean-task p.ami-next-action{font-size:13px;line-height:1.48;font-weight:700;color:#173642;margin:3px 0 5px;overflow-wrap:anywhere}
+.dashboard-shell .clean-task .next-step-label{margin:9px 0 0;font-size:10px;line-height:1.3}
+.dashboard-shell .clean-task .task-context-title{font-size:12px;line-height:1.4;color:var(--dashboard-muted);font-weight:550;margin:0 0 8px}
+.dashboard-shell .clean-task .task-topline{color:#526d78}
+.dashboard-shell .clean-task .task-action{display:inline-flex;align-items:center;margin:4px 9px 0 0}
+.dashboard-shell .entity-row{padding:11px 9px}
+.dashboard-shell .entity-copy strong{font-size:12px;color:#193844}
+.dashboard-shell .entity-copy small{color:var(--dashboard-muted);line-height:1.45}
+.dashboard-shell .entity-row:hover{background:#f0f8fa}
+.dashboard-shell .quiet-action{background:#fff;border-color:#cddfe4}
+.dashboard-shell .quiet-action:hover{background:#eef9fc;border-color:#8abcca}
+@media(max-width:680px){
+ .dashboard-shell .dashboard-metrics{gap:9px}
+ .dashboard-shell .overview-stat{padding:14px}
+ .dashboard-shell .panel-heading{padding:17px 15px 13px;flex-wrap:wrap}
+ .dashboard-shell .clean-task-list{padding:0 15px 5px}
+ .dashboard-shell .clean-task{padding:13px 0}
+ .dashboard-shell .clean-task .task-action{margin-top:7px}
+}
