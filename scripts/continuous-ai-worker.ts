@@ -121,22 +121,23 @@ async function refreshQueue() {
     if (!existing) await prisma.analysisJob.create({ data: { taskId: task.id } });
     else if (existing.status === 'SUCCEEDED') await prisma.analysisJob.update({ where: { taskId: task.id }, data: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, completedAt: null } });
   }
-  // Recheck budget-paused jobs when genuinely new source activity arrives.
-  // Otherwise the next-day pause remains in force.
+  // Revisit legacy paused jobs that now qualify for the dedicated fresh allowance.
+  // Mark failed budget checks so a full fresh allowance does not cause a retry loop.
   await prisma.$executeRaw`
-    UPDATE "AnalysisJob" j SET status = 'PENDING', "nextAttemptAt" = NOW()
+    UPDATE "AnalysisJob" j
+    SET status = 'PENDING', "nextAttemptAt" = NOW()
     FROM "Task" t LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
     WHERE j."taskId" = t.id AND j.status = 'PAUSED_BUDGET'
+      AND j."nextAttemptAt" > NOW() AND j."lastError" IS DISTINCT FROM 'fresh_allowance_checked'
       AND t.deleted = false AND (
-        (i.id IS NULL AND t."createdAt" > j."updatedAt")
+        (i.id IS NULL AND t."createdAt" >= NOW() - INTERVAL '24 hours')
         OR (i."analyzedAt" IS NOT NULL AND EXISTS (
           SELECT 1 FROM "TaskEvent" e WHERE e."taskId" = t.id
-          AND e."occurredAt" > GREATEST(i."analyzedAt", j."updatedAt")
+          AND e."occurredAt" > i."analyzedAt"
           AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
           AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
         ))
-      )
-      AND j."nextAttemptAt" > NOW()`;
+      )`;
   return teamNames;
 }
 
@@ -182,7 +183,7 @@ export async function leaseJob(client = prisma) {
             AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget + freshBudget})
         )`;
     if (!reserved) {
-      await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now) } }); return { skipped: true as const };
+      await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now), lastError: fresh ? 'fresh_allowance_checked' : 'regular_allowance_checked' } }); return { skipped: true as const };
     }
     await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds), attempts: { increment: 1 }, estimatedReservedUsd: reservation, reservationDay: budgetDay, freshAllowance: fresh } });
     return { skipped: false as const, job };
