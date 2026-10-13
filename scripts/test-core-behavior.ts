@@ -43,15 +43,19 @@ assert.deepEqual(attentionVerificationReasons({
 }), []);
 
 // Model placeholders and invalid confidence must never become ready-to-act decisions.
-for (const action of [null, '', '   ', 'N/A', 'none', 'Unknown', 'TBD', 'No action needed', 'not applicable', '...']) {
+for (const action of [null, '', '   ', 'N/A', 'none', 'Unknown', 'TBD', 'No action needed', 'not applicable', '...', 'Review this task', 'Check status', 'Follow up', 'Monitor progress', 'Investigate issue', 'Look into this', 'Take action', 'Needs attention', 'Action required', 'Awaiting update']) {
   assert.equal(hasSpecificAmiAction(action), false, String(action));
 }
-for (const action of ['Confirm launch date', 'Review client feedback', 'Follow up with vendor']) {
+for (const action of ['Confirm launch date', 'Review client feedback', 'Follow up with vendor', 'Review the client-approved homepage copy', 'Check status with Erika on the booking integration', 'Investigate the failed payment on order 123']) {
   assert.equal(hasSpecificAmiAction(action), true, action);
 }
 assert.deepEqual(attentionVerificationReasons({
   clickupUpdatedAt: analyzedAt,
   intelligence: { ...intel, confidence: 0.9, amiAction: 'N/A' }
+}), ['No specific action for Ami']);
+assert.deepEqual(attentionVerificationReasons({
+  clickupUpdatedAt: analyzedAt,
+  intelligence: { ...intel, confidence: 0.95, amiAction: 'Review this task' }
 }), ['No specific action for Ami']);
 assert.deepEqual(attentionVerificationReasons({
   clickupUpdatedAt: analyzedAt,
