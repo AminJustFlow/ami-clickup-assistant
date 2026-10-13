@@ -21,6 +21,7 @@ export type QualitySnapshot = {
   overdueLowPriority: number;
   verificationExamples: Array<{ taskId: number; reasons: string[]; jobStatus: string | null }>;
   staleJobStatuses: Record<string, number>;
+  failureDiagnostics: { byReason: Array<{ reason: string; count: number }>; examples: Array<{ jobId: number; taskId: number; attempts: number; reason: string }> };
   queue: { statuses: Record<string, number>; readyPending: number; delayedPending: number; expiredLeases: number; budgetPausedDue: number; retrying: number; failed: number };
 };
 
@@ -55,8 +56,19 @@ export function duplicateActionKey(clientId: number | null, action: string | nul
   return clientId != null && normalized ? clientId + ':' + normalized : null;
 }
 
+export function classifyFailureReason(error: string | null): string {
+  if (!error?.trim()) return 'NO_ERROR_RECORDED';
+  const value = error.toLowerCase();
+  if (value.includes('lease expired')) return 'LEASE_EXPIRED';
+  if (value.includes('rate limit') || value.includes('429')) return 'RATE_LIMIT';
+  if (value.includes('timeout') || value.includes('timed out')) return 'TIMEOUT';
+  if (value.includes('401') || value.includes('unauthorized') || value.includes('authentication')) return 'AUTHENTICATION';
+  if (value.includes('400') || value.includes('invalid request')) return 'INVALID_REQUEST';
+  return 'OTHER';
+}
+
 export async function auditOnce(): Promise<QualitySnapshot> {
-  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0, verificationExamples: [], staleJobStatuses: {}, queue: { statuses: {}, readyPending: 0, delayedPending: 0, expiredLeases: 0, budgetPausedDue: 0, retrying: 0, failed: 0 } };
+  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0, verificationExamples: [], staleJobStatuses: {}, failureDiagnostics: { byReason: [], examples: [] }, queue: { statuses: {}, readyPending: 0, delayedPending: 0, expiredLeases: 0, budgetPausedDue: 0, retrying: 0, failed: 0 } };
   const actionKeys = new Set<string>();
   const now = new Date();
   let cursor: number | undefined;
@@ -127,6 +139,23 @@ export async function auditOnce(): Promise<QualitySnapshot> {
     prisma.analysisJob.count({ where: { status: 'PENDING', attempts: { gt: 0 } } })
   ]);
   Object.assign(snapshot.queue, { readyPending, delayedPending, expiredLeases, budgetPausedDue, retrying, failed: snapshot.queue.statuses.FAILED ?? 0 });
+  // Read-only failure analysis, bounded output to avoid oversized heartbeat metadata.
+  const failedJobs = await prisma.analysisJob.findMany({
+    where: { status: 'FAILED' },
+    select: { id: true, taskId: true, attempts: true, lastError: true },
+    orderBy: { id: 'asc' }
+  });
+  const reasonCounts = new Map<string, number>();
+  for (const job of failedJobs) {
+    const reason = classifyFailureReason(job.lastError);
+    reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    if (snapshot.failureDiagnostics.examples.length < 10) {
+      snapshot.failureDiagnostics.examples.push({ jobId: job.id, taskId: job.taskId, attempts: job.attempts, reason });
+    }
+  }
+  snapshot.failureDiagnostics.byReason = [...reasonCounts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
   return snapshot;
 }
 
