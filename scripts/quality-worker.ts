@@ -115,6 +115,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && /quality-worker\.(?:ts|js)$/.test(process.argv[1])) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().finally(() => prisma.$disconnect());
 }
