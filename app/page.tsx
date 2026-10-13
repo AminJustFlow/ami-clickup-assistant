@@ -3,6 +3,7 @@ import { isStaleActive } from '@/lib/intelligence/staleness';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
 import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
+import { clientHealthStatus, compareClientHealth, dueWithinDays } from '@/lib/clients/health';
 import { isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,7 @@ export default async function Home() {
   const staleIds = new Set(stale.map(t => t.id));
   const completed = tasks.filter((task) => isClosedClickUpStatus(task.clickupStatus) || task.intelligence?.agentState === 'COMPLETED');
 
-  const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number; overdue: number; blocked: number }>();
+  const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number; overdue: number; blocked: number; dueSoon: number }>();
   const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const groups = groupClientFolders(allClients);
   const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
@@ -55,7 +56,7 @@ export default async function Home() {
     clientRows.set(group.canonical.slug, {
       name: group.canonical.name,
       total: group.folders.reduce((sum, folder) => sum + (totalsByClient.get(folder.id) ?? 0), 0),
-      analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0, overdue: 0, blocked: 0
+      analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0, overdue: 0, blocked: 0, dueSoon: 0
     });
   }
   for (const task of tasks) {
@@ -65,6 +66,7 @@ export default async function Home() {
     row.analyzed += 1;
     if (openAmiIds.has(task.id)) row.needsAmi += 1;
     if (isOverdue(task)) row.overdue += 1;
+    if (!isClosedClickUpStatus(task.clickupStatus) && task.intelligence?.agentState !== 'COMPLETED' && dueWithinDays(task.dueDate, today)) row.dueSoon += 1;
     if (!isClosedClickUpStatus(task.clickupStatus) && (task.intelligence?.agentState === 'BLOCKED' || task.intelligence?.agentState === 'ISSUE')) row.blocked += 1;
     if (!isClosedClickUpStatus(task.clickupStatus) && task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
     if (!isClosedClickUpStatus(task.clickupStatus) && task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
@@ -96,7 +98,7 @@ export default async function Home() {
   }
   const groupedWaiting = [...waitingGroups.entries()].sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   const unattributedFolders = [...clientRows.entries()].filter(([, client]) => needsClientAttribution(client.name)).sort((a,b) => b[1].total - a[1].total);
-  const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => b[1].overdue-a[1].overdue || b[1].blocked-a[1].blocked || b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
+  const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => compareClientHealth(a[1], b[1]));
   const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
   const featuredClients = orderedClients.slice(0, 8);
   const featuredEmployees = orderedEmployees.slice(0, 6);
@@ -135,7 +137,7 @@ export default async function Home() {
       <aside className="dashboard-sidebar">
         <section className="clean-panel" id="clients" aria-labelledby="clients-title">
           <div className="panel-heading"><div><p className="eyebrow">CLIENT HEALTH</p><h2 id="clients-title">Clients needing attention</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <p className="client-health-note">Based on analyzed tasks only; incomplete coverage may hide issues.</p><div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.analyzed} analyzed / {client.total} imported</small><span className="client-health-signals">{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} overdue</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.needsAmi > 0 && <span className="client-signal decision">{client.needsAmi} for Ami</span>}{client.overdue === 0 && client.blocked === 0 && client.needsAmi === 0 && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}</span></span><span className="entity-arrow">›</span></a>)}{orderedClients.length > 8 && <div className="dashboard-list-more"><span>{orderedClients.length - 8} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
+          <p className="client-health-note">Signals from analyzed ClickUp tasks, not a definitive health score. Incomplete analysis may hide issues.</p><div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{clientHealthStatus(client)} · {client.analyzed} analyzed / {client.total} imported</small><span className="client-health-signals">{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} overdue</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.needsAmi > 0 && <span className="client-signal decision">{client.needsAmi} for Ami</span>}{client.dueSoon > 0 && <span className="client-signal decision">{client.dueSoon} due in 7 days</span>}{client.waiting > 0 && <span className="client-signal quiet">{client.waiting} waiting</span>}{clientHealthStatus(client) === 'No flagged issues' && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}{clientHealthStatus(client) === 'Insufficient analysis' && <span className="client-signal quiet">Analysis not available</span>}</span></span><span className="entity-arrow">›</span></a>)}{orderedClients.length > 8 && <div className="dashboard-list-more"><span>{orderedClients.length - 8} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
         </section>
         {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
           <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
