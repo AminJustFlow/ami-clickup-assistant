@@ -17,6 +17,7 @@ const once = process.argv.includes('--once');
 const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
 const dailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
+const freshBudget = Number(process.env.AI_FRESH_ACTIVITY_BUDGET_USD || '3');
 const batchBudget = Number(process.env.AI_BATCH_BUDGET_USD);
 const maxJobs = Number(process.env.AI_MAX_ATTEMPTS_PER_CYCLE || '10');
 const maxRetries = Number(process.env.AI_MAX_JOB_RETRIES || '3');
@@ -25,7 +26,7 @@ const outputRate = Number(process.env.AI_OUTPUT_USD_PER_MILLION);
 const intervalSeconds = Number(process.env.AI_WORKER_INTERVAL_SECONDS || '60');
 const maxInputTokens = Number(process.env.AI_MAX_INPUT_TOKENS_PER_TASK || '20000');
 const maxOutputTokens = Number(process.env.AI_MAX_OUTPUT_TOKENS_PER_TASK || '2000');
-for (const [name, value] of Object.entries({ dailyBudget, batchBudget, maxJobs, maxRetries, inputRate, outputRate, intervalSeconds, maxInputTokens, maxOutputTokens })) {
+for (const [name, value] of Object.entries({ dailyBudget, freshBudget, batchBudget, maxJobs, maxRetries, inputRate, outputRate, intervalSeconds, maxInputTokens, maxOutputTokens })) {
   if (!Number.isFinite(value) || value <= 0) throw new Error(name + ' must be a positive number');
 }
 if (batchBudget > dailyBudget) throw new Error('AI_BATCH_BUDGET_USD cannot exceed AI_DAILY_BUDGET_USD');
@@ -39,7 +40,7 @@ process.on('SIGINT', () => { stopping = true; });
 const leaseMilliseconds = Number(process.env.AI_JOB_LEASE_MINUTES || '30') * 60_000;
 if (!Number.isFinite(leaseMilliseconds) || leaseMilliseconds < 5 * 60_000) throw new Error('AI_JOB_LEASE_MINUTES must be at least 5');
 
-type LockedJob = { id: number; taskId: number; attempts: number; estimatedReservedUsd: Prisma.Decimal; reservationDay: Date | null };
+type LockedJob = { id: number; taskId: number; attempts: number; estimatedReservedUsd: Prisma.Decimal; reservationDay: Date | null; freshAllowance: boolean };
 
 function isRetryableTransactionError(error: unknown): boolean {
   const value = error as { code?: string; meta?: { code?: string } };
@@ -58,11 +59,13 @@ async function serializable<T>(client: typeof prisma, operation: (tx: Prisma.Tra
   throw new Error('Serializable transaction failed after retries');
 }
 
-async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<LockedJob, 'estimatedReservedUsd' | 'reservationDay'>) {
+async function releaseReservation(tx: Prisma.TransactionClient, job: Pick<LockedJob, 'estimatedReservedUsd' | 'reservationDay' | 'freshAllowance'>) {
   if (!job.reservationDay || Number(job.estimatedReservedUsd) <= 0) return;
   const reservationDay = job.reservationDay.toISOString().slice(0, 10);
   await tx.$executeRaw`UPDATE "AiBudgetDay"
-    SET "reservedUsd" = GREATEST(0, "reservedUsd" - ${job.estimatedReservedUsd}), "updatedAt" = NOW()
+    SET "reservedUsd" = GREATEST(0, "reservedUsd" - ${job.estimatedReservedUsd}),
+        "freshReservedUsd" = GREATEST(0, "freshReservedUsd" - CASE WHEN ${job.freshAllowance} THEN ${job.estimatedReservedUsd} ELSE 0 END),
+        "updatedAt" = NOW()
     WHERE day = ${reservationDay}::date`;
 }
 
@@ -72,7 +75,7 @@ export async function recoverExpiredLeases(now = new Date(), client = prisma) {
   for (;;) {
     const changed = await serializable(client, async tx => {
       const rows = await tx.$queryRaw<LockedJob[]>`
-        SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay"
+        SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay", "freshAllowance"
         FROM "AnalysisJob"
         WHERE status = 'LEASED' AND "leaseExpiresAt" < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
         ORDER BY "leaseExpiresAt", id FOR UPDATE SKIP LOCKED LIMIT 50`;
@@ -86,6 +89,7 @@ export async function recoverExpiredLeases(now = new Date(), client = prisma) {
           leaseOwner: null,
           leaseExpiresAt: null,
           reservationDay: null,
+          freshAllowance: false,
           estimatedReservedUsd: 0,
           nextAttemptAt: outcome === 'PENDING' ? now : undefined,
           completedAt: outcome === 'FAILED' ? now : null,
@@ -125,19 +129,44 @@ export async function leaseJob(client = prisma) {
     const now = new Date();
     const budgetDay = utcBudgetDay(now);
     const budgetDayText = budgetDay.toISOString().slice(0, 10);
-    const rows = await tx.$queryRaw<Array<{ id: number; taskId: number }>>`
-      SELECT id, "taskId" FROM "AnalysisJob"
-      WHERE status = 'PENDING' AND "nextAttemptAt" <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') AND attempts < ${maxRetries}
-      ORDER BY "nextAttemptAt", id FOR UPDATE SKIP LOCKED LIMIT 1`;
+    const rows = await tx.$queryRaw<Array<{ id: number; taskId: number; freshEligible: boolean }>>`
+      SELECT j.id, j."taskId",
+        ((
+          (i.id IS NULL AND t."createdAt" >= NOW() - INTERVAL '24 hours')
+          OR (i."analyzedAt" IS NOT NULL AND EXISTS (
+            SELECT 1 FROM "TaskEvent" e
+            WHERE e."taskId" = t.id AND e."occurredAt" > i."analyzedAt"
+              AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
+              AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
+          ))
+        )) AS "freshEligible"
+      FROM "AnalysisJob" j
+      JOIN "Task" t ON t.id = j."taskId"
+      LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
+      WHERE j.status = 'PENDING' AND j."nextAttemptAt" <= NOW() AND j.attempts < ${maxRetries}
+        AND t.deleted = false
+      ORDER BY "freshEligible" DESC, j."nextAttemptAt", j.id
+      FOR UPDATE OF j SKIP LOCKED LIMIT 1`;
     const job = rows[0]; if (!job) return null;
     await tx.aiBudgetDay.upsert({ where: { day: budgetDay }, create: { day: budgetDay }, update: {} });
+    const fresh = job.freshEligible;
     const reserved = await tx.$executeRaw`UPDATE "AiBudgetDay"
-      SET "reservedUsd" = "reservedUsd" + ${reservation}, "updatedAt" = NOW()
-      WHERE day = ${budgetDayText}::date AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget}`;
+      SET "reservedUsd" = "reservedUsd" + ${reservation},
+          "freshReservedUsd" = "freshReservedUsd" + CASE WHEN ${fresh} THEN ${reservation} ELSE 0 END,
+          "updatedAt" = NOW()
+      WHERE day = ${budgetDayText}::date
+        AND (
+          (${fresh} AND "freshActualUsd" + "freshReservedUsd" + ${reservation} <= ${freshBudget}
+            AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget + freshBudget})
+          OR
+          (NOT ${fresh} AND "actualEstimatedUsd" - "freshActualUsd"
+            + "reservedUsd" - "freshReservedUsd" + ${reservation} <= ${dailyBudget}
+            AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget + freshBudget})
+        )`;
     if (!reserved) {
       await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now) } }); return null;
     }
-    await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds), attempts: { increment: 1 }, estimatedReservedUsd: reservation, reservationDay: budgetDay } });
+    await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds), attempts: { increment: 1 }, estimatedReservedUsd: reservation, reservationDay: budgetDay, freshAllowance: fresh } });
     return job;
   });
 }
@@ -211,24 +240,24 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     const current = await prisma.analysisJob.findUniqueOrThrow({ where: { id: job.id } });
     const terminal = current.attempts >= maxRetries;
     await serializable(prisma, async tx => {
-      const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay" FROM "AnalysisJob" WHERE id = ${job.id} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
+      const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay", "freshAllowance" FROM "AnalysisJob" WHERE id = ${job.id} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
       if (!locked) return;
       await releaseReservation(tx, locked);
       if (locked.reservationDay) await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { failedJobs: { increment: 1 } } });
-      await tx.analysisJob.update({ where: { id: job.id }, data: { status: terminal ? 'FAILED' : 'PENDING', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, lastError: message, completedAt: terminal ? new Date() : null, nextAttemptAt: new Date(Date.now() + Math.min(3600, 30 * (2 ** current.attempts)) * 1000) } });
+      await tx.analysisJob.update({ where: { id: job.id }, data: { status: terminal ? 'FAILED' : 'PENDING', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, freshAllowance: false, estimatedReservedUsd: 0, lastError: message, completedAt: terminal ? new Date() : null, nextAttemptAt: new Date(Date.now() + Math.min(3600, 30 * (2 ** current.attempts)) * 1000) } });
     });
   }
 }
 
 export async function completeJob(jobId: number, usage: { input: number; output: number; actual: number | null }, client = prisma) {
   await serializable(client, async tx => {
-    const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay" FROM "AnalysisJob" WHERE id = ${jobId} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
+    const locked = (await tx.$queryRaw<LockedJob[]>`SELECT id, "taskId", attempts, "estimatedReservedUsd", "reservationDay", "freshAllowance" FROM "AnalysisJob" WHERE id = ${jobId} AND status = 'LEASED' AND "leaseOwner" = ${workerId} FOR UPDATE`)[0];
     if (!locked) return;
     await releaseReservation(tx, locked);
     if (!locked.reservationDay) throw new Error('Leased job has no reservation day');
     const actual = usage.actual ?? Number(locked.estimatedReservedUsd);
-    await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { actualEstimatedUsd: { increment: actual }, inputTokens: { increment: usage.input }, outputTokens: { increment: usage.output }, successfulJobs: { increment: 1 } } });
-    await tx.analysisJob.update({ where: { id: jobId }, data: { status: 'SUCCEEDED', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, estimatedReservedUsd: 0, actualInputTokens: usage.actual === null ? null : usage.input, actualOutputTokens: usage.actual === null ? null : usage.output, actualEstimatedUsd: actual, completedAt: new Date(), lastError: null } });
+    await tx.aiBudgetDay.update({ where: { day: locked.reservationDay }, data: { actualEstimatedUsd: { increment: actual }, ...(locked.freshAllowance ? { freshActualUsd: { increment: actual } } : {}), inputTokens: { increment: usage.input }, outputTokens: { increment: usage.output }, successfulJobs: { increment: 1 } } });
+    await tx.analysisJob.update({ where: { id: jobId }, data: { status: 'SUCCEEDED', leaseOwner: null, leaseExpiresAt: null, reservationDay: null, freshAllowance: false, estimatedReservedUsd: 0, actualInputTokens: usage.actual === null ? null : usage.input, actualOutputTokens: usage.actual === null ? null : usage.output, actualEstimatedUsd: actual, completedAt: new Date(), lastError: null } });
   });
 }
 

@@ -153,6 +153,7 @@ model AnalysisJob {
   lastError            String?
   estimatedReservedUsd Decimal   @default(0) @db.Decimal(12, 6)
   reservationDay       DateTime? @db.Date
+  freshAllowance       Boolean   @default(false)
   actualInputTokens    Int?
   actualOutputTokens   Int?
   actualEstimatedUsd   Decimal?  @db.Decimal(12, 6)
@@ -168,6 +169,8 @@ model AiBudgetDay {
   day                DateTime @id @db.Date
   reservedUsd        Decimal  @default(0) @db.Decimal(12, 6)
   actualEstimatedUsd Decimal  @default(0) @db.Decimal(12, 6)
+  freshReservedUsd   Decimal  @default(0) @db.Decimal(12, 6)
+  freshActualUsd     Decimal  @default(0) @db.Decimal(12, 6)
   inputTokens        BigInt   @default(0)
   outputTokens       BigInt   @default(0)
   successfulJobs     Int      @default(0)
