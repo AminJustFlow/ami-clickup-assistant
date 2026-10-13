@@ -77,7 +77,7 @@ export async function auditOnce(): Promise<QualitySnapshot> {
       snapshot.inspected++;
       // Flag only exact matching action text within a client. Similar-looking
       // tasks may represent different deliverables, so never auto-hide them.
-      const action = task.intelligence.amiAction?.trim().toLowerCase().replace(/\\s+/g, ' ');
+      const action = task.intelligence.amiAction?.trim().toLowerCase().replace(/\s+/g, ' ');
       if (task.intelligence.needsAmi && !isClosedClickUpStatus(task.clickupStatus) && action && task.clientId != null) {
         const key = task.clientId + ':' + action;
         if (actionKeys.has(key)) snapshot.potentialDuplicateActions++;
