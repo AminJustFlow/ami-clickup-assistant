@@ -19,6 +19,8 @@ export type QualitySnapshot = {
   repaired: number;
   potentialDuplicateActions: number;
   overdueLowPriority: number;
+  verificationExamples: Array<{ taskId: number; reasons: string[]; jobStatus: string | null }>;
+  staleJobStatuses: Record<string, number>;
 };
 
 // Deliberately use only deterministic, source-backed checks. AI judgment is
@@ -53,7 +55,7 @@ export function duplicateActionKey(clientId: number | null, action: string | nul
 }
 
 export async function auditOnce(): Promise<QualitySnapshot> {
-  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0 };
+  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0, verificationExamples: [], staleJobStatuses: {} };
   const actionKeys = new Set<string>();
   const now = new Date();
   let cursor: number | undefined;
@@ -89,6 +91,15 @@ export async function auditOnce(): Promise<QualitySnapshot> {
       }
       for (const key of ['stale', 'closedAttention', 'invalidScores', 'needsVerification'] as const) {
         if (result[key]) snapshot[key]++;
+      }
+      if (result.needsVerification && snapshot.verificationExamples.length < 10) {
+        const job = await prisma.analysisJob.findUnique({ where: { taskId: task.id }, select: { status: true } });
+        snapshot.verificationExamples.push({ taskId: task.id, reasons: attentionVerificationReasons(task), jobStatus: job?.status ?? null });
+      }
+      if (result.stale) {
+        const job = await prisma.analysisJob.findUnique({ where: { taskId: task.id }, select: { status: true } });
+        const status = job?.status ?? 'NO_JOB';
+        snapshot.staleJobStatuses[status] = (snapshot.staleJobStatuses[status] ?? 0) + 1;
       }
       // Only provably stale SUCCEEDED work can be corrected without making
       // up a new AI interpretation. The normal AI worker handles its budget.
