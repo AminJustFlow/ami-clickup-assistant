@@ -845,3 +845,10 @@ button{font-family:inherit}
 .dashboard-shell .dashboard-task-actions .task-action{margin:0}
 .dashboard-shell .clean-task .secondary-dependency{display:inline-flex;margin:2px 0 3px}
 @media(max-width:680px){.dashboard-shell .dashboard-task-actions{column-gap:12px;row-gap:10px;margin-top:12px}}
+
+
+/* Phase 32.3: transparent data freshness and AI verification */
+.dashboard-shell .dashboard-freshness{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 20px;margin:-8px 0 15px;color:#536d78;font-size:11px;line-height:1.5}
+.dashboard-shell .dashboard-freshness span{display:inline-flex;align-items:center;gap:5px}
+.dashboard-shell .dashboard-verify{display:inline-block!important;color:#865a21!important;background:#fff6e6;border:1px solid #f0ddba;border-radius:6px;padding:6px 9px;margin:9px 0 2px!important;font-size:11px!important;line-height:1.4!important;font-weight:650}
+@media(max-width:680px){.dashboard-shell .dashboard-freshness{margin:0 0 14px;flex-direction:column;gap:4px}}

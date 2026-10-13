@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
 import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
 import { clientHealthStatus, compareClientHealth, dueWithinDays } from '@/lib/clients/health';
-import { isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ const stateLabel: Record<string, string> = {
 };
 
 export default async function Home() {
-  const [tasks, allClients, importedCounts] = await Promise.all([prisma.task.findMany({
+  const [tasks, allClients, importedCounts, lastSync] = await Promise.all([prisma.task.findMany({
     where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
     select: {
       id: true, clientId: true, name: true, clickupStatus: true, dueDate: true,
@@ -30,7 +30,7 @@ export default async function Home() {
       client: { select: { name: true, slug: true } },
       intelligence: { select: {
         needsAmi: true, agentState: true, sourceFingerprint: true, analyzedAt: true,
-        amiAttentionScore: true, amiAction: true, currentSummary: true,
+        amiAttentionScore: true, amiAction: true, currentSummary: true, confidence: true,
         waitingOnType: true, waitingOnName: true
       } },
       attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
@@ -40,12 +40,17 @@ export default async function Home() {
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   }),
   prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } }),
-  prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } }, _count: { _all: true } })
+  prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } }, _count: { _all: true } }),
+  prisma.syncRun.findFirst({ where: { status: { in: ['SUCCEEDED', 'COMPLETED', 'SUCCESS'] }, completedAt: { not: null } }, orderBy: { completedAt: 'desc' }, select: { completedAt: true, clientId: true } })
   ]);
 
   const needsAmi = tasks.filter(isOpenAttentionTask);
+  const importedTotal = importedCounts.reduce((sum, row) => sum + row._count._all, 0);
+  const coverage = importedTotal ? Math.round(tasks.length / importedTotal * 100) : 0;
+  const syncLabel = lastSync?.completedAt ? lastSync.completedAt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York', timeZoneName: 'short' }) : null;
   const openAmiIds = new Set(needsAmi.map(task => task.id));
   const today = new Date();
+  // Overdue means an imported due date in the past on a task not marked complete; it does not establish current urgency.
   const isOverdue = (task: (typeof tasks)[number]) => !!task.dueDate && task.dueDate < today && task.intelligence?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus);
   const overdueAmi = needsAmi.filter(isOverdue);
   const prioritizedAmi = [...needsAmi].sort((a,b) => Number(isOverdue(b)) - Number(isOverdue(a)) || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
@@ -121,8 +126,9 @@ export default async function Home() {
       <a className="quiet-action" href="/attention">Open Ami action inbox <span aria-hidden="true">↗</span></a>
     </header>
 
+    <div className="dashboard-freshness" aria-label="Data freshness"><span>{syncLabel ? `Latest successful ClickUp sync: ${syncLabel}${lastSync?.clientId != null ? ' (client sync)' : ''}` : 'Last successful ClickUp sync unavailable'}</span><span>{tasks.length.toLocaleString('en-US')} of {importedTotal.toLocaleString('en-US')} imported tasks analyzed ({coverage}%)</span></div>
     <section className="dashboard-metrics" aria-label="Work summary">
-      <a href="/attention" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>{overdueAmi.length} overdue · Open inbox ↗</small></a>
+      <a href="/attention" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>{overdueAmi.length} past due · Open inbox ↗</small></a>
       <a href="#waiting-title" className="overview-stat metric-link"><span>Waiting on others</span><strong>{externalWaiting.length}</strong><small>Team, clients and vendors ↓</small></a>
       <div className="overview-stat"><span>In progress</span><strong>{active.length}</strong><small>{stale.length} may need a follow-up</small></div>
       <div className="overview-stat"><span>Completed</span><strong>{completed.length}</strong><small>Of {tasks.length} analyzed tasks · all time</small></div>
@@ -135,6 +141,7 @@ export default async function Home() {
           {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
             <div className="clean-task-list">{prioritizedAmi.slice(0, 5).map(task => <article className="clean-task" key={task.id}>
               <div className="task-topline"><span>{task.client.name}</span><span className={`status-pill attention-pill ${isOverdue(task) ? 'priority-overdue' : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? 'priority-high' : 'priority-standard'}`}>{isOverdue(task) ? "Overdue" : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? "High priority" : "Needs decision"}</span></div>
+              {attentionVerificationReasons(task).length > 0 && <p className="dashboard-verify" title={attentionVerificationReasons(task).join('; ')}>Verify latest task details · {attentionVerificationReasons(task)[0]}</p>}
               <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
               <div className="dashboard-task-actions"><TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}</div>
             </article>)}{needsAmi.length > 5 && <div className="dashboard-list-more"><span>{needsAmi.length - 5} more AI-flagged tasks</span><a href="/attention">View action inbox ↗</a></div>}</div>}
@@ -146,7 +153,7 @@ export default async function Home() {
       <aside className="dashboard-sidebar">
         <section className="clean-panel" id="clients" aria-labelledby="clients-title">
           <div className="panel-heading"><div><p className="eyebrow">CLIENT HEALTH</p><h2 id="clients-title">Clients needing attention</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <p className="client-health-note">Signals from analyzed ClickUp tasks, not a definitive health score. Incomplete analysis may hide issues.</p><div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{clientHealthStatus(client)} · {client.analyzed} analyzed / {client.total} imported</small><span className="client-health-signals">{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} overdue</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.needsAmi > 0 && <span className="client-signal decision">{client.needsAmi} for Ami</span>}{client.dueSoon > 0 && <span className="client-signal decision">{client.dueSoon} due in 7 days</span>}{client.waiting > 0 && <span className="client-signal quiet">{client.waiting} waiting</span>}{clientHealthStatus(client) === 'No flagged issues' && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}{clientHealthStatus(client) === 'Insufficient analysis' && <span className="client-signal quiet">Analysis not available</span>}</span></span><span className="entity-arrow">›</span></a>)}{orderedClients.length > 5 && <div className="dashboard-list-more"><span>{orderedClients.length - 5} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
+          <p className="client-health-note">Signals from analyzed ClickUp tasks, not a definitive health score. Past-due counts include open tasks with historical due dates; verify current relevance.</p><div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{clientHealthStatus(client)} · {client.analyzed} analyzed / {client.total} imported</small><span className="client-health-signals">{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} past due</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.needsAmi > 0 && <span className="client-signal decision">{client.needsAmi} for Ami</span>}{client.dueSoon > 0 && <span className="client-signal decision">{client.dueSoon} due in 7 days</span>}{client.waiting > 0 && <span className="client-signal quiet">{client.waiting} waiting</span>}{clientHealthStatus(client) === 'No flagged issues' && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}{clientHealthStatus(client) === 'Insufficient analysis' && <span className="client-signal quiet">Analysis not available</span>}</span></span><span className="entity-arrow">›</span></a>)}{orderedClients.length > 5 && <div className="dashboard-list-more"><span>{orderedClients.length - 5} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
         </section>
         {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
           <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
@@ -155,7 +162,7 @@ export default async function Home() {
         </details>}
         <section className="clean-panel" id="team" aria-labelledby="team-title">
           <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
-          <div className="entity-list">{featuredEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.open} open · {employee.overdue} overdue · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}{orderedEmployees.length > 6 && <div className="dashboard-list-more"><span>{orderedEmployees.length - 6} more team members</span><a href="/team">View full team ↗</a></div>}</div>
+          <div className="entity-list">{featuredEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.open} open · {employee.overdue} past due · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}{orderedEmployees.length > 6 && <div className="dashboard-list-more"><span>{orderedEmployees.length - 6} more team members</span><a href="/team">View full team ↗</a></div>}</div>
         </section>
         <section className="clean-panel" aria-labelledby="waiting-title">
           <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
@@ -176,7 +183,7 @@ export default async function Home() {
               </details>;
             })}{groupedWaiting.length > 5 && <div className="dashboard-list-more"><span>{groupedWaiting.length - 5} additional contacts</span><a href="/search">Find waiting tasks ↗</a></div>}</div>}
         </section>
-        <div className="dashboard-note">Intelligence is inferred from ClickUp tasks and comments. Open a task to verify its latest details. <a href="/system">System status and AI usage ↗</a></div>
+        <div className="dashboard-note">Past-due counts reflect stored ClickUp due dates, not confirmed urgency. Intelligence is inferred from ClickUp tasks and comments. Open a task to verify its latest details. <a href="/system">System status and AI usage ↗</a></div>
       </aside>
     </div>
   </main>;
