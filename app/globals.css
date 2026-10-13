@@ -783,3 +783,21 @@ button{font-family:inherit}
 .attention-workspace .attention-queue-panel .attention-row-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .attention-workspace .attention-queue-panel .attention-row-actions>*{min-width:0}
 @media(max-width:760px){.attention-workspace .attention-queue-panel .attention-row-actions{width:100%}}
+
+
+/* Compact review actions: primary review and ClickUp share a row */
+.attention-workspace .attention-brief-card .attention-row-actions{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);align-content:start;gap:8px}
+.attention-workspace .attention-brief-card .attention-primary-review{grid-column:1;min-width:0}
+.attention-workspace .attention-brief-card .attention-row-actions>a.task-action{grid-column:2;display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:43px}
+.attention-workspace .attention-brief-card .attention-decision-form{grid-column:1/-1}
+.attention-workspace .attention-brief-card .attention-row-actions:not(:has(>a.task-action)) .attention-primary-review{grid-column:1/-1}
+.attention-workspace .attention-queue-panel .attention-row-actions{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);align-content:center;gap:6px}
+.attention-workspace .attention-queue-panel .attention-queue-primary{grid-column:1;min-width:0}
+.attention-workspace .attention-queue-panel .attention-row-actions>a.task-action{grid-column:2;display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:36px}
+.attention-workspace .attention-queue-panel .attention-row-actions:not(:has(>a.task-action)) .attention-queue-primary{grid-column:1/-1}
+.attention-workspace .attention-queue-panel .attention-queue-more{grid-column:1/-1}
+.attention-workspace .attention-queue-panel .attention-row-actions>form.attention-decision-form{grid-column:1/-1}
+.attention-workspace .attention-queue-panel .attention-queue-primary>button{min-height:36px}
+.attention-workspace .attention-queue-panel .attention-queue-more>summary{padding:7px 10px}
+.attention-workspace .attention-queue-panel .attention-row{padding-top:13px;padding-bottom:13px}
+@media(max-width:440px){.attention-workspace .attention-brief-card .attention-row-actions,.attention-workspace .attention-queue-panel .attention-row-actions{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}}
