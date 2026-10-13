@@ -838,3 +838,10 @@ button{font-family:inherit}
  .dashboard-shell .clean-task{padding:13px 0}
  .dashboard-shell .clean-task .task-action{margin-top:7px}
 }
+
+
+/* Phase 32.2: clear spacing between dependency badge and task actions */
+.dashboard-shell .dashboard-task-actions{display:flex;align-items:center;flex-wrap:wrap;column-gap:14px;row-gap:9px;margin-top:12px}
+.dashboard-shell .dashboard-task-actions .task-action{margin:0}
+.dashboard-shell .clean-task .secondary-dependency{display:inline-flex;margin:2px 0 3px}
+@media(max-width:680px){.dashboard-shell .dashboard-task-actions{column-gap:12px;row-gap:10px;margin-top:12px}}
