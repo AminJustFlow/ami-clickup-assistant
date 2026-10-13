@@ -138,7 +138,11 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       </div>
       <div className="attention-progress" aria-label="Review progress">
         <p><strong>{triagedCount} of {triageTotal}</strong> current recommendations triaged · {reviewedCount} reviewed · {dismissedCount} dismissed · {active.length} remaining</p>
-        <progress value={triagedCount} max={Math.max(1, triageTotal)} style={{ width: '100%', height: 12 }} />
+        <div className="attention-progress-track" role="img" aria-label={`${reviewedCount} reviewed, ${dismissedCount} dismissed, ${active.length} remaining out of ${triageTotal} recommendations`}>
+          <span className="attention-progress-reviewed" style={{ width: `${triageTotal ? 100 * reviewedCount / triageTotal : 0}%` }} />
+          <span className="attention-progress-dismissed" style={{ width: `${triageTotal ? 100 * dismissedCount / triageTotal : 0}%` }} />
+        </div>
+        <div className="attention-progress-legend"><span><i className="attention-legend-reviewed" /> Reviewed ({reviewedCount})</span><span><i className="attention-legend-dismissed" /> Dismissed ({dismissedCount})</span><span><i className="attention-legend-remaining" /> Remaining ({active.length})</span></div>
       </div>
       <div className="attention-brief-content">
         <div className="attention-brief-section">
