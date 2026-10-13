@@ -4,6 +4,7 @@ import { prisma } from '../lib/db/prisma';
 import { buildTaskContext } from '../lib/intelligence/context';
 import { intelligenceFingerprint } from '../lib/intelligence/fingerprint';
 import { findRelatedTasks } from '../lib/intelligence/related';
+import { hierarchyRelatedEvidence } from '../lib/intelligence/hierarchy-evidence';
 import { analyzeWithAI } from '../lib/intelligence/ai';
 import { saveTaskIntelligence } from '../lib/intelligence/change-history';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
@@ -289,7 +290,13 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
       comments: { orderBy: { clickupCreatedAt: 'asc' } }
     }
   });
-  const context = buildTaskContext(task); const related = findRelatedTasks(context, scopeTasks.map(buildTaskContext));
+  const context = buildTaskContext(task);
+  const scopedContexts = scopeTasks.map(item => ({ clickupTaskId: item.clickupTaskId, rawPayload: item.rawPayload, context: buildTaskContext(item) }));
+  const related = hierarchyRelatedEvidence(
+    { clickupTaskId: task.clickupTaskId, rawPayload: task.rawPayload, context },
+    scopedContexts,
+    findRelatedTasks(context, scopedContexts.map(item => item.context))
+  );
   const fingerprint = intelligenceFingerprint(context, model, teamNames, related);
   try {
     // If a prior worker saved the exact result and died before finalizing the job,
