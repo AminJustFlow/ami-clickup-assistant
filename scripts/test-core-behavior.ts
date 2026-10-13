@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { dailyBrief } from '../lib/attention/daily-brief';
-import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
+import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
 
@@ -25,6 +25,26 @@ assert.deepEqual(attentionVerificationReasons({
   clickupUpdatedAt: analyzedAt,
   intelligence: { ...intel, confidence: 0.94, amiAction: 'Confirm launch date' }
 }), []);
+
+// Model placeholders and invalid confidence must never become ready-to-act decisions.
+for (const action of [null, '', '   ', 'N/A', 'none', 'Unknown', 'TBD', 'No action needed', 'not applicable', '...']) {
+  assert.equal(hasSpecificAmiAction(action), false, String(action));
+}
+for (const action of ['Confirm launch date', 'Review client feedback', 'Follow up with vendor']) {
+  assert.equal(hasSpecificAmiAction(action), true, action);
+}
+assert.deepEqual(attentionVerificationReasons({
+  clickupUpdatedAt: analyzedAt,
+  intelligence: { ...intel, confidence: 0.9, amiAction: 'N/A' }
+}), ['No specific action for Ami']);
+assert.deepEqual(attentionVerificationReasons({
+  clickupUpdatedAt: analyzedAt,
+  intelligence: { ...intel, confidence: 1.5, amiAction: 'Confirm launch date' }
+}), ['Low or unknown AI confidence']);
+assert.deepEqual(attentionVerificationReasons({
+  clickupUpdatedAt: analyzedAt,
+  intelligence: { ...intel, confidence: Number.NaN, amiAction: 'Confirm launch date' }
+}), ['Low or unknown AI confidence']);
 
 const brief = dailyBrief([
   { id: 1, overdue: true, verificationReasons: ['Low confidence'], intelligence: { amiAttentionScore: 95 } },
