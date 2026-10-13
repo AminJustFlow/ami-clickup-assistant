@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { inspectQuality, duplicateActionKey } from './quality-worker';
+import { inspectQuality, duplicateActionKey, classifyFailureReason } from './quality-worker';
 
 const analyzedAt = new Date('2026-10-13T12:00:00Z');
 const base = {
@@ -24,4 +24,9 @@ assert.equal(duplicateActionKey(12, ' Confirm   launch DATE '), duplicateActionK
 assert.notEqual(duplicateActionKey(12, 'Confirm launch date'), duplicateActionKey(13, 'Confirm launch date'));
 assert.equal(duplicateActionKey(null, 'Confirm launch date'), null);
 assert.equal(duplicateActionKey(12, ' '), null);
+assert.equal(classifyFailureReason('Worker lease expired after maximum attempts'), 'LEASE_EXPIRED');
+assert.equal(classifyFailureReason('429 rate limit'), 'RATE_LIMIT');
+assert.equal(classifyFailureReason('request timed out'), 'TIMEOUT');
+assert.equal(classifyFailureReason(null), 'NO_ERROR_RECORDED');
+assert.equal(classifyFailureReason('unexpected provider error'), 'OTHER');
 console.log('Quality audit deterministic regression checks passed');
