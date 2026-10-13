@@ -38,12 +38,13 @@ export function hasSpecificAmiAction(action: string | null): boolean {
   // These are status summaries or generic prompts, not decisions Ami can act on.
   // Keep this conservative: a concrete instruction with context must remain valid.
   const normalized = value.toLowerCase().replace(/[.!]+$/, '').trim();
+  if (!normalized || /^[-–—]+$/.test(normalized)) return false;
   const genericActions = new Set([
     'n/a', 'none', 'unknown', 'tbd', 'to be determined',
     'no action', 'no action needed', 'no action required', 'not applicable',
     'review', 'check', 'follow up', 'follow-up', 'monitor', 'investigate',
     'look into', 'take action', 'needs attention', 'action required',
-    'awaiting update', 'awaiting response', 'awaiting feedback'
+    'awaiting update', 'awaiting response', 'awaiting feedback', 'look into this'
   ]);
   if (genericActions.has(normalized)) return false;
   const genericTargets = ['task', 'item', 'issue', 'status', 'situation', 'project', 'details', 'progress', 'update', 'updates'];
@@ -53,7 +54,7 @@ export function hasSpecificAmiAction(action: string | null): boolean {
       if (normalized === verb + ' ' + target || normalized === verb + ' the ' + target || normalized === verb + ' this ' + target) return false;
     }
   }
-  return normalized !== '...' && normalized !== '--';
+  return true;
 
 }
 
