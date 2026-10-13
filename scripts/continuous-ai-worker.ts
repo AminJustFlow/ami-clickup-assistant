@@ -16,7 +16,13 @@ if (!process.env.DATABASE_URL) loadEnvConfig(process.cwd());
 const once = process.argv.includes('--once');
 const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
-const dailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
+const standardDailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
+// Approved one-time $2 regular-budget supplement, only for 2026-10-13 UTC.
+// Reverts automatically at the next UTC day boundary without an env change.
+const oneTimeBudgetDay = '2026-10-13';
+const dailyBudgetFor = (now: Date = new Date()) =>
+  now.toISOString().slice(0, 10) === oneTimeBudgetDay ? standardDailyBudget + 2 : standardDailyBudget;
+const dailyBudget = standardDailyBudget;
 const freshBudget = Number(process.env.AI_FRESH_ACTIVITY_BUDGET_USD || '3');
 const batchBudget = Number(process.env.AI_BATCH_BUDGET_USD);
 const maxJobs = Number(process.env.AI_MAX_ATTEMPTS_PER_CYCLE || '10');
@@ -125,7 +131,7 @@ async function recoverHistoricalFailures() {
       const budget = await tx.aiBudgetDay.findUniqueOrThrow({ where: { day } });
       const regularSpent = Number(budget.actualEstimatedUsd) - Number(budget.freshActualUsd)
         + Number(budget.reservedUsd) - Number(budget.freshReservedUsd);
-      if (regularSpent + reservation > dailyBudget + 1e-9) return false;
+      if (regularSpent + reservation > dailyBudgetFor() + 1e-9) return false;
       const rows = await tx.$queryRaw<Array<{ id: number }>>`
         SELECT j.id FROM "AnalysisJob" j
         JOIN "Task" t ON t.id = j."taskId"
@@ -222,11 +228,11 @@ export async function leaseJob(client = prisma) {
       WHERE day = ${budgetDayText}::date
         AND (
           (${fresh} AND "freshActualUsd" + "freshReservedUsd" + ${reservation} <= ${freshBudget}
-            AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget + freshBudget})
+            AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudgetFor() + freshBudget})
           OR
           (NOT ${fresh} AND "actualEstimatedUsd" - "freshActualUsd"
-            + "reservedUsd" - "freshReservedUsd" + ${reservation} <= ${dailyBudget}
-            AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget + freshBudget})
+            + "reservedUsd" - "freshReservedUsd" + ${reservation} <= ${dailyBudgetFor()}
+            AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudgetFor() + freshBudget})
         )`;
     if (!reserved) {
       await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now), lastError: fresh ? 'fresh_allowance_checked' : 'regular_allowance_checked' } }); return { skipped: true as const };
@@ -332,6 +338,22 @@ export async function completeJob(jobId: number, usage: { input: number; output:
 
 async function cycle() {
   await prisma.analysisJob.updateMany({ where: { status: 'PAUSED_BUDGET', nextAttemptAt: { lte: new Date() } }, data: { status: 'PENDING' } });
+  // Resume regular-budget pauses only while the temporary allowance has room.
+  // Avoid repeatedly requeuing jobs after the allowance has been exhausted.
+  if (new Date().toISOString().slice(0, 10) === oneTimeBudgetDay) {
+    const day = utcBudgetDay(new Date());
+    const budget = await prisma.aiBudgetDay.findUnique({ where: { day } });
+    const regularUsed = budget
+      ? Number(budget.actualEstimatedUsd) - Number(budget.freshActualUsd)
+        + Number(budget.reservedUsd) - Number(budget.freshReservedUsd)
+      : 0;
+    if (regularUsed + reservation <= dailyBudgetFor() + 1e-9) {
+      await prisma.analysisJob.updateMany({
+        where: { status: 'PAUSED_BUDGET', lastError: 'regular_allowance_checked' },
+        data: { status: 'PENDING', nextAttemptAt: new Date() }
+      });
+    }
+  }
   const recovery = await recoverExpiredLeases();
   await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), metadata: { recovery } }, update: { status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), lastError: null, metadata: { recovery } } });
   const teamNames = await refreshQueue(); await recoverHistoricalFailures(); let attempts = 0; let batchReserved = 0;
