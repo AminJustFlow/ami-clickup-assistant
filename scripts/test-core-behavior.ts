@@ -1,8 +1,24 @@
 import assert from 'node:assert/strict';
+import { clientHealthStatus, compareClientHealth, dueWithinDays } from '../lib/clients/health';
 import { compareAttentionPriority, dailyBrief } from '../lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
+
+const healthy = { name: 'Alpha', total: 10, analyzed: 10, needsAmi: 0, overdue: 0, blocked: 0, waiting: 0, dueSoon: 0 };
+assert.equal(clientHealthStatus(healthy), 'No flagged issues');
+assert.equal(clientHealthStatus({ ...healthy, analyzed: 0 }), 'Insufficient analysis');
+assert.equal(clientHealthStatus({ ...healthy, waiting: 1 }), 'Watch');
+assert.equal(clientHealthStatus({ ...healthy, dueSoon: 1 }), 'Watch');
+assert.equal(clientHealthStatus({ ...healthy, blocked: 1 }), 'Attention needed');
+assert.equal(clientHealthStatus({ ...healthy, needsAmi: 1 }), 'Attention needed');
+assert.equal(compareClientHealth({ ...healthy, name: 'Beta', overdue: 1 }, healthy) < 0, true);
+assert.equal(compareClientHealth({ ...healthy, name: 'Beta', dueSoon: 1 }, healthy) < 0, true);
+const healthClock = new Date('2026-10-13T12:00:00Z');
+assert.equal(dueWithinDays(new Date('2026-10-20T12:00:00Z'), healthClock), true);
+assert.equal(dueWithinDays(new Date('2026-10-20T12:00:01Z'), healthClock), false);
+assert.equal(dueWithinDays(new Date('2026-10-12T12:00:00Z'), healthClock), false);
+assert.equal(dueWithinDays(null, healthClock), false);
 
 const analyzedAt = new Date('2026-10-10T12:00:00Z');
 const intel = { needsAmi: true, agentState: 'WAITING_ON_AMI', sourceFingerprint: 'fp-1', analyzedAt };
