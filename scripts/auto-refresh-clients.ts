@@ -1,6 +1,7 @@
 import { loadEnvConfig } from '@next/env';
 import { prisma } from '../lib/db/prisma';
 import { refreshClient } from '../lib/sync/refresh-voth';
+import { auditRecommendationQuality } from '../lib/intelligence/recommendation-quality-audit';
 
 loadEnvConfig(process.cwd());
 const once = process.argv.includes('--once');
@@ -10,6 +11,8 @@ if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 5) throw new Error('CLICKUP_SYNC_CONCURRENCY must be 1-5');
 
 let stopping = false;
+let lastQualityAuditAt = 0;
+const QUALITY_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 process.on('SIGINT', () => { stopping = true; });
 process.on('SIGTERM', () => { stopping = true; });
 
@@ -32,6 +35,16 @@ async function cycle() {
   await Promise.all(Array.from({ length: Math.min(concurrency, clients.length) }, async () => {
     while (!stopping) { const client = clients[cursor++]; if (!client) break; await syncOne(client); }
   }));
+  // Diagnostic-only audit, once per day after synchronization. Never blocks sync on failure.
+  if (Date.now() - lastQualityAuditAt >= QUALITY_AUDIT_INTERVAL_MS && !stopping) {
+    lastQualityAuditAt = Date.now();
+    try {
+      const quality = await auditRecommendationQuality();
+      console.log('[recommendation-quality] ' + JSON.stringify(quality));
+    } catch (error) {
+      console.error('[recommendation-quality] audit failed: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
   await prisma.workerHeartbeat.upsert({ where: { name: 'clickup-sync' }, create: { name: 'clickup-sync', status: 'IDLE', lastStartedAt: new Date(), lastSeenAt: new Date(), lastSuccessAt: new Date(), metadata: { clients: clients.length } }, update: { status: 'IDLE', lastSeenAt: new Date(), lastSuccessAt: new Date(), lastError: null, metadata: { clients: clients.length } } });
 }
 
