@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { dailyBrief } from '../lib/attention/daily-brief';
+import { compareAttentionPriority, dailyBrief } from '../lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
@@ -56,6 +56,25 @@ assert.deepEqual({ open: brief.open, ready: brief.ready, verify: brief.verify, o
 assert.deepEqual(brief.topReady.map(item => item.id), [3, 4, 2]);
 assert.deepEqual(brief.topToVerify.map(item => item.id), [1]);
 assert.deepEqual(dailyBrief([]).topReady, []);
+
+// Deadline-aware ranking, without putting unverified items in the ready brief.
+const clock = new Date('2026-10-13T12:00:00Z');
+const item = (id: number, due: string | null, score: number, overdue = false, verificationReasons: string[] = []) => ({
+  id, dueDate: due ? new Date(due) : null, overdue, verificationReasons,
+  clickupUpdatedAt: clock, intelligence: { amiAttentionScore: score }
+});
+const ranked = dailyBrief([
+  item(1, null, 99),
+  item(2, '2026-10-15T10:00:00Z', 15),
+  item(3, '2026-10-13T16:00:00Z', 20),
+  item(4, '2026-10-12T10:00:00Z', 5, true),
+  item(5, '2026-10-13T13:00:00Z', 100, false, ['Low confidence'])
+], clock);
+assert.deepEqual(ranked.topReady.map(task => task.id), [4, 3, 2]);
+assert.deepEqual(ranked.topToVerify.map(task => task.id), [5]);
+assert.equal(compareAttentionPriority(item(1, null, 70), item(2, null, 60), clock) < 0, true);
+assert.equal(compareAttentionPriority(item(1, null, 70), item(2, null, 70), clock) < 0, true);
+
 
 const before = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'open' }, assignees: [{ id: 2 }], due_date: '1', description: 'A' });
 const after = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'done' }, assignees: [{ id: 3 }], due_date: '1', description: 'A' });
