@@ -35,7 +35,13 @@ export function isOpenAttentionTask(task: {
 export function hasSpecificAmiAction(action: string | null): boolean {
   const value = action?.trim() ?? '';
   if (!value) return false;
-  return !/^(?:n\/?a|none|unknown|tbd|to be determined|no action(?: needed| required)?|not applicable|\.{2,}|[-–—]+)[.!]?$/i.test(value);
+  // These are status summaries or generic prompts, not decisions Ami can act on.
+  // Keep this conservative: a concrete instruction with context must remain valid.
+  const nonActions = [
+    /^(?:n\\/?a|none|unknown|tbd|to be determined|no action(?: needed| required)?|not applicable|\\.{2,}|[-–—]+)[.!]?$/i,
+    /^(?:review|check|follow up|follow-up|monitor|investigate|look into|take action|needs attention|action required|await(?:ing)? (?:update|response|feedback))\\s*(?:the|this)?\\s*(?:task|item|issue|status|situation|project|details|progress|updates?)?[.!]?$/i
+  ];
+  return !nonActions.some(pattern => pattern.test(value));
 }
 
 /** Reasons to verify an AI recommendation before treating it as a current decision. */
