@@ -22,17 +22,26 @@ const stateLabel: Record<string, string> = {
 };
 
 export default async function Home() {
-  const tasks = await prisma.task.findMany({
+  const [tasks, allClients, importedCounts] = await Promise.all([prisma.task.findMany({
     where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
-    include: {
-      client: true,
-      intelligence: true,
-      attentionDisposition: true,
+    select: {
+      id: true, clientId: true, name: true, clickupStatus: true, dueDate: true,
+      clickupUpdatedAt: true, clickupUrl: true,
+      client: { select: { name: true, slug: true } },
+      intelligence: { select: {
+        needsAmi: true, agentState: true, sourceFingerprint: true, analyzedAt: true,
+        amiAttentionScore: true, amiAction: true, currentSummary: true,
+        waitingOnType: true, waitingOnName: true
+      } },
+      attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
-      assignees: { include: { employee: true } }
+      assignees: { select: { employee: { select: { id: true, name: true } } } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
-  });
+  }),
+  prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } }),
+  prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } }, _count: { _all: true } })
+  ]);
 
   const needsAmi = tasks.filter(isOpenAttentionTask);
   const openAmiIds = new Set(needsAmi.map(task => task.id));
@@ -47,10 +56,8 @@ export default async function Home() {
   const completed = tasks.filter((task) => isClosedClickUpStatus(task.clickupStatus) || task.intelligence?.agentState === 'COMPLETED');
 
   const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number; overdue: number; blocked: number; dueSoon: number }>();
-  const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
   const groups = groupClientFolders(allClients);
   const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
-  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } }, _count: { _all: true } });
   const totalsByClient = new Map(importedCounts.map(row => [row.clientId, row._count._all]));
   for (const group of groups) {
     clientRows.set(group.canonical.slug, {
