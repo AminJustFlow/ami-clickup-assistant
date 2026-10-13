@@ -21,6 +21,7 @@ export type QualitySnapshot = {
   overdueLowPriority: number;
   verificationExamples: Array<{ taskId: number; reasons: string[]; jobStatus: string | null }>;
   staleJobStatuses: Record<string, number>;
+  queue: { statuses: Record<string, number>; readyPending: number; delayedPending: number; expiredLeases: number; budgetPausedDue: number; retrying: number; failed: number };
 };
 
 // Deliberately use only deterministic, source-backed checks. AI judgment is
@@ -55,7 +56,7 @@ export function duplicateActionKey(clientId: number | null, action: string | nul
 }
 
 export async function auditOnce(): Promise<QualitySnapshot> {
-  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0, verificationExamples: [], staleJobStatuses: {} };
+  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0, verificationExamples: [], staleJobStatuses: {}, queue: { statuses: {}, readyPending: 0, delayedPending: 0, expiredLeases: 0, budgetPausedDue: 0, retrying: 0, failed: 0 } };
   const actionKeys = new Set<string>();
   const now = new Date();
   let cursor: number | undefined;
@@ -115,6 +116,17 @@ export async function auditOnce(): Promise<QualitySnapshot> {
     cursor = tasks[tasks.length - 1].id;
     if (tasks.length < 100) break;
   }
+  // Read-only queue diagnostics: no changes to leases, budgets or job state.
+  const jobs = await prisma.analysisJob.groupBy({ by: ['status'], _count: { _all: true } });
+  for (const job of jobs) snapshot.queue.statuses[job.status] = job._count._all;
+  const [readyPending, delayedPending, expiredLeases, budgetPausedDue, retrying] = await Promise.all([
+    prisma.analysisJob.count({ where: { status: 'PENDING', nextAttemptAt: { lte: now } } }),
+    prisma.analysisJob.count({ where: { status: 'PENDING', nextAttemptAt: { gt: now } } }),
+    prisma.analysisJob.count({ where: { status: 'LEASED', leaseExpiresAt: { lt: now } } }),
+    prisma.analysisJob.count({ where: { status: 'PAUSED_BUDGET', nextAttemptAt: { lte: now } } }),
+    prisma.analysisJob.count({ where: { status: 'PENDING', attempts: { gt: 0 } } })
+  ]);
+  Object.assign(snapshot.queue, { readyPending, delayedPending, expiredLeases, budgetPausedDue, retrying, failed: snapshot.queue.statuses.FAILED ?? 0 });
   return snapshot;
 }
 
