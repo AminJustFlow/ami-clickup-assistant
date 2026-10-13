@@ -121,11 +121,29 @@ async function refreshQueue() {
     if (!existing) await prisma.analysisJob.create({ data: { taskId: task.id } });
     else if (existing.status === 'SUCCEEDED') await prisma.analysisJob.update({ where: { taskId: task.id }, data: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, completedAt: null } });
   }
+  // Recheck budget-paused jobs when genuinely new source activity arrives.
+  // Otherwise the next-day pause remains in force.
+  await prisma.$executeRaw`
+    UPDATE "AnalysisJob" j SET status = 'PENDING', "nextAttemptAt" = NOW()
+    FROM "Task" t LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
+    WHERE j."taskId" = t.id AND j.status = 'PAUSED_BUDGET'
+      AND t.deleted = false AND (
+        (i.id IS NULL AND t."createdAt" > j."updatedAt")
+        OR (i."analyzedAt" IS NOT NULL AND EXISTS (
+          SELECT 1 FROM "TaskEvent" e WHERE e."taskId" = t.id
+          AND e."occurredAt" > GREATEST(i."analyzedAt", j."updatedAt")
+          AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
+          AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
+        ))
+      )
+      AND j."nextAttemptAt" > NOW()`;
   return teamNames;
 }
 
 export async function leaseJob(client = prisma) {
-  return serializable(client, async tx => {
+  // Skip a budget-blocked job and keep searching for one eligible under the other allowance.
+  for (let scan = 0; scan < 500; scan++) {
+  const outcome = await serializable(client, async tx => {
     const now = new Date();
     const budgetDay = utcBudgetDay(now);
     const budgetDayText = budgetDay.toISOString().slice(0, 10);
@@ -164,11 +182,15 @@ export async function leaseJob(client = prisma) {
             AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudget + freshBudget})
         )`;
     if (!reserved) {
-      await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now) } }); return null;
+      await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now) } }); return { skipped: true as const };
     }
     await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + leaseMilliseconds), attempts: { increment: 1 }, estimatedReservedUsd: reservation, reservationDay: budgetDay, freshAllowance: fresh } });
-    return job;
+    return { skipped: false as const, job };
   });
+  if (!outcome) return null;
+  if (!outcome.skipped) return outcome.job;
+  }
+  return null;
 }
 
 export async function renewOwnedLease(jobId: number, now = new Date(), client = prisma): Promise<boolean> {
