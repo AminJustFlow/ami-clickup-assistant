@@ -17,6 +17,8 @@ export type QualitySnapshot = {
   invalidScores: number;
   needsVerification: number;
   repaired: number;
+  potentialDuplicateActions: number;
+  overdueLowPriority: number;
 };
 
 // Deliberately use only deterministic, source-backed checks. AI judgment is
@@ -24,6 +26,7 @@ export type QualitySnapshot = {
 export function inspectQuality(task: {
   clickupStatus: string | null;
   clickupUpdatedAt: Date | null;
+  dueDate?: Date | null;
   intelligence: {
     analyzedAt: Date | null;
     needsAmi: boolean;
@@ -45,13 +48,15 @@ export function inspectQuality(task: {
 }
 
 export async function auditOnce(): Promise<QualitySnapshot> {
-  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0 };
+  const snapshot: QualitySnapshot = { inspected: 0, stale: 0, closedAttention: 0, invalidScores: 0, needsVerification: 0, repaired: 0, potentialDuplicateActions: 0, overdueLowPriority: 0 };
+  const actionKeys = new Set<string>();
+  const now = new Date();
   let cursor: number | undefined;
   for (;;) {
     const tasks = await prisma.task.findMany({
       where: { deleted: false, intelligence: { isNot: null } },
       select: {
-        id: true, clickupStatus: true, clickupUpdatedAt: true,
+        id: true, clientId: true, dueDate: true, clickupStatus: true, clickupUpdatedAt: true,
         intelligence: { select: { analyzedAt: true, needsAmi: true, confidence: true,
           amiAction: true, amiAttentionScore: true, importanceScore: true, sourceFingerprint: true } }
       },
@@ -63,6 +68,20 @@ export async function auditOnce(): Promise<QualitySnapshot> {
       if (!task.intelligence) continue;
       const result = inspectQuality({ ...task, intelligence: task.intelligence });
       snapshot.inspected++;
+      // Flag only exact matching action text within a client. Similar-looking
+      // tasks may represent different deliverables, so never auto-hide them.
+      const action = task.intelligence.amiAction?.trim().toLowerCase().replace(/\\s+/g, ' ');
+      if (task.intelligence.needsAmi && !isClosedClickUpStatus(task.clickupStatus) && action && task.clientId != null) {
+        const key = task.clientId + ':' + action;
+        if (actionKeys.has(key)) snapshot.potentialDuplicateActions++;
+        else actionKeys.add(key);
+      }
+      // Due dates are deterministic, but AI scores are judgments. Detect
+      // contradictions without rewriting the original scores.
+      if (task.intelligence.needsAmi && !isClosedClickUpStatus(task.clickupStatus)
+          && task.dueDate && task.dueDate < now && task.intelligence.amiAttentionScore <= 0) {
+        snapshot.overdueLowPriority++;
+      }
       for (const key of ['stale', 'closedAttention', 'invalidScores', 'needsVerification'] as const) {
         if (result[key]) snapshot[key]++;
       }
