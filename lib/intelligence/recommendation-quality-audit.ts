@@ -57,7 +57,7 @@ export async function auditRecommendationQuality() {
     if (reasons.includes('Low or unknown AI confidence')) stats.lowConfidence++;
     if (reasons.includes('No specific action for Ami')) stats.missingAction++;
     // Exact normalized same-client title + recommendation, not semantic deduplication.
-    const normalize = (value: string) => value.trim().toLowerCase().replace(/\\s+/g, ' ');
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/ +/g, ' ');
     const key = JSON.stringify([task.clientId, normalize(task.name), normalize(intel.amiAction || '')]);
     if (keys.has(key)) stats.duplicateCandidates++;
     else keys.add(key);
