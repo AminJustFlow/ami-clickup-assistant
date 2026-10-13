@@ -35,7 +35,27 @@ export function isOpenAttentionTask(task: {
 export function hasSpecificAmiAction(action: string | null): boolean {
   const value = action?.trim() ?? '';
   if (!value) return false;
-  return !/^(?:n\/?a|none|unknown|tbd|to be determined|no action(?: needed| required)?|not applicable|\.{2,}|[-–—]+)[.!]?$/i.test(value);
+  // These are status summaries or generic prompts, not decisions Ami can act on.
+  // Keep this conservative: a concrete instruction with context must remain valid.
+  const normalized = value.toLowerCase().replace(/[.!]+$/, '').trim();
+  if (!normalized || /^[-–—]+$/.test(normalized)) return false;
+  const genericActions = new Set([
+    'n/a', 'none', 'unknown', 'tbd', 'to be determined',
+    'no action', 'no action needed', 'no action required', 'not applicable',
+    'review', 'check', 'follow up', 'follow-up', 'monitor', 'investigate',
+    'look into', 'take action', 'needs attention', 'action required',
+    'awaiting update', 'awaiting response', 'awaiting feedback', 'look into this'
+  ]);
+  if (genericActions.has(normalized)) return false;
+  const genericTargets = ['task', 'item', 'issue', 'status', 'situation', 'project', 'details', 'progress', 'update', 'updates'];
+  const genericVerbs = ['review', 'check', 'follow up', 'follow-up', 'monitor', 'investigate', 'look into'];
+  for (const verb of genericVerbs) {
+    for (const target of genericTargets) {
+      if (normalized === verb + ' ' + target || normalized === verb + ' the ' + target || normalized === verb + ' this ' + target) return false;
+    }
+  }
+  return true;
+
 }
 
 /** Reasons to verify an AI recommendation before treating it as a current decision. */
