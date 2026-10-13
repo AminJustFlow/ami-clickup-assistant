@@ -25,10 +25,15 @@ export default async function ClientPage({ params, searchParams }: {
   const relatedFolders = foldersForClient(allClientFolders, slug);
   const tasks = await prisma.task.findMany({
     where: { clientId: { in: relatedFolders.map(folder => folder.id) }, deleted: false },
-    include: {
-      client: { select: { name: true } }, intelligence: true, attentionDisposition: true, list: true,
+    select: {
+      id: true, name: true, clickupStatus: true, clickupPriority: true,
+      dueDate: true, clickupUpdatedAt: true, clickupUrl: true,
+      client: { select: { name: true, slug: true } },
+      intelligence: true,
+      attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
+      list: { select: { name: true } },
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
-      assignees: { include: { employee: true } }
+      assignees: { select: { employee: { select: { id: true, name: true } } } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
