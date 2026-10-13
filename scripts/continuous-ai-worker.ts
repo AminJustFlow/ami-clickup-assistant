@@ -128,16 +128,15 @@ async function refreshQueue() {
     FROM "Task" t LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
     WHERE j."taskId" = t.id AND j.status = 'PAUSED_BUDGET'
       AND t.deleted = false AND (
-        (i.id IS NULL AND t."createdAt" >= NOW() - INTERVAL '24 hours')
+        (i.id IS NULL AND t."createdAt" > j."updatedAt")
         OR (i."analyzedAt" IS NOT NULL AND EXISTS (
           SELECT 1 FROM "TaskEvent" e WHERE e."taskId" = t.id
-          AND e."occurredAt" > i."analyzedAt"
+          AND e."occurredAt" > GREATEST(i."analyzedAt", j."updatedAt")
           AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
           AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
         ))
       )
-      AND j."nextAttemptAt" > NOW()
-      AND j."updatedAt" < NOW() - INTERVAL '10 minutes'`;
+      AND j."nextAttemptAt" > NOW()`;
   return teamNames;
 }
 
