@@ -40,6 +40,10 @@ services:
     <<: *app
     command: ["npm", "run", "worker:ai"]
     mem_limit: 512m
+  quality-worker:
+    <<: *app
+    command: ["npx", "tsx", "scripts/quality-worker.ts"]
+    mem_limit: 192m
   caddy:
     image: caddy:2-alpine
     env_file: .env.production
