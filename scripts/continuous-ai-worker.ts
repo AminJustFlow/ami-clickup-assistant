@@ -105,6 +105,52 @@ export async function recoverExpiredLeases(now = new Date(), client = prisma) {
   return { recovered, failed };
 }
 
+// Recover at most five historical failures per UTC day, once per task, without
+// borrowing from the fresh-activity allowance or interrupting ordinary pending work.
+async function recoverHistoricalFailures() {
+  const day = utcBudgetDay(new Date());
+  const dayText = day.toISOString().slice(0, 10);
+  for (let index = 0; index < 5; index++) {
+    const claimed = await serializable(prisma, async tx => {
+      // Leave capacity for the normal queue and stop if lease failures recur.
+      const pending = await tx.analysisJob.count({ where: { status: 'PENDING' } });
+      if (pending > 0) return false;
+      const recentFailures = await tx.analysisJob.count({ where: {
+        status: 'FAILED', updatedAt: { gte: new Date(Date.now() - 60 * 60_000) }
+      } });
+      if (recentFailures > 0) return false;
+      const already = await tx.analysisJob.count({ where: { recoveryDay: day } });
+      if (already >= 5) return false;
+      await tx.aiBudgetDay.upsert({ where: { day }, create: { day }, update: {} });
+      const budget = await tx.aiBudgetDay.findUniqueOrThrow({ where: { day } });
+      const regularSpent = Number(budget.actualEstimatedUsd) - Number(budget.freshActualUsd)
+        + Number(budget.reservedUsd) - Number(budget.freshReservedUsd);
+      if (regularSpent + reservation > dailyBudget + 1e-9) return false;
+      const rows = await tx.$queryRaw<Array<{ id: number }>>`
+        SELECT j.id FROM "AnalysisJob" j
+        JOIN "Task" t ON t.id = j."taskId"
+        LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
+        WHERE j.status = 'FAILED' AND j.attempts >= ${maxRetries}
+          AND j."recoveryCount" = 0 AND j."recoveryDay" IS NULL
+          AND j."lastError" IN ('Worker lease expired after maximum attempts',
+            'Recovered legacy expired lease after maximum attempts')
+          AND t.deleted = false AND t."createdAt" < NOW() - INTERVAL '24 hours'
+          AND i.id IS NULL
+        ORDER BY t."clickupUpdatedAt" DESC NULLS LAST, j.id
+        FOR UPDATE OF j SKIP LOCKED LIMIT 1`;
+      if (!rows.length) return false;
+      const updated = await tx.analysisJob.updateMany({
+        where: { id: rows[0].id, status: 'FAILED', recoveryCount: 0 },
+        data: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(),
+          recoveryDay: day, recoveryCount: 1, completedAt: null,
+          lastError: 'One-time historical recovery queued' }
+      });
+      return updated.count === 1;
+    });
+    if (!claimed) break;
+  }
+}
+
 async function refreshQueue() {
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(x => x.name);
   // Bounded discovery keeps the worker viable on a 2 GB host. The definitive
@@ -158,7 +204,7 @@ export async function leaseJob(client = prisma) {
               AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
               AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
           ))
-        )) AS "freshEligible"
+        ) AND j."recoveryCount" = 0) AS "freshEligible"
       FROM "AnalysisJob" j
       JOIN "Task" t ON t.id = j."taskId"
       LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
@@ -288,7 +334,7 @@ async function cycle() {
   await prisma.analysisJob.updateMany({ where: { status: 'PAUSED_BUDGET', nextAttemptAt: { lte: new Date() } }, data: { status: 'PENDING' } });
   const recovery = await recoverExpiredLeases();
   await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), metadata: { recovery } }, update: { status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), lastError: null, metadata: { recovery } } });
-  const teamNames = await refreshQueue(); let attempts = 0; let batchReserved = 0;
+  const teamNames = await refreshQueue(); await recoverHistoricalFailures(); let attempts = 0; let batchReserved = 0;
   while (!stopping && attempts < maxJobs && batchReserved + reservation <= batchBudget + 1e-9) { const job = await leaseJob(); if (!job) break; attempts++; batchReserved += reservation; await processJob(job, teamNames); await prisma.workerHeartbeat.update({ where: { name: 'ai-worker' }, data: { lastSeenAt: new Date() } }); }
   const counts = await prisma.analysisJob.groupBy({ by: ['status'], _count: true });
   await prisma.workerHeartbeat.upsert({ where: { name: 'ai-worker' }, create: { name: 'ai-worker', status: 'IDLE', lastStartedAt: new Date(), lastSeenAt: new Date(), lastSuccessAt: new Date(), metadata: { counts } }, update: { status: 'IDLE', lastSeenAt: new Date(), lastSuccessAt: new Date(), lastError: null, metadata: { counts } } });

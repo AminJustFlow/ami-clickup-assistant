@@ -154,6 +154,8 @@ model AnalysisJob {
   estimatedReservedUsd Decimal   @default(0) @db.Decimal(12, 6)
   reservationDay       DateTime? @db.Date
   freshAllowance       Boolean   @default(false)
+  recoveryDay          DateTime? @db.Date
+  recoveryCount        Int       @default(0)
   actualInputTokens    Int?
   actualOutputTokens   Int?
   actualEstimatedUsd   Decimal?  @db.Decimal(12, 6)
