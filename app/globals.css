@@ -912,3 +912,16 @@ button{font-family:inherit}
 .attention-workspace .attention-queue-panel .attention-row-byline{margin-bottom:5px}
 .attention-workspace .attention-queue-panel .attention-notice{background:#fff7e9;border:1px solid #f0dfbc;border-radius:7px;padding:8px 10px;color:#7b551e;font-size:12px}
 .attention-workspace .attention-brief-card:focus-within,.attention-workspace .attention-queue-panel .attention-row:focus-within{outline:2px solid #4a9ec1;outline-offset:1px}
+
+
+/* Phase 33.3.2: parent/subtask navigation inside the existing task drawer */
+.task-hierarchy-section{display:grid;gap:10px}
+.task-hierarchy-parent,.task-hierarchy-child{display:grid;gap:4px;padding:10px 12px;border:1px solid #dce6eb;border-radius:9px}
+.task-hierarchy-parent{background:#f3f8fa}
+.task-hierarchy-link{appearance:none;background:none;border:0;padding:0;text-align:left;font:inherit;font-weight:700;color:#146b91;cursor:pointer;line-height:1.4}
+.task-hierarchy-link:hover{text-decoration:underline}
+.task-hierarchy-link:focus-visible{outline:2px solid #328cb6;outline-offset:3px}
+.task-hierarchy-progress{font-size:13px;font-weight:700;color:#2a5365}
+.task-hierarchy-list{display:grid;gap:8px;max-height:330px;overflow-y:auto}
+.task-hierarchy-child>span{font-size:12px;color:#405b69}
+.task-hierarchy-child>small,.task-hierarchy-parent>small{font-size:11px;color:#627783}
