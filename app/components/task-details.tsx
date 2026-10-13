@@ -3,7 +3,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+type RelatedTask = {
+  id: number;
+  name: string;
+  clickupStatus: string | null;
+  dueDate: string | null;
+  clickupUrl: string | null;
+  assignees: string[];
+};
+
 type TaskDetails = {
+  hierarchy: {
+    parent: RelatedTask | null;
+    parentUnavailable: boolean;
+    children: RelatedTask[];
+    directChildren: number;
+    completedDirectChildren: number;
+  };
+
   id: number;
   name: string;
   description: string | null;
@@ -46,11 +63,13 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [currentTaskId, setCurrentTaskId] = useState(taskId);
   const [mounted, setMounted] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { if (!open) setCurrentTaskId(taskId); }, [open, taskId]);
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +77,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
     setLoading(true);
     setError(null);
     setTask(null);
-    fetch(`/api/tasks/${taskId}/details`, { signal: controller.signal, cache: 'no-store' })
+    fetch(`/api/tasks/${currentTaskId}/details`, { signal: controller.signal, cache: 'no-store' })
       .then(async response => {
         if (!response.ok) throw new Error('Unable to load task details. Please try again.');
         return response.json() as Promise<TaskDetails>;
@@ -67,7 +86,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
       .catch(() => { if (!controller.signal.aborted) setError('Unable to load task details. Please try again.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [open, taskId, retryCount]);
+  }, [open, currentTaskId, retryCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -116,6 +135,27 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
               {task.intelligence?.needsAmi && <section className="task-drawer-action">
                 <p className="next-step-label">What Ami needs to do</p>
                 <p>{task.intelligence.amiAction || 'Review this task and decide on the next step.'}</p>
+              </section>}
+
+              {task.hierarchy && <section className="task-drawer-section task-hierarchy-section">
+                <h3>Parent and subtasks</h3>
+                {task.hierarchy.parent && <div className="task-hierarchy-parent">
+                  <span className="task-drawer-muted">Parent task</span>
+                  <button type="button" className="task-hierarchy-link" onClick={() => setCurrentTaskId(task.hierarchy.parent!.id)}>{task.hierarchy.parent.name} →</button>
+                  <small>{task.hierarchy.parent.clickupStatus || 'Status unavailable'}</small>
+                </div>}
+                {task.hierarchy.parentUnavailable && <p className="task-drawer-muted">Parent task is not available in the current import.</p>}
+                <p className="task-hierarchy-progress">{task.hierarchy.directChildren
+                  ? `${task.hierarchy.completedDirectChildren} of ${task.hierarchy.directChildren} direct subtasks completed`
+                  : 'No direct subtasks'}</p>
+                {task.hierarchy.directChildren > 0 && <div className="task-hierarchy-list">
+                  {task.hierarchy.children.map(child => <div key={child.id} className="task-hierarchy-child">
+                    <button type="button" className="task-hierarchy-link" onClick={() => setCurrentTaskId(child.id)}>{child.name} →</button>
+                    <span>{child.clickupStatus || 'Status unavailable'}</span>
+                    <small>{child.assignees.length ? child.assignees.join(', ') : 'Unassigned'} · {child.dueDate ? 'Due ' + formatDate(child.dueDate) : 'No due date'}</small>
+                  </div>)}
+                </div>}
+                <small className="task-drawer-muted">Direct subtasks only. Open a subtask to explore deeper levels. ClickUp is unchanged.</small>
               </section>}
 
               <section className="task-drawer-section">
