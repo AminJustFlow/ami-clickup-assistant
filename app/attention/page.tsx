@@ -4,7 +4,7 @@ import { groupClientFolders } from '@/lib/clients/grouping';
 import { AppNav } from '../components/app-nav';
 import { TaskDetailsButton } from '../components/task-details';
 import { setAttentionDecision } from './actions';
-import { dailyBrief } from '@/lib/attention/daily-brief';
+import { compareAttentionPriority, dailyBrief } from '@/lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 
 export const dynamic = 'force-dynamic';
@@ -87,13 +87,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   });
   const active = categorized.filter(isOpenAttentionTask);
   const history = categorized.filter(task => task.closed || !!task.recorded);
-  const brief = dailyBrief(active);
+  const brief = dailyBrief(active, now);
   const featuredIds = new Set(brief.topReady.map(task => task.id));
   const selected = (view === 'active' ? active.filter(task => !featuredIds.has(task.id)) : history)
     .filter(task => (priority !== 'overdue' || task.overdue) && (priority !== 'verify' || task.verificationReasons.length > 0))
-    .sort((a, b) => Number(a.verificationReasons.length > 0) - Number(b.verificationReasons.length > 0) || Number(b.overdue) - Number(a.overdue)
-      || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0)
-      || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0) || a.id - b.id);
+    .sort((a, b) => Number(a.verificationReasons.length > 0) - Number(b.verificationReasons.length > 0)
+      || compareAttentionPriority(a, b, now));
   const total = selected.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
