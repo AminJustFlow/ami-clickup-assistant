@@ -9,13 +9,9 @@ const slowQueryMs = Number(process.env.SLOW_QUERY_MS ?? 0);
 const enableSlowQueryLog = process.env.NODE_ENV === 'production'
   && Number.isFinite(slowQueryMs) && slowQueryMs > 0;
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-export const prisma = globalForPrisma.prisma ?? new PrismaClient(
-  enableSlowQueryLog ? { log: [{ emit: 'event', level: 'query' }] } : {}
-);
-
-if (enableSlowQueryLog && !globalForPrisma.prisma) {
-  prisma.$on('query', (event) => {
+function createMonitoredClient() {
+  const client = new PrismaClient({ log: [{ emit: 'event', level: 'query' }] });
+  client.$on('query', (event) => {
     if (event.duration < slowQueryMs) return;
     const memory = process.memoryUsage();
     console.warn('[performance] ' + JSON.stringify({
@@ -26,5 +22,9 @@ if (enableSlowQueryLog && !globalForPrisma.prisma) {
       heapUsedMb: Math.round(memory.heapUsed / 1048576)
     }));
   });
+  return client;
 }
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+export const prisma = globalForPrisma.prisma ?? (enableSlowQueryLog ? createMonitoredClient() : new PrismaClient());
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
