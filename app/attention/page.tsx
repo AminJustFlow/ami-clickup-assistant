@@ -132,8 +132,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <Link href="/review?filter=unreviewed" className="task-action">Audit AI recommendations ↗</Link>
       </div>
       <div className="detail-stat-strip" aria-label="Daily decision summary">
-        <div><strong>{brief.ready}</strong><span>Ready for review</span></div>
-        <div><strong>{brief.verify}</strong><span>Verify AI evidence</span></div>
+        <div><strong>{brief.ready}</strong><span>Ready to review · no verification flag</span></div>
+        <div><strong>{brief.verify}</strong><span>Verify source before acting</span></div>
         <div><strong>{brief.overdueReady}</strong><span>Past due and ready for review</span></div>
       </div>
       <div className="attention-progress" aria-label="Review progress">
@@ -147,13 +147,14 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       <div className="attention-brief-content">
         <div className="attention-brief-section">
           <div className="attention-brief-section-body">
-            <h3>Review these three decisions first</h3>
-            <p>Open the evidence, choose Mark reviewed or Dismiss, and the next priority automatically appears. Featured decisions are not repeated in the queue below.</p>
+            <h3>Start with these three decisions</h3>
+            <p>Review the current ClickUp evidence before deciding. When a recommendation is archived here, the next priority appears.</p>
             {brief.topReady.length ? brief.topReady.map((task, index) => <article className="attention-brief-card" key={task.id}>
               <div className="attention-row-main">
                 <div className="attention-row-byline"><span className="attention-brief-index">{index + 1}</span><span>{task.client.name}</span>{task.overdue && <span className="attention-urgency overdue">Overdue</span>}</div>
-                <h3>{task.name}</h3>
-                <p className="attention-row-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
+                <p className="attention-action-label">Recommended next action</p>
+                <p className="attention-row-action attention-featured-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
+                <h3 className="attention-featured-task-title">Task: {task.name}</h3>
                 <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
               </div>
               <div className="attention-row-actions">
@@ -164,8 +165,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="fingerprint" value={attentionFingerprint(task.intelligence!)} />
                   <input type="hidden" name="returnTo" value="/attention" />
-                  <button type="submit" name="decision" value="REVIEWED" title="Archive this recommendation without changing ClickUp">Mark reviewed</button>
-                  <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this recommendation and show the next one">Dismiss</button>
+                  <button type="submit" name="decision" value="REVIEWED" title="Archive this recommendation in Just Flow Intelligence only; ClickUp is unchanged">Reviewed in app</button>
+                  <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this recommendation in Just Flow Intelligence only; ClickUp is unchanged">Dismiss</button>
                 </form>
               </div>
             </article>) : <p>You're caught up with the currently analyzed recommendations.</p>}
@@ -180,7 +181,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
           </div>
         </div>}
       </div>
-      <p className="dashboard-note">This is a rule-based summary, not a new AI analysis. Counts exclude tasks without saved intelligence and do not establish that all client work has been reviewed.</p>
+      <p className="dashboard-note">Rule-based summary of analyzed tasks; verify ClickUp evidence before acting.</p>
     </section>
     <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
@@ -243,7 +244,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <input type="hidden" name="taskId" value={task.id} />
                 <input type="hidden" name="fingerprint" value={attentionFingerprint(intel)} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <button type="submit" name="decision" value="REVIEWED" title="Remove from open inbox; no changes to ClickUp">Mark reviewed</button>
+                <button type="submit" name="decision" value="REVIEWED" title="Archive this recommendation in Just Flow Intelligence only; ClickUp is unchanged">Reviewed in app</button>
                 <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this AI recommendation; no changes to ClickUp">Dismiss</button>
               </form></details>}
             </div>
@@ -254,7 +255,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <div>{currentPage > 1 && <Link href={urlFor(activeFilters, currentPage - 1)}>← Previous</Link>}{currentPage < totalPages && <Link href={urlFor(activeFilters, currentPage + 1)}>Next →</Link>}</div>
       </nav>
     </section>
-    <p className="dashboard-note">Items marked for verification remain visible, but should not be treated as confirmed current requests. The AI may have missed later comments or have incomplete context.</p>
-    <p className="dashboard-note">Reviewing or dismissing an AI recommendation does not close, update, or acknowledge a ClickUp task. New AI assessments may bring a previously reviewed task back into the open inbox.</p>
+    <p className="dashboard-note">Verification flags mean the AI recommendation may be outdated or incomplete. Check ClickUp before acting.</p>
+    <p className="dashboard-note">Reviews and dismissals are recorded only in this app. ClickUp tasks are unchanged; new analysis may reopen a recommendation.</p>
   </main>;
 }
