@@ -899,3 +899,16 @@ button{font-family:inherit}
  .attention-workspace .attention-queue-panel .attention-row{grid-template-columns:1fr;padding:15px}
  .attention-workspace .attention-queue-panel .attention-filters{padding:13px 16px}
 }
+
+
+/* Phase 33.2: emphasize recommended actions and clarify review states */
+.attention-workspace .attention-brief-card .attention-action-label{margin:4px 0 4px;color:#08769d;font-size:10px;font-weight:800;letter-spacing:.075em;text-transform:uppercase}
+.attention-workspace .attention-brief-card .attention-featured-action{font-size:14px;font-weight:700;line-height:1.5;color:#1b3948;margin:0 0 9px}
+.attention-workspace .attention-brief-card .attention-featured-task-title{font-size:12px;font-weight:550;line-height:1.4;color:#607481;margin:0 0 7px}
+.attention-workspace .attention-brief-card .attention-row-actions button{white-space:normal;line-height:1.3}
+.attention-workspace .attention-brief-card .attention-row-actions button[type=submit]{padding:7px 9px}
+.attention-workspace .attention-queue-panel .attention-row h3{font-size:15px}
+.attention-workspace .attention-queue-panel .attention-row-action{font-size:13px;line-height:1.55;color:#385261}
+.attention-workspace .attention-queue-panel .attention-row-byline{margin-bottom:5px}
+.attention-workspace .attention-queue-panel .attention-notice{background:#fff7e9;border:1px solid #f0dfbc;border-radius:7px;padding:8px 10px;color:#7b551e;font-size:12px}
+.attention-workspace .attention-brief-card:focus-within,.attention-workspace .attention-queue-panel .attention-row:focus-within{outline:2px solid #4a9ec1;outline-offset:1px}
