@@ -1,3 +1,4 @@
+import { isClosedClickUpStatus, hasSpecificAmiAction } from '@/lib/attention/triage';
 import { TaskDetailsButton } from './task-details';
 
 type TaskRow = {
@@ -5,6 +6,7 @@ type TaskRow = {
   name: string;
   clickupUrl: string | null;
   clickupStatus: string | null;
+  clickupPriority?: string | null;
   dueDate?: Date | null;
   client: { name: string };
   list: { name: string };
@@ -15,6 +17,8 @@ type TaskRow = {
     amiAction: string | null;
     currentSummary: string | null;
     waitingOnName: string | null;
+    confidence?: number | null;
+    analyzedAt?: Date | null;
   } | null;
 };
 
@@ -28,23 +32,29 @@ const stateLabels: Record<string, string> = {
 
 export function CompactTaskRow({ task }: { task: TaskRow }) {
   const intel = task.intelligence;
-  const nextAction = intel?.needsAmi ? intel.amiAction : null;
-  const summary = nextAction || intel?.currentSummary;
+  const nextAction = intel?.needsAmi && hasSpecificAmiAction(intel.amiAction) ? intel.amiAction : null;
+  const summary = intel?.currentSummary;
   const owners = task.assignees.map(a => a.employee.name).join(', ') || 'Unassigned';
-  const overdue = task.dueDate && task.dueDate.getTime() < Date.now() &&
-    intel?.agentState !== 'COMPLETED' && !/complete|closed|done/i.test(task.clickupStatus ?? '');
-  return <article className="compact-intel-row">
+  const overdue = Boolean(task.dueDate && task.dueDate.getTime() < Date.now() &&
+    intel?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus));
+  const dueLabel = task.dueDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const priority = task.clickupPriority?.trim();
+  return <article className="compact-intel-row client-task-card">
     <div className="compact-intel-main">
-      <div className="compact-intel-meta"><span>{task.client.name} / {task.list.name}</span>
-        {overdue && <span className="compact-intel-overdue">Past due</span>}
-        <span className="status-pill">{intel ? stateLabels[intel.agentState] ?? intel.agentState : 'Not analyzed'}</span>
-      </div>
+      <div className="compact-intel-meta"><span>{task.client.name} / {task.list.name}</span></div>
       <h3>{task.name}</h3>
-      {summary && <p className={nextAction ? 'compact-intel-action' : 'compact-intel-summary'}>{summary}</p>}
-      <div className="compact-intel-subline"><span>Owner: {owners}</span>
-        {intel?.waitingOnName && <span>Waiting on: {intel.waitingOnName}</span>}
-        {task.dueDate && <span>Due: {task.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+      <div className="client-task-facts" aria-label="ClickUp task information">
+        <span><strong>Assigned:</strong> {owners}</span>
+        <span><strong>ClickUp:</strong> {task.clickupStatus ?? 'Unknown'}</span>
+        {priority && <span><strong>Priority:</strong> {priority}</span>}
+        {dueLabel && <span className={overdue ? 'client-task-due-overdue' : ''}><strong>{overdue ? 'Past due:' : 'Due:'}</strong> {dueLabel}</span>}
       </div>
+      {nextAction && <div className="client-task-action"><strong>AI suggested next action · verify in ClickUp</strong><p>{nextAction}</p></div>}
+      {!nextAction && summary && <p className="compact-intel-summary client-task-summary"><strong>AI summary:</strong> {summary}</p>}
+      {intel?.needsAmi && !nextAction && <p className="client-task-ai-note">Flagged for Ami review; no specific AI action is available. Open details to verify.</p>}
+      {intel?.waitingOnName && <p className="client-task-waiting"><strong>AI identifies dependency:</strong> {intel.waitingOnName}</p>}
+      {intel && <div className="client-task-ai-state"><span className="status-pill">{stateLabels[intel.agentState] ?? intel.agentState}</span><span>AI assessment · not verified task status</span></div>}
+      {!intel && <div className="client-task-ai-state"><span className="status-pill">Not analyzed</span></div>}
     </div>
     <div className="compact-intel-controls">
       <TaskDetailsButton taskId={task.id} />
