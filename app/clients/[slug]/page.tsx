@@ -110,6 +110,8 @@ export default async function ClientPage({ params, searchParams }: {
   const briefDecision = briefDecisions[0];
   const briefDependency = briefDependencies[0];
   const briefDeadline = upcoming[0];
+  const featuredTaskIds = new Set([briefDecision?.id, briefDependency?.id, briefDeadline?.id].filter((id): id is string => typeof id === 'string'));
+  const additionalTasks = (items: typeof tasks) => items.filter(task => !featuredTaskIds.has(task.id));
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
@@ -148,7 +150,7 @@ export default async function ClientPage({ params, searchParams }: {
       </div>
     </section>
     <section className="client-action-summary" aria-label="Client action summary">
-      <div className="client-action-summary-heading"><div><p className="eyebrow">AT A GLANCE</p><h2>What needs attention</h2></div><p>Based on imported ClickUp data and unverified AI assessments. Open a task to confirm its current status.</p></div>
+      <div className="client-action-summary-heading"><div><p className="eyebrow">AT A GLANCE</p><h2>What needs attention</h2></div><p>Additional tasks not already featured above. Counts include all matching tasks; AI assessments are unverified.</p></div>
       <div className="client-action-summary-grid">
         {([
           { title: 'Decisions for Ami', items: prioritize(tasks.filter(isOpenAttentionTask)), count: currentNeedsAmi, view: 'ami', detail: (t: typeof tasks[number]) => t.intelligence?.amiAction || 'Review this task in ClickUp' },
@@ -157,7 +159,7 @@ export default async function ClientPage({ params, searchParams }: {
           { title: 'Updated in 7 days', items: recentChanges, count: recentChanges.length, view: 'all', detail: recentEventLabel }
         ]).map(group => <div className="client-action-summary-card" key={group.title}>
           <div className="client-action-summary-card-head"><h3>{group.title}</h3><strong>{group.count}</strong></div>
-          {group.items.length ? <ul>{group.items.slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">No matching items.</p>}
+          {additionalTasks(group.items).length ? <ul>{additionalTasks(group.items).slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">{group.items.length ? "All matching tasks are highlighted above in the Client Action Brief." : "No matching items."}</p>}
           <a href={group.title === 'Updated in 7 days' ? tabHref('all') + '&sort=recent' : group.title === 'Due in 7 days' ? tabHref('all') + '&sort=due' : tabHref(group.view)}>{group.view === 'ami' ? 'View all decisions' : group.view === 'waiting' ? 'View all dependencies' : 'View all tasks'} →</a>
         </div>)}
       </div>
