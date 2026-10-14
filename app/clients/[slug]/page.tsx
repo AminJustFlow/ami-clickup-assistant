@@ -44,9 +44,6 @@ export default async function ClientPage({ params, searchParams }: {
   const search = (filters.q ?? '').trim().toLowerCase();
   const now = new Date();
   const matches = (t: typeof tasks[number]) => {
-    if (filters.focus === 'ami' && !isOpenAttentionTask(t)) return false;
-    if (filters.focus === 'overdue' && (isClosedClickUpStatus(t.clickupStatus) || !t.dueDate || t.dueDate >= now)) return false;
-    if (filters.due === 'overdue' && (isClosedClickUpStatus(t.clickupStatus) || !t.dueDate || t.dueDate >= now)) return false;
     if (search && ![t.name, t.list.name, t.intelligence?.currentSummary ?? '',
       t.intelligence?.amiAction ?? '', ...t.assignees.map(a => a.employee.name)]
       .some(value => value.toLowerCase().includes(search))) return false;
@@ -96,7 +93,7 @@ export default async function ClientPage({ params, searchParams }: {
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age'] as const) if (filters[key]) query.set(key, filters[key]);
-  const view: string = filters.due === 'overdue' || filters.focus === 'overdue' ? 'overdue' : filters.view && ['ami', 'waiting', 'active', 'overdue', 'all'].includes(filters.view) ? filters.view : 'ami';
+  const view: string = filters.view && ['ami', 'waiting', 'active', 'overdue', 'all'].includes(filters.view) ? filters.view : filters.due === 'overdue' || filters.focus === 'overdue' ? 'overdue' : 'ami';
   const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.set('view', nextView); return '?' + params.toString(); };
   query.set('view', view);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
