@@ -139,7 +139,7 @@ export default async function ClientPage({ params, searchParams }: {
         ]).map(group => <div className="client-action-summary-card" key={group.title}>
           <div className="client-action-summary-card-head"><h3>{group.title}</h3><strong>{group.count}</strong></div>
           {group.items.length ? <ul>{group.items.slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">No matching items.</p>}
-          <a href={tabHref(group.view)}>{group.view === 'ami' ? 'View all decisions' : group.view === 'waiting' ? 'View all dependencies' : 'View all tasks'} →</a>
+          <a href={group.title === 'Updated in 7 days' ? tabHref('all') + '&sort=recent' : group.title === 'Due in 7 days' ? tabHref('all') + '&sort=due' : tabHref(group.view)}>{group.view === 'ami' ? 'View all decisions' : group.view === 'waiting' ? 'View all dependencies' : 'View all tasks'} →</a>
         </div>)}
       </div>
     </section>
