@@ -63,7 +63,7 @@ export function CompactTaskRow({ task }: { task: TaskRow }) {
   </article>;
 }
 
-export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, page, query, collapsed = false, emptyMessage = 'No tasks match these filters.' }: {
+export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, page, query, collapsed = false, initialLimit = 8, emptyMessage = 'No tasks match these filters.' }: {
   title: string;
   eyebrow?: string;
   tasks: TaskRow[];
@@ -72,12 +72,13 @@ export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, 
   page?: string;
   query: string;
   collapsed?: boolean;
+  initialLimit?: number;
   emptyMessage?: string;
 }) {
   const selected = section === sectionId;
   const requested = Number(page);
   const pageNumber = selected && Number.isInteger(requested) && requested > 0 ? Math.min(requested, 100) : 0;
-  const limit = pageNumber ? pageNumber * 20 : 8;
+  const limit = pageNumber ? pageNumber * 20 : initialLimit;
   const shown = tasks.slice(0, limit);
   const remaining = tasks.length - shown.length;
   const nextHref = (() => {
