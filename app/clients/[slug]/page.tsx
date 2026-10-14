@@ -34,6 +34,7 @@ export default async function ClientPage({ params, searchParams }: {
       attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
       list: { select: { name: true } },
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+      events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { eventType: true, actorName: true, occurredAt: true } },
       assignees: { select: { employee: { select: { id: true, name: true } } } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
@@ -95,8 +96,15 @@ export default async function ClientPage({ params, searchParams }: {
   const overdueCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now).length;
   const overdueRecent = overdueTasks.filter(t => t.clickupUpdatedAt && now.getTime() - t.clickupUpdatedAt.getTime() <= 30 * 86400000);
   const overdueOlder = overdueTasks.filter(t => !t.clickupUpdatedAt || now.getTime() - t.clickupUpdatedAt.getTime() > 30 * 86400000);
-  const upcoming = prioritize(tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate >= now && t.dueDate.getTime() <= now.getTime() + 7 * 86400000));
+  const upcoming = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate >= now && t.dueDate.getTime() <= now.getTime() + 7 * 86400000).sort((a, b) => (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity));
   const recentChanges = [...tasks].filter(t => t.clickupUpdatedAt && t.clickupUpdatedAt <= now && now.getTime() - t.clickupUpdatedAt.getTime() <= 7 * 86400000).sort((a, b) => (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
+  const recentEventLabel = (t: typeof tasks[number]) => {
+    const event = t.events[0];
+    if (!event?.occurredAt || !t.clickupUpdatedAt || Math.abs(event.occurredAt.getTime() - t.clickupUpdatedAt.getTime()) > 86400000) return 'Task updated in ClickUp · change type unavailable';
+    const type = event.eventType.toLowerCase();
+    const action = type.includes('comment') ? 'Comment activity' : type.includes('status') ? 'Status activity' : type.includes('assign') ? 'Assignment activity' : type.includes('due') ? 'Due-date activity' : 'Task activity';
+    return action + (event.actorName ? ' · ' + event.actorName : '') + ' · ' + event.occurredAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
@@ -126,12 +134,12 @@ export default async function ClientPage({ params, searchParams }: {
         {([
           { title: 'Decisions for Ami', items: prioritize(tasks.filter(isOpenAttentionTask)), count: currentNeedsAmi, view: 'ami', detail: (t: typeof tasks[number]) => t.intelligence?.amiAction || 'Review this task in ClickUp' },
           { title: 'Waiting on others', items: prioritize(tasks.filter(t => !isOpenAttentionTask(t) && !isClosed(t) && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI')), count: currentWaiting, view: 'waiting', detail: (t: typeof tasks[number]) => t.intelligence?.waitingOnName ? 'Waiting on ' + t.intelligence.waitingOnName : 'Dependency identified by AI' },
-          { title: 'Due in 7 days', items: upcoming, count: upcoming.length, view: 'all', detail: (t: typeof tasks[number]) => t.dueDate ? 'Due ' + t.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '' },
-          { title: 'Updated in 7 days', items: recentChanges, count: recentChanges.length, view: 'all', detail: (t: typeof tasks[number]) => t.clickupUpdatedAt ? 'ClickUp updated ' + t.clickupUpdatedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '' }
+          { title: 'Due in 7 days', items: upcoming, count: upcoming.length, view: 'all', detail: (t: typeof tasks[number]) => { if (!t.dueDate) return ''; const days = Math.ceil((t.dueDate.getTime() - now.getTime()) / 86400000); return (days <= 1 ? 'Due within 24 hours' : 'Due in ' + days + ' days') + ' · ' + t.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } },
+          { title: 'Updated in 7 days', items: recentChanges, count: recentChanges.length, view: 'all', detail: recentEventLabel }
         ]).map(group => <div className="client-action-summary-card" key={group.title}>
           <div className="client-action-summary-card-head"><h3>{group.title}</h3><strong>{group.count}</strong></div>
           {group.items.length ? <ul>{group.items.slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">No matching items.</p>}
-          <a href={tabHref(group.view)}>{group.view === 'ami' ? 'See decisions' : group.view === 'waiting' ? 'See dependencies' : 'Browse tasks'} →</a>
+          <a href={tabHref(group.view)}>{group.view === 'ami' ? 'View all decisions' : group.view === 'waiting' ? 'View all dependencies' : 'View all tasks'} →</a>
         </div>)}
       </div>
     </section>
