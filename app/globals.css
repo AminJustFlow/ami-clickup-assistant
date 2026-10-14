@@ -1002,3 +1002,20 @@ button{font-family:inherit}
 .clients-portfolio .client-freshness-summary strong{font-size:20px;line-height:1.2;color:#193b4c;font-variant-numeric:tabular-nums}
 .clients-portfolio .client-freshness-summary span{font-size:11px;color:#526b78;line-height:1.4}
 @media(max-width:760px){.clients-portfolio .client-freshness-summary{grid-template-columns:1fr;gap:7px}.clients-portfolio .client-freshness-summary>div{padding:10px 12px}}
+
+
+/* Phase 35.4: client portfolio scanability and navigation */
+.clients-portfolio .client-portfolio-legend{margin:0 0 10px;padding:10px 13px;border:1px solid #dce7eb;border-radius:8px;background:#f7fafb;color:#4a6573;font-size:12px;line-height:1.55}
+.clients-portfolio .client-portfolio-legend summary{cursor:pointer;font-weight:750;color:#28546a}
+.clients-portfolio .client-portfolio-legend p{margin:9px 0 0}
+.clients-portfolio .client-portfolio-quicklinks{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;line-height:1.5}
+.clients-portfolio .client-portfolio-quicklinks a{font-weight:750;color:#086e95;text-decoration:none}
+.clients-portfolio .client-portfolio-quicklinks a:hover,.clients-portfolio .client-portfolio-quicklinks a:focus-visible{text-decoration:underline}
+.clients-portfolio .client-portfolio-entry{align-items:flex-start;padding-top:13px;padding-bottom:13px}
+.clients-portfolio .client-portfolio-metrics{row-gap:5px}
+.clients-portfolio .client-portfolio-metrics>span{display:inline-block;border:1px solid #e4ecef;border-radius:5px;padding:2px 6px;background:#f8fafb}
+.clients-portfolio .client-portfolio-metrics .client-portfolio-overdue{background:#fff6e9;border-color:#f0d7b4}
+.clients-portfolio .client-portfolio-metrics .client-portfolio-attention{background:#eaf6fa;border-color:#c7e5ef}
+.client-due-filter-notice{padding:10px 12px;border:1px solid #ecd4a9;border-radius:8px;background:#fff9ed}
+.client-due-filter-notice a{font-weight:750}
+@media(max-width:760px){.clients-portfolio .directory-grid{grid-template-columns:minmax(0,1fr)}.clients-portfolio .client-portfolio-entry{padding:13px 8px;gap:9px}.clients-portfolio .client-portfolio-info{min-width:0}.clients-portfolio .client-portfolio-metrics>span{white-space:normal}.clients-portfolio .client-portfolio-open{align-self:flex-start}}
