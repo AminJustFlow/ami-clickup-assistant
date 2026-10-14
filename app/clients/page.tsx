@@ -137,6 +137,7 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
       <div><strong>{totalStaleOpen.toLocaleString()}</strong><span>Not updated in 90+ days</span></div>
       <div><strong>{totalStaleOverdue.toLocaleString()}</strong><span>Past due and stale 90+ days</span></div>
     </section>
+    <details className="client-portfolio-legend"><summary>What do these workload labels mean?</summary><p><strong>Open:</strong> Not in a recognized closed status. <strong>Updated 30d:</strong> Last task update within 30 days. <strong>Stale 90d:</strong> No task update for 90+ days (or no timestamp). <strong>Overdue:</strong> Open task with a past due date. <strong>Needs Ami:</strong> Open AI recommendation awaiting review. These are indicators for investigation, not verified current work.</p></details>
     <p className="dashboard-note">Freshness is based on ClickUp task update timestamps, not proof that someone worked on the task. Tasks updated 30–89 days ago are in neither freshness group; missing timestamps count as stale. Past due and stale is a review category, not confirmation that work is historical. Open-status tasks exclude recognized completed, closed and canceled statuses. Past-due counts are unverified backlog, not a measure of current employee performance: open-status tasks with historical due dates may still count. Needs Ami uses current, unreviewed AI recommendations.</p>
     <section className="clean-panel directory-panel">
       <div className="panel-heading"><div><h2>Client accounts</h2><p>Related ClickUp folders appear under one client.</p></div>
@@ -167,6 +168,10 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
             <span>{entry.staleOpen.toLocaleString()} stale 90d</span>
             <span className={entry.overdue ? 'client-portfolio-overdue' : ''}>{entry.overdue.toLocaleString()} overdue ({entry.staleOverdue.toLocaleString()} stale)</span>
             <span className={entry.needsAmi ? 'client-portfolio-attention' : ''}>{entry.needsAmi.toLocaleString()} Needs Ami</span>
+          </span>
+          <span className="client-portfolio-quicklinks">
+            {entry.overdue > 0 && <a href={`/clients/${encodeURIComponent(entry.slug)}?due=overdue`}>Review overdue tasks →</a>}
+            {entry.needsAmi > 0 && <a href={`/attention?client=${encodeURIComponent(entry.slug)}`}>Review Needs Ami →</a>}
           </span>
           {entry.recentEvent && <span className="client-portfolio-activity"><span>{entry.recentEvent.type} · {formatActivity(entry.recentEvent.date)} · {entry.recentEvent.task}</span> <a href={`/changes?client=${encodeURIComponent(entry.recentEvent.folderName)}&range=30`}>View activity →</a></span>}
         </span>
