@@ -961,3 +961,12 @@ button{font-family:inherit}
 .recent-updates-workspace .recent-update-attention-marker{display:inline-block;margin:0 0 8px;padding:4px 7px;border-radius:5px;background:#fff5e7;color:#775522;font-size:11px;font-weight:700}
 .recent-updates-workspace .recent-update-attention-marker a{color:#775522;text-decoration:underline}
 @media(max-width:760px){.recent-updates-workspace .recent-update-views{padding:0 12px 12px}.recent-updates-workspace .recent-update-explainer{margin:0 12px 12px}}
+
+
+/* Phase 34.3: direct task detail actions in Recent Updates */
+.recent-updates-workspace .recent-update-actions{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:10px;min-width:112px}
+.recent-updates-workspace .recent-update-actions .task-details-trigger{font-size:12px;font-weight:750;white-space:nowrap;padding:7px 10px;border:1px solid #a7cddc;border-radius:7px;background:#eef8fc;color:#086a91;cursor:pointer}
+.recent-updates-workspace .recent-update-actions .task-details-trigger:hover{background:#deeff6;border-color:#6eafc6}
+.recent-updates-workspace .recent-update-actions .task-details-trigger:focus-visible{outline:2px solid #087da9;outline-offset:2px}
+.recent-updates-workspace .recent-update-actions .activity-feed-link{font-size:11px}
+@media(max-width:760px){.recent-updates-workspace .recent-update-actions{align-items:flex-start;flex-direction:row;flex-wrap:wrap;min-width:0;gap:10px}.recent-updates-workspace .recent-update-actions .task-details-trigger{white-space:normal}}
