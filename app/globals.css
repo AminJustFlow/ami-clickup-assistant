@@ -1070,3 +1070,7 @@ button{font-family:inherit}
 .client-workspace-tabs a:hover,.client-workspace-tabs a:focus-visible{border-color:#80b7ca;text-decoration:underline}
 .client-workspace-content{min-height:160px}
 @media(max-width:760px){.client-workspace-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.client-workspace-tabs a{justify-content:space-between;padding:9px 10px}}
+
+/* Phase 36.5: five clear workspace views without duplicate focus navigation */
+.client-workspace-tabs a[aria-current="page"]{box-shadow:inset 0 -2px 0 #0a779d}
+@media(max-width:760px){.client-workspace-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.client-workspace-tabs a:last-child{grid-column:1/-1}}
