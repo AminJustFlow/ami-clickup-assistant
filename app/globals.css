@@ -1079,3 +1079,21 @@ button{font-family:inherit}
 .client-workspace-content .compact-intel-section{scroll-margin-top:20px}
 .client-workspace-tabs a:focus-visible{outline:2px solid #087ba3;outline-offset:2px}
 @media(max-width:760px){.clean-filters label{min-width:0}.clean-filters select{max-width:100%}}
+
+/* Phase 36.7: compact, actionable client overview */
+.client-action-summary{margin:18px 0 22px}
+.client-action-summary-heading{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:12px}
+.client-action-summary-heading h2{font-size:1.15rem;margin:3px 0 0}
+.client-action-summary-heading>p{max-width:440px;font-size:.78rem;color:#667784;margin:0}
+.client-action-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.client-action-summary-card{background:#fff;border:1px solid #e1e9ed;border-radius:10px;padding:15px;min-width:0}
+.client-action-summary-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.client-action-summary-card-head h3{font-size:.93rem;margin:0}
+.client-action-summary-card-head>strong{background:#edf5f8;border-radius:6px;padding:3px 8px;font-size:.8rem}
+.client-action-summary-card ul{list-style:none;padding:0;margin:10px 0}
+.client-action-summary-card li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid #edf1f3}
+.client-action-summary-card li>div{min-width:0}
+.client-action-summary-card li strong{display:block;font-size:.79rem;line-height:1.4;overflow-wrap:anywhere}
+.client-action-summary-card li small{display:block;color:#637684;font-size:.71rem;line-height:1.4;margin-top:2px;overflow-wrap:anywhere}
+.client-action-summary-card>a{display:inline-block;margin-top:6px;font-size:.78rem;font-weight:650}
+@media(max-width:760px){.client-action-summary-grid{grid-template-columns:1fr}.client-action-summary-heading{display:block}.client-action-summary-heading>p{margin-top:8px}}
