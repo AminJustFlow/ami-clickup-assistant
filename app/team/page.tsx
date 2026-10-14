@@ -49,7 +49,8 @@ export default async function TeamDirectory({ searchParams }: {
       (show === 'overdue' && person.overdue > 0) || (show === 'attention' && person.needsAmi > 0))
   ).sort((a, b) => {
     const key = sort === 'tasks' ? 'imported' : sort === 'attention' ? 'needsAmi' : sort;
-    return key === 'name' ? a.name.localeCompare(b.name) : b[key].valueOf() - a[key].valueOf() || a.name.localeCompare(b.name);
+    if (key === 'name') return a.name.localeCompare(b.name);
+    return b[key] - a[key] || a.name.localeCompare(b.name);
   });
   const totals = summaries.reduce((sum, person) => ({
     open: sum.open + person.open, overdue: sum.overdue + person.overdue,
@@ -66,7 +67,7 @@ export default async function TeamDirectory({ searchParams }: {
       <div className="team-workload-metric"><strong>{totals.overdue.toLocaleString()}</strong><span>Past-due assignments</span></div>
       <div className="team-workload-metric"><strong>{totals.needsAmi.toLocaleString()}</strong><span>Needs Ami decisions</span></div>
     </section>
-    <p className="team-workload-note">Counts are based on imported ClickUp assignments in active JF Corporate clients. Shared tasks count once for each assignee. Past due means an open task with a due date before today; these are not verified workload or capacity estimates. AI decisions are unverified.</p>
+    <p className="team-workload-note">Counts are based on imported ClickUp assignments in active JF Corporate clients. Shared tasks count once for each assignee. Past due means an open task with a due date before the current time; these are not verified workload or capacity estimates. AI decisions are unverified.</p>
     <section className="clean-panel directory-panel">
       <div className="panel-heading"><div><h2>People</h2><p>Prioritize who needs follow-up, then open their individual task view.</p></div>
         <span className="panel-count">{people.length}</span></div>
