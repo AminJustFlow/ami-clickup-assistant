@@ -105,6 +105,11 @@ export default async function ClientPage({ params, searchParams }: {
     const action = type.includes('comment') ? 'Comment activity' : type.includes('status') ? 'Status activity' : type.includes('assign') ? 'Assignment activity' : type.includes('due') ? 'Due-date activity' : 'Task activity';
     return action + (event.actorName ? ' · ' + event.actorName : '') + ' · ' + event.occurredAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
+  const briefDecisions = prioritize(tasks.filter(isOpenAttentionTask));
+  const briefDependencies = prioritize(tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence?.waitingOnType && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
+  const briefDecision = briefDecisions[0];
+  const briefDependency = briefDependencies[0];
+  const briefDeadline = upcoming[0];
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
@@ -128,6 +133,20 @@ export default async function ClientPage({ params, searchParams }: {
       <div><strong>{overdueCount}</strong><span>Past due open tasks · all</span></div>
     </div>
     <p className="dashboard-note client-detail-context">{tasks.length.toLocaleString()} imported tasks · {analyzedCount.toLocaleString()} AI analyzed. Open and overdue counts include older imported tasks. These are status-based indicators, not verified current workload.</p>
+    <section className="client-action-brief clean-panel" aria-label="Client action brief">
+      <div className="client-action-summary-heading"><div><p className="eyebrow">CLIENT ACTION BRIEF</p><h2>Where to focus first</h2></div><p>Suggested starting points from imported ClickUp tasks and unverified AI assessments. Confirm details before acting.</p></div>
+      <div className="client-action-summary-grid">
+        <div className="client-action-summary-card"><div className="client-action-summary-card-head"><h3>Decision to review</h3><strong>{briefDecisions.length}</strong></div>
+          {briefDecision ? <><p><strong>{briefDecision.name}</strong></p><p className="dashboard-note">{briefDecision.intelligence?.amiAction || 'AI flagged this task for Ami to review.'}</p><TaskDetailsButton taskId={briefDecision.id} /></> : <p className="dashboard-note">No open Ami decisions identified.</p>}
+          <a href={tabHref('ami')}>Review decisions →</a></div>
+        <div className="client-action-summary-card"><div className="client-action-summary-card-head"><h3>Dependency to check</h3><strong>{briefDependencies.length}</strong></div>
+          {briefDependency ? <><p><strong>{briefDependency.name}</strong></p><p className="dashboard-note">{briefDependency.intelligence?.waitingOnName ? 'AI identifies dependency: ' + briefDependency.intelligence.waitingOnName : 'AI identifies a dependency; owner not specified.'}</p><TaskDetailsButton taskId={briefDependency.id} /></> : <p className="dashboard-note">No open dependencies identified.</p>}
+          <a href={tabHref('waiting')}>Review dependencies →</a></div>
+        <div className="client-action-summary-card"><div className="client-action-summary-card-head"><h3>Next deadline</h3><strong>{upcoming.length}</strong></div>
+          {briefDeadline?.dueDate ? <><p><strong>{briefDeadline.name}</strong></p><p className="dashboard-note">Due {briefDeadline.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {Math.ceil((briefDeadline.dueDate.getTime() - now.getTime()) / 86400000) <= 1 ? 'within 24 hours' : 'in ' + Math.ceil((briefDeadline.dueDate.getTime() - now.getTime()) / 86400000) + ' days'}</p><TaskDetailsButton taskId={briefDeadline.id} /></> : <p className="dashboard-note">No upcoming due dates within 7 days.</p>}
+          <a href={tabHref('all') + '&sort=due'}>Review deadlines →</a></div>
+      </div>
+    </section>
     <section className="client-action-summary" aria-label="Client action summary">
       <div className="client-action-summary-heading"><div><p className="eyebrow">AT A GLANCE</p><h2>What needs attention</h2></div><p>Based on imported ClickUp data and unverified AI assessments. Open a task to confirm its current status.</p></div>
       <div className="client-action-summary-grid">
