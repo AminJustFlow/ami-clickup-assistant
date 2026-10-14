@@ -6,7 +6,7 @@ import { AppNav } from '../components/app-nav';
 
 export const dynamic = 'force-dynamic';
 
-type ChangeItem = { key: string; date: Date; title: string; detail: string; author?: string; client: string; url: string | null; category: 'status' | 'assignment' | 'admin' | 'comment' };
+type ChangeItem = { taskId: number; key: string; date: Date; title: string; detail: string; author?: string; client: string; url: string | null; category: 'status' | 'assignment' | 'admin' | 'comment' };
 const categories = [
   { key: 'status', label: 'Status transitions' },
   { key: 'comment', label: 'New comments' },
@@ -23,7 +23,7 @@ function eventValue(value: unknown): string {
   return 'changed';
 }
 
-type ActivityFilters = { client?: string; category?: string; range?: string; q?: string; page?: string };
+type ActivityFilters = { view?: string; client?: string; category?: string; range?: string; q?: string; page?: string };
 
 export default async function ChangesPage({ searchParams }: { searchParams: Promise<ActivityFilters> }) {
   const filters = await searchParams;
@@ -51,13 +51,14 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     })
   ]);
   const openDecisions = needsAmi.filter(isOpenAttentionTask);
+  const openDecisionIds = new Set(openDecisions.map(task => task.id));
   const items: ChangeItem[] = [];
   for (const e of events) {
     if (!e.task || !e.occurredAt) continue;
     const category: ChangeItem['category'] = e.eventType.includes('STATUS') ? 'status'
       : e.eventType.includes('ASSIGNEES') ? 'assignment' : 'admin';
     items.push({
-      key: 'event-' + e.id, date: e.occurredAt, category,
+      taskId: e.task.id, key: 'event-' + e.id, date: e.occurredAt, category,
       title: e.task.name, client: e.task.client.name, url: e.task.clickupUrl,
       detail: e.eventType.replace(/^OBSERVED_/, '').replace(/_/g, ' ').toLowerCase()
         + ': ' + eventValue(e.beforeValue) + ' → ' + eventValue(e.afterValue)
@@ -66,7 +67,7 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
   for (const c of comments) {
     if (!c.clickupCreatedAt) continue;
     items.push({
-      key: 'comment-' + c.id, date: c.clickupCreatedAt, category: 'comment',
+      taskId: c.task.id, key: 'comment-' + c.id, date: c.clickupCreatedAt, category: 'comment',
       title: c.task.name, client: c.task.client.name, url: c.task.clickupUrl,
       author: c.authorName ?? 'Unknown author',
       detail: c.body.trim() || '(no text)'
@@ -75,7 +76,9 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
   items.sort((a, b) => b.date.getTime() - a.date.getTime());
   const clients = [...new Set(items.map(item => item.client))].sort();
   const search = (filters.q ?? '').trim().toLowerCase();
+  const attentionView = filters.view === 'attention';
   const filtered = items.filter(item =>
+    (!attentionView || openDecisionIds.has(item.taskId)) &&
     (!filters.client || item.client === filters.client) &&
     (!filters.category || item.category === filters.category) &&
     (!search || [item.title, item.client, item.detail].some(s => s.toLowerCase().includes(search)))
@@ -102,11 +105,18 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
   const currentPage = Math.min(pageNumber, maxPage);
   const shown = activityGroups.slice((currentPage - 1) * perPage, currentPage * perPage);
   const query = new URLSearchParams();
-  for (const key of ['client', 'category', 'range', 'q'] as const) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['view', 'client', 'category', 'range', 'q'] as const) if (filters[key]) query.set(key, filters[key]);
   const pageHref = (page: number) => {
     const params = new URLSearchParams(query);
     params.set('page', String(page));
     return '?' + params.toString() + '#activity-timeline';
+  };
+  const viewHref = (attention: boolean) => {
+    const params = new URLSearchParams(query);
+    if (attention) params.set('view', 'attention'); else params.delete('view');
+    params.delete('page');
+    const qs = params.toString();
+    return '/changes' + (qs ? '?' + qs : '') + '#activity-timeline';
   };
   const tabHref = (category: string) => {
     const params = new URLSearchParams(query);
@@ -117,9 +127,13 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     return '/changes' + (qs ? '?' + qs : '') + '#activity-timeline';
   };
   const tabEligible = items.filter(item =>
+    (!attentionView || openDecisionIds.has(item.taskId)) &&
     (!filters.client || item.client === filters.client) &&
     (!search || [item.title, item.client, item.detail].some(value => value.toLowerCase().includes(search)))
   );
+  const attentionUpdates = items.filter(item => openDecisionIds.has(item.taskId) &&
+    (!filters.client || item.client === filters.client) &&
+    (!search || [item.title, item.client, item.detail].some(value => value.toLowerCase().includes(search))));
   const tabCounts = {
     all: tabEligible.length,
     comment: tabEligible.filter(item => item.category === 'comment').length,
@@ -142,10 +156,15 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
       <a className="activity-decision-stat" href="/attention"><strong>{openDecisions.length}</strong><span>Needs Ami's decision ↗</span></a>
     </div>
     <section className="clean-panel compact-activity-panel" id="activity-timeline">
-      <div className="panel-heading activity-heading"><div><p className="eyebrow">ACTIVITY FEED</p><h2>All changes</h2>
-        <p>Newest first · Routine maintenance confirmations are grouped when repeated.</p></div>
+      <div className="panel-heading activity-heading"><div><p className="eyebrow">ACTIVITY FEED</p><h2>{attentionView ? 'Updates on Needs Ami tasks' : 'All changes'}</h2>
+        <p>{attentionView ? 'Recent activity on tasks currently flagged for Ami. These updates are not necessarily new requests.' : 'Newest first · Routine maintenance confirmations are grouped when repeated.'}</p></div>
         <form action={markDigestChecked}><button className="digest-button" type="submit">Mark as read</button></form>
       </div>
+      <nav className="recent-update-views" aria-label="Activity views">
+        <a href={viewHref(false)} aria-current={!attentionView ? 'page' : undefined}>All updates <span>{items.length}</span></a>
+        <a href={viewHref(true)} aria-current={attentionView ? 'page' : undefined}>Needs Ami task updates <span>{attentionUpdates.length}</span></a>
+      </nav>
+      {attentionView && <p className="recent-update-explainer">Based on currently open AI-identified Ami decisions, not comment keyword matching. The activity shown here may predate the decision. <a href="/attention">Review the actual decisions →</a></p>}
       <nav className="activity-tabs" aria-label="Filter activity type">
         <a href={tabHref('')} aria-current={!filters.category ? 'page' : undefined}>All activity <span>{tabCounts.all}</span></a>
         <a href={tabHref('comment')} aria-current={filters.category === 'comment' ? 'page' : undefined}>Comments <span>{tabCounts.comment}</span></a>
@@ -153,6 +172,7 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
         <a href={tabHref('assignment')} aria-current={filters.category === 'assignment' ? 'page' : undefined}>Assignments <span>{tabCounts.assignment}</span></a>
       </nav>
       <form className="filter-bar clean-filters compact-activity-filters" method="GET">
+        {attentionView && <input type="hidden" name="view" value="attention" />}
         <label>Period<select name="range" defaultValue={filters.range ?? '7'}>
           <option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option>
           {hasCheckpoint && <option value="checkpoint">Since last read</option>}
@@ -173,6 +193,7 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
           <div className="activity-feed-content">
             <div className="activity-feed-meta"><span className="activity-feed-client">{item.client}</span><span className="activity-feed-time">{item.date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><span className={`activity-feed-tag activity-feed-tag-${item.category}`}>{group.routine ? 'Routine' : categoryLabel[item.category]}</span></div>
             <h3>{item.title}</h3>
+            {openDecisionIds.has(item.taskId) && <span className="recent-update-attention-marker">Task currently needs Ami · <a href="/attention">Review decision</a></span>}
             {item.category === 'comment' && <p className="recent-update-author">Comment by <strong>{item.author}</strong></p>}
             {item.category === 'comment' && item.detail.length > 220 ? <details className="recent-update-expand"><summary>{item.detail.slice(0, 220)}… <span>Read full comment</span></summary><p>{item.detail}</p></details> : <p className="activity-feed-detail">{item.detail}</p>}
             {grouped && <details className="activity-feed-group"><summary>{group.entries.length} similar maintenance updates · View all</summary>

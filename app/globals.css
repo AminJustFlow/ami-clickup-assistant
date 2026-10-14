@@ -950,3 +950,14 @@ button{font-family:inherit}
 .recent-updates-workspace .activity-feed-link{white-space:nowrap;font-size:12px;font-weight:700}
 .recent-updates-workspace .activity-feed-item:focus-within{outline:2px solid #9dc7d7;outline-offset:-2px;border-radius:6px}
 @media(max-width:760px){.recent-updates-workspace .activity-feed-list{padding:0 12px}.recent-updates-workspace .activity-feed-item{padding:15px 2px;gap:10px}.recent-updates-workspace .activity-feed-link{white-space:normal}.recent-updates-workspace .activity-feed-content h3{font-size:14px}}
+
+
+/* Phase 34.2: clearly scoped activity on tasks currently needing Ami */
+.recent-updates-workspace .recent-update-views{display:flex;flex-wrap:wrap;gap:8px;padding:0 20px 12px}
+.recent-updates-workspace .recent-update-views a{display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid #dce6eb;border-radius:8px;color:#375769;background:#fff;font-size:12px;font-weight:750;text-decoration:none}
+.recent-updates-workspace .recent-update-views a[aria-current=page]{background:#e9f5fa;border-color:#8ac3d7;color:#075b7b}
+.recent-updates-workspace .recent-update-views a span{font-size:11px;color:#577785}
+.recent-updates-workspace .recent-update-explainer{margin:0 20px 13px;padding:10px 12px;background:#f4f8fa;border:1px solid #e0e9ed;border-radius:7px;color:#4c6573;font-size:12px;line-height:1.55}
+.recent-updates-workspace .recent-update-attention-marker{display:inline-block;margin:0 0 8px;padding:4px 7px;border-radius:5px;background:#fff5e7;color:#775522;font-size:11px;font-weight:700}
+.recent-updates-workspace .recent-update-attention-marker a{color:#775522;text-decoration:underline}
+@media(max-width:760px){.recent-updates-workspace .recent-update-views{padding:0 12px 12px}.recent-updates-workspace .recent-update-explainer{margin:0 12px 12px}}
