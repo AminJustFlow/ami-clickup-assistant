@@ -984,3 +984,13 @@ button{font-family:inherit}
 .clients-portfolio .client-portfolio-metrics .client-portfolio-overdue{color:#9c5c19;font-weight:750}
 .clients-portfolio .client-portfolio-metrics .client-portfolio-attention{color:#096b91;font-weight:750}
 @media(max-width:760px){.clients-portfolio .client-portfolio-entry{min-height:100px}.clients-portfolio .client-portfolio-metrics{gap:5px 9px}}
+
+
+/* Phase 35.2: client activity navigation */
+.clients-portfolio .client-portfolio-entry{cursor:default}
+.clients-portfolio .client-portfolio-name{color:inherit;text-decoration:none}
+.clients-portfolio .client-portfolio-name:hover,.clients-portfolio .client-portfolio-name:focus-visible{text-decoration:underline}
+.clients-portfolio .client-portfolio-activity{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:11px;line-height:1.5;color:#5b7480;margin-top:3px;min-width:0}
+.clients-portfolio .client-portfolio-activity>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.clients-portfolio .client-portfolio-activity a,.clients-portfolio .client-portfolio-open{color:#08749a;font-weight:750;white-space:nowrap;text-decoration:none}
+.clients-portfolio .client-portfolio-activity a:hover,.clients-portfolio .client-portfolio-open:hover{text-decoration:underline}
