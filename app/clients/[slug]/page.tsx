@@ -8,7 +8,7 @@ import { foldersForClient } from '@/lib/clients/grouping';
 
 export const dynamic = 'force-dynamic';
 
-type Filters = { assignee?: string; age?: string; due?: string; focus?: string; status?: string; q?: string; section?: string; page?: string };
+type Filters = { assignee?: string; age?: string; due?: string; focus?: string; view?: string; status?: string; q?: string; section?: string; page?: string };
 
 export default async function ClientPage({ params, searchParams }: {
   params: Promise<{ slug: string }>;
@@ -93,6 +93,9 @@ export default async function ClientPage({ params, searchParams }: {
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'due', 'focus'] as const) if (filters[key]) query.set(key, filters[key]);
+  const view: string = filters.view && ['ami', 'waiting', 'active', 'all'].includes(filters.view) ? filters.view : (filters.due === 'overdue' || filters.focus === 'overdue' ? 'all' : 'ami');
+  const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.delete('focus'); params.set('view', nextView); return '?' + params.toString(); };
+  query.set('view', view);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
 
   return <main id="main-content" className="ops-shell dashboard-shell">
@@ -108,15 +111,16 @@ export default async function ClientPage({ params, searchParams }: {
       <div><strong>{overdueCount}</strong><span>Past due open tasks · all</span></div>
     </div>
     <p className="dashboard-note client-detail-context">{tasks.length.toLocaleString()} imported tasks · {analyzedCount.toLocaleString()} AI analyzed. Open and overdue counts include older imported tasks. These are status-based indicators, not verified current workload.</p>
-    <nav className="client-detail-shortcuts" aria-label="Client work sections">
-      <a href="#client-needs-ami">Needs Ami ({needsAmi.length})</a>
-      <a href="#client-waiting">Waiting ({waiting.length})</a>
-      <a href="#client-active">In progress ({recentlyActive.length})</a>
-      <a href="#client-stale">Stale active ({stale.length})</a>
+    <nav className="client-workspace-tabs" aria-label="Client workspace views">
+      <a aria-current={view === 'ami' ? 'page' : undefined} href={tabHref('ami')}>Needs Ami <span>{needsAmi.length}</span></a>
+      <a aria-current={view === 'waiting' ? 'page' : undefined} href={tabHref('waiting')}>Waiting <span>{waiting.length}</span></a>
+      <a aria-current={view === 'active' ? 'page' : undefined} href={tabHref('active')}>In progress <span>{recentlyActive.length + stale.length}</span></a>
+      <a aria-current={view === 'all' ? 'page' : undefined} href={tabHref('all')}>All tasks <span>{filtered.length}</span></a>
     </nav>
     {filters.due === 'overdue' && <p className="dashboard-note client-due-filter-notice">Showing open-status tasks past their due date. Older imported backlog may be included. <a href={`/clients/${encodeURIComponent(slug)}`}>Show all tasks →</a></p>}
-    <nav className="client-task-focus" aria-label="Task focus filters"><a className={!filters.focus ? "active" : ""} href={`/clients/${encodeURIComponent(slug)}`}>All work</a><a className={filters.focus === "ami" ? "active" : ""} href={`?focus=ami`}>Needs Ami only</a><a className={filters.focus === "overdue" ? "active" : ""} href={`?focus=overdue`}>Overdue only</a></nav>
+    <nav className="client-task-focus" aria-label="Task focus filters"><a className={!filters.focus ? "active" : ""} href={`/clients/${encodeURIComponent(slug)}`}>All work</a><a className={filters.focus === "ami" ? "active" : ""} href={`?focus=ami&view=ami`}>Needs Ami only</a><a className={filters.focus === "overdue" ? "active" : ""} href={`?focus=overdue&view=all`}>Overdue only</a></nav>
     <form className="filter-bar clean-filters" method="GET">
+      <input type="hidden" name="view" value={view} />
       {filters.focus && <input type="hidden" name="focus" value={filters.focus} />}
       {filters.due === 'overdue' && <input type="hidden" name="due" value="overdue" />}
       <label className="search-label">Find a task<input type="search" name="q" defaultValue={filters.q ?? ''} placeholder="Search tasks, people, or summaries…" /></label>
@@ -126,15 +130,23 @@ export default async function ClientPage({ params, searchParams }: {
       <button type="submit">Show results</button><a href={`/clients/${slug}`}>Clear filters</a>
     </form>
     <p className="filter-results">Priority ordering: overdue first, then urgent/high ClickUp priority and approaching due dates. AI recommendations remain unverified. {filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
-    <div className="detail-sections compact-intel-sections">
-      <div id="client-needs-ami"><CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} /></div>
-      <div id="client-waiting"><CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} /></div>
-      <div id="client-active"><CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recentlyActive} sectionId="active" {...sectionProps} /></div>
-      <div id="client-stale"><CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} /></div>
-      <CompactTaskSection title="Not started" tasks={notStarted} sectionId="not-started" collapsed {...sectionProps} />
-      <CompactTaskSection title="Other analyzed tasks" tasks={other} sectionId="other" collapsed {...sectionProps} />
-      <CompactTaskSection title="Completed" tasks={completed} sectionId="completed" collapsed {...sectionProps} />
-      <CompactTaskSection title="Awaiting AI analysis" tasks={unanalyzed} sectionId="unanalyzed" collapsed {...sectionProps} />
+    <div className="detail-sections compact-intel-sections client-workspace-content">
+      {view === 'ami' && <CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} />}
+      {view === 'waiting' && <CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} />}
+      {view === 'active' && <>
+        <CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recentlyActive} sectionId="active" {...sectionProps} />
+        <CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} />
+      </>}
+      {view === 'all' && <>
+        <CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} />
+        <CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} />
+        <CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recentlyActive} sectionId="active" {...sectionProps} />
+        <CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} />
+        <CompactTaskSection title="Not started" tasks={notStarted} sectionId="not-started" collapsed {...sectionProps} />
+        <CompactTaskSection title="Other analyzed tasks" tasks={other} sectionId="other" collapsed {...sectionProps} />
+        <CompactTaskSection title="Completed" tasks={completed} sectionId="completed" collapsed {...sectionProps} />
+        <CompactTaskSection title="Awaiting AI analysis" tasks={unanalyzed} sectionId="unanalyzed" collapsed {...sectionProps} />
+      </>}
     </div>
   </main>;
 }
