@@ -100,7 +100,7 @@ export default async function ClientPage({ params, searchParams }: {
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'sort'] as const) if (filters[key]) query.set(key, filters[key]);
   const view: string = search ? 'all' : filters.view && ['ami', 'waiting', 'active', 'overdue', 'all'].includes(filters.view) ? filters.view : filters.due === 'overdue' || filters.focus === 'overdue' ? 'overdue' : 'ami';
-  const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.set('view', nextView); params.delete('section'); params.delete('page'); return '?' + params.toString(); };
+  const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.set('view', nextView); params.delete('q'); params.delete('section'); params.delete('page'); return '?' + params.toString(); };
   query.set('view', view);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
 
