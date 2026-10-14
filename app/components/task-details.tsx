@@ -46,6 +46,27 @@ type TaskDetails = {
   comments: { id: number; authorName: string | null; body: string; clickupCreatedAt: string | null }[];
 };
 
+// Short-lived shared cache avoids repeated drawer requests and reuses hover prefetches.
+// Failures are evicted so retry always makes a new request.
+const detailCache = new Map<number, { expiresAt: number; promise: Promise<TaskDetails> }>();
+const DETAIL_CACHE_MS = 30_000;
+
+function loadTaskDetails(id: number, refresh = false): Promise<TaskDetails> {
+  const cached = detailCache.get(id);
+  if (!refresh && cached && cached.expiresAt > Date.now()) return cached.promise;
+  const promise = fetch(`/api/tasks/${id}/details`, { cache: 'no-store' })
+    .then(async response => {
+      if (!response.ok) throw new Error('Unable to load task details.');
+      return response.json() as Promise<TaskDetails>;
+    })
+    .catch(error => {
+      if (detailCache.get(id)?.promise === promise) detailCache.delete(id);
+      throw error;
+    });
+  detailCache.set(id, { expiresAt: Date.now() + DETAIL_CACHE_MS, promise });
+  return promise;
+}
+
 function formatDate(value: string | null): string {
   if (!value) return 'Not available';
   const date = new Date(value);
@@ -74,20 +95,16 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
 
   useEffect(() => {
     if (!open) return;
-    const controller = new AbortController();
+    let active = true;
     setLoading(true);
     setError(null);
     setTask(null);
     setShowAllComments(false);
-    fetch(`/api/tasks/${currentTaskId}/details`, { signal: controller.signal, cache: 'no-store' })
-      .then(async response => {
-        if (!response.ok) throw new Error('Unable to load task details. Please try again.');
-        return response.json() as Promise<TaskDetails>;
-      })
-      .then(data => { if (!controller.signal.aborted) setTask(data); })
-      .catch(() => { if (!controller.signal.aborted) setError('Unable to load task details. Please try again.'); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    loadTaskDetails(currentTaskId, retryCount > 0)
+      .then(data => { if (active) setTask(data); })
+      .catch(() => { if (active) setError('Unable to load task details. Please try again.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [open, currentTaskId, retryCount]);
 
   useEffect(() => {
@@ -116,7 +133,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
   }, [open]);
 
   return <>
-    <button ref={triggerRef} type="button" className="task-details-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog">{label} <span aria-hidden="true">→</span></button>
+    <button ref={triggerRef} type="button" className="task-details-trigger" onPointerEnter={() => { void loadTaskDetails(taskId).catch(() => {}); }} onFocus={() => { void loadTaskDetails(taskId).catch(() => {}); }} onClick={() => setOpen(true)} aria-haspopup="dialog">{label} <span aria-hidden="true">→</span></button>
     {mounted && open && createPortal(
       <div className="task-drawer-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
         <section className="task-drawer" role="dialog" aria-modal="true" aria-label={task ? `Task details: ${task.name}` : 'Task details'} aria-busy={loading}>
