@@ -76,22 +76,34 @@ export default async function ClientPage({ params, searchParams }: {
   const unanalyzed = filtered.filter(t => !t.intelligence);
   const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !inProgress.includes(t) && !notStarted.includes(t));
   const analyzedCount = tasks.filter(t => t.intelligence).length;
+  const openCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus)).length;
+  const overdueCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now).length;
+  const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age || filters.due);
+  const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
+  const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'due'] as const) if (filters[key]) query.set(key, filters[key]);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
 
   return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="clients" />
-    <header className="detail-hero"><div><a className="back-link" href="/#clients">← All clients</a>
+    <header className="detail-hero"><div><a className="back-link" href="/clients">← All clients</a>
       <p className="eyebrow">CLIENT OVERVIEW</p><h1>{relatedFolders[0]?.name ?? client.name}</h1>
       <p>Find decisions, blockers, and current work without scrolling through full AI reports.</p></div></header>
     {relatedFolders.length > 1 && <details className="clean-panel compact-intel-folders"><summary>{relatedFolders.length} ClickUp folders consolidated into this client</summary><p>{relatedFolders.map(folder => folder.name).join(' · ')}</p></details>}
-    <div className="detail-stat-strip">
-      <div><strong>{tasks.length}</strong><span>Imported tasks</span></div>
-      <div><strong>{analyzedCount}</strong><span>AI analyzed</span></div>
-      <div><strong>{needsAmi.length}</strong><span>Need Ami · filtered</span></div>
-      <div><strong>{waiting.length}</strong><span>Waiting · filtered</span></div>
+    <div className="detail-stat-strip client-detail-priority-stats">
+      <div><strong>{currentNeedsAmi}</strong><span>Needs Ami decisions · all</span></div>
+      <div><strong>{currentWaiting}</strong><span>Waiting on someone · all</span></div>
+      <div><strong>{openCount}</strong><span>Open-status tasks · all</span></div>
+      <div><strong>{overdueCount}</strong><span>Past due open tasks · all</span></div>
     </div>
+    <p className="dashboard-note client-detail-context">{tasks.length.toLocaleString()} imported tasks · {analyzedCount.toLocaleString()} AI analyzed. Open and overdue counts include older imported tasks. These are status-based indicators, not verified current workload.</p>
+    <nav className="client-detail-shortcuts" aria-label="Client work sections">
+      <a href="#client-needs-ami">Needs Ami ({needsAmi.length})</a>
+      <a href="#client-waiting">Waiting ({waiting.length})</a>
+      <a href="#client-active">In progress ({recentlyActive.length})</a>
+      <a href="#client-stale">Stale active ({stale.length})</a>
+    </nav>
     {filters.due === 'overdue' && <p className="dashboard-note client-due-filter-notice">Showing open-status tasks past their due date. Older imported backlog may be included. <a href={`/clients/${encodeURIComponent(slug)}`}>Show all tasks →</a></p>}
     <form className="filter-bar clean-filters" method="GET">
       {filters.due === 'overdue' && <input type="hidden" name="due" value="overdue" />}
@@ -101,12 +113,12 @@ export default async function ClientPage({ params, searchParams }: {
       <label>Activity<select name="age" defaultValue={filters.age ?? ''}><option value="">Any time</option><option value="recent">Recently active</option><option value="30">Stale active</option></select></label>
       <button type="submit">Show results</button><a href={`/clients/${slug}`}>Clear filters</a>
     </form>
-    <p className="filter-results">{filtered.length} of {tasks.length} imported tasks match. {analyzedCount} of {tasks.length} have AI assessments; the action counts do not cover unanalyzed tasks.</p>
+    <p className="filter-results">{filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
     <div className="detail-sections compact-intel-sections">
-      <CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} />
-      <CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} />
-      <CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recentlyActive} sectionId="active" {...sectionProps} />
-      <CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} />
+      <div id="client-needs-ami"><CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} /></div>
+      <div id="client-waiting"><CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} /></div>
+      <div id="client-active"><CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recentlyActive} sectionId="active" {...sectionProps} /></div>
+      <div id="client-stale"><CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} /></div>
       <CompactTaskSection title="Not started" tasks={notStarted} sectionId="not-started" collapsed {...sectionProps} />
       <CompactTaskSection title="Other analyzed tasks" tasks={other} sectionId="other" collapsed {...sectionProps} />
       <CompactTaskSection title="Completed" tasks={completed} sectionId="completed" collapsed {...sectionProps} />

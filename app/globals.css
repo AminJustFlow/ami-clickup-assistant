@@ -1019,3 +1019,13 @@ button{font-family:inherit}
 .client-due-filter-notice{padding:10px 12px;border:1px solid #ecd4a9;border-radius:8px;background:#fff9ed}
 .client-due-filter-notice a{font-weight:750}
 @media(max-width:760px){.clients-portfolio .directory-grid{grid-template-columns:minmax(0,1fr)}.clients-portfolio .client-portfolio-entry{padding:13px 8px;gap:9px}.clients-portfolio .client-portfolio-info{min-width:0}.clients-portfolio .client-portfolio-metrics>span{white-space:normal}.clients-portfolio .client-portfolio-open{align-self:flex-start}}
+
+
+/* Phase 36.1: client-detail priority overview and navigation */
+.client-detail-priority-stats{margin-bottom:9px}
+.client-detail-context{margin:0 0 12px}
+.client-detail-shortcuts{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 15px}
+.client-detail-shortcuts a{display:inline-flex;align-items:center;min-height:34px;padding:7px 11px;border:1px solid #d1e3e9;border-radius:7px;background:#f2f8fa;color:#116b8b;text-decoration:none;font-size:12px;font-weight:750}
+.client-detail-shortcuts a:hover,.client-detail-shortcuts a:focus-visible{background:#e3f1f6;border-color:#91c3d4}
+.compact-intel-sections>div[id^="client-"]{scroll-margin-top:24px;min-width:0}
+@media(max-width:760px){.client-detail-shortcuts{gap:6px}.client-detail-shortcuts a{flex:1 1 44%;justify-content:center;text-align:center}}
