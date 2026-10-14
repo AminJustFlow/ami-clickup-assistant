@@ -8,10 +8,10 @@ export const dynamic = 'force-dynamic';
 type Filters = { q?: string; sort?: string; focus?: string };
 type PortfolioEntry = {
   slug: string; name: string; imported: number; active: number; overdue: number;
-  needsAmi: number; latestActivity: Date | null; recentEvent: { date: Date; task: string; folderName: string; type: string } | null;
+  needsAmi: number; recentOpen: number; staleOpen: number; staleOverdue: number; latestActivity: Date | null; recentEvent: { date: Date; task: string; folderName: string; type: string } | null;
 };
-const validSorts = ['name', 'active', 'overdue', 'attention', 'recent', 'tasks'];
-const validFocus = ['all', 'attention', 'overdue', 'active'];
+const validSorts = ['name', 'active', 'overdue', 'attention', 'recent', 'tasks', 'recentOpen', 'staleOpen'];
+const validFocus = ['all', 'attention', 'overdue', 'active', 'recentOpen', 'staleOpen'];
 function formatActivity(value: Date | null) {
   return value ? value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No activity date';
 }
@@ -22,6 +22,8 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
   const sort = validSorts.includes(params.sort ?? '') ? params.sort! : 'name';
   const focus = validFocus.includes(params.focus ?? '') ? params.focus! : 'all';
   const now = new Date();
+  const recentCutoff = new Date(now.getTime() - 30 * 86400000);
+  const staleCutoff = new Date(now.getTime() - 90 * 86400000);
   const folders = await prisma.client.findMany({
     where: { active: true, space: { name: 'JF Corporate' } },
     select: { id: true, name: true, slug: true, clickupFolderId: true }
@@ -37,7 +39,7 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
     }),
     prisma.task.findMany({
       where: scope,
-      select: { clientId: true, clickupStatus: true, dueDate: true }
+      select: { clientId: true, clickupStatus: true, dueDate: true, clickupUpdatedAt: true }
     }),
     prisma.task.findMany({
       where: { ...scope, intelligence: { is: { needsAmi: true } } },
@@ -62,10 +64,20 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
   const latestById = new Map(counts.map(row => [row.clientId, row._max.clickupUpdatedAt]));
   const activeById = new Map<number, number>();
   const overdueById = new Map<number, number>();
+  const recentOpenById = new Map<number, number>();
+  const staleOpenById = new Map<number, number>();
+  const staleOverdueById = new Map<number, number>();
   for (const task of tasks) {
     if (isClosedClickUpStatus(task.clickupStatus)) continue;
     activeById.set(task.clientId, (activeById.get(task.clientId) ?? 0) + 1);
-    if (task.dueDate && task.dueDate < now) overdueById.set(task.clientId, (overdueById.get(task.clientId) ?? 0) + 1);
+    const recentlyUpdated = !!task.clickupUpdatedAt && task.clickupUpdatedAt >= recentCutoff;
+    const stale = !task.clickupUpdatedAt || task.clickupUpdatedAt < staleCutoff;
+    if (recentlyUpdated) recentOpenById.set(task.clientId, (recentOpenById.get(task.clientId) ?? 0) + 1);
+    if (stale) staleOpenById.set(task.clientId, (staleOpenById.get(task.clientId) ?? 0) + 1);
+    if (task.dueDate && task.dueDate < now) {
+      overdueById.set(task.clientId, (overdueById.get(task.clientId) ?? 0) + 1);
+      if (stale) staleOverdueById.set(task.clientId, (staleOverdueById.get(task.clientId) ?? 0) + 1);
+    }
   }
   const attentionById = new Map<number, number>();
   for (const task of attentionCandidates) {
@@ -80,6 +92,9 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
       imported: ids.reduce((sum, id) => sum + (importedById.get(id) ?? 0), 0),
       active: ids.reduce((sum, id) => sum + (activeById.get(id) ?? 0), 0),
       overdue: ids.reduce((sum, id) => sum + (overdueById.get(id) ?? 0), 0),
+      recentOpen: ids.reduce((sum, id) => sum + (recentOpenById.get(id) ?? 0), 0),
+      staleOpen: ids.reduce((sum, id) => sum + (staleOpenById.get(id) ?? 0), 0),
+      staleOverdue: ids.reduce((sum, id) => sum + (staleOverdueById.get(id) ?? 0), 0),
       needsAmi: ids.reduce((sum, id) => sum + (attentionById.get(id) ?? 0), 0),
       latestActivity: latest.length ? new Date(Math.max(...latest.map(date => date.getTime()))) : null,
       recentEvent: ids.map(id => activityById.get(id)).filter((value): value is NonNullable<typeof value> => !!value).sort((a,b) => b.date.getTime() - a.date.getTime())[0] ?? null
@@ -89,9 +104,12 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
   const filtered = entries.filter(entry =>
     (!search || entry.name.toLowerCase().includes(search)) &&
     (focus === 'all' || (focus === 'attention' && entry.needsAmi > 0) ||
-      (focus === 'overdue' && entry.overdue > 0) || (focus === 'active' && entry.active > 0))
+      (focus === 'overdue' && entry.overdue > 0) || (focus === 'active' && entry.active > 0) ||
+      (focus === 'recentOpen' && entry.recentOpen > 0) || (focus === 'staleOpen' && entry.staleOpen > 0))
   ).sort((a, b) => {
-    const difference = sort === 'tasks' ? b.imported - a.imported :
+    const difference = sort === 'recentOpen' ? b.recentOpen - a.recentOpen :
+      sort === 'staleOpen' ? b.staleOpen - a.staleOpen :
+      sort === 'tasks' ? b.imported - a.imported :
       sort === 'active' ? b.active - a.active :
       sort === 'overdue' ? b.overdue - a.overdue :
       sort === 'attention' ? b.needsAmi - a.needsAmi :
@@ -99,6 +117,9 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
     return difference || a.name.localeCompare(b.name);
   });
   const totalActive = entries.reduce((sum, entry) => sum + entry.active, 0);
+  const totalRecentOpen = entries.reduce((sum, entry) => sum + entry.recentOpen, 0);
+  const totalStaleOpen = entries.reduce((sum, entry) => sum + entry.staleOpen, 0);
+  const totalStaleOverdue = entries.reduce((sum, entry) => sum + entry.staleOverdue, 0);
   const totalOverdue = entries.reduce((sum, entry) => sum + entry.overdue, 0);
   const totalAttention = entries.reduce((sum, entry) => sum + entry.needsAmi, 0);
   return <main className="ops-shell dashboard-shell clients-portfolio" id="main-content">
@@ -111,7 +132,12 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
       <div><strong>{totalOverdue.toLocaleString()}</strong><span>Open tasks past due</span></div>
       <div><strong>{totalAttention.toLocaleString()}</strong><span>Open Needs Ami decisions</span></div>
     </section>
-    <p className="dashboard-note">Open-status tasks exclude recognized completed, closed and canceled statuses. Past-due counts are unverified backlog, not a measure of current employee performance: open-status tasks with historical due dates may still count. Needs Ami uses current, unreviewed AI recommendations.</p>
+    <section className="client-freshness-summary" aria-label="Open task freshness breakdown">
+      <div><strong>{totalRecentOpen.toLocaleString()}</strong><span>Updated within 30 days</span></div>
+      <div><strong>{totalStaleOpen.toLocaleString()}</strong><span>Not updated in 90+ days</span></div>
+      <div><strong>{totalStaleOverdue.toLocaleString()}</strong><span>Past due and stale 90+ days</span></div>
+    </section>
+    <p className="dashboard-note">Freshness is based on ClickUp task update timestamps, not proof that someone worked on the task. Tasks updated 30–89 days ago are in neither freshness group; missing timestamps count as stale. Past due and stale is a review category, not confirmation that work is historical. Open-status tasks exclude recognized completed, closed and canceled statuses. Past-due counts are unverified backlog, not a measure of current employee performance: open-status tasks with historical due dates may still count. Needs Ami uses current, unreviewed AI recommendations.</p>
     <section className="clean-panel directory-panel">
       <div className="panel-heading"><div><h2>Client accounts</h2><p>Related ClickUp folders appear under one client.</p></div>
         <span className="panel-count">{entries.length}</span></div>
@@ -120,11 +146,12 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
         <label>Show<select name="focus" defaultValue={focus}>
           <option value="all">All clients</option><option value="attention">Needs Ami</option>
           <option value="overdue">Has overdue tasks</option><option value="active">Has open tasks</option>
+          <option value="recentOpen">Updated in last 30 days</option><option value="staleOpen">Not updated in 90+ days</option>
         </select></label>
         <label>Sort by<select name="sort" defaultValue={sort}>
           <option value="name">Client name</option><option value="attention">Most Needs Ami</option>
           <option value="overdue">Most overdue</option><option value="active">Most open tasks</option>
-          <option value="recent">Most recently updated</option><option value="tasks">Most imported tasks</option>
+          <option value="recent">Most recently updated</option><option value="recentOpen">Most recently updated open tasks</option><option value="staleOpen">Most stale open tasks</option><option value="tasks">Most imported tasks</option>
         </select></label>
         <button type="submit">Apply</button><a href="/clients">Clear</a>
       </form>
@@ -136,7 +163,9 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
           <small>{entry.imported.toLocaleString()} imported · Updated {formatActivity(entry.latestActivity)}</small>
           <span className="client-portfolio-metrics">
             <span>{entry.active.toLocaleString()} open</span>
-            <span className={entry.overdue ? 'client-portfolio-overdue' : ''}>{entry.overdue.toLocaleString()} overdue</span>
+            <span>{entry.recentOpen.toLocaleString()} updated 30d</span>
+            <span>{entry.staleOpen.toLocaleString()} stale 90d</span>
+            <span className={entry.overdue ? 'client-portfolio-overdue' : ''}>{entry.overdue.toLocaleString()} overdue ({entry.staleOverdue.toLocaleString()} stale)</span>
             <span className={entry.needsAmi ? 'client-portfolio-attention' : ''}>{entry.needsAmi.toLocaleString()} Needs Ami</span>
           </span>
           {entry.recentEvent && <span className="client-portfolio-activity"><span>{entry.recentEvent.type} · {formatActivity(entry.recentEvent.date)} · {entry.recentEvent.task}</span> <a href={`/changes?client=${encodeURIComponent(entry.recentEvent.folderName)}&range=30`}>View activity →</a></span>}
