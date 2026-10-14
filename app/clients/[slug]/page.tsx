@@ -112,6 +112,17 @@ export default async function ClientPage({ params, searchParams }: {
   const briefDeadline = upcoming[0];
   const featuredTaskIds = new Set([briefDecision?.id, briefDependency?.id, briefDeadline?.id].filter((id): id is number => typeof id === 'number'));
   const additionalTasks = (items: typeof tasks) => items.filter(task => !featuredTaskIds.has(task.id));
+  // Preview distinct task names only; retain individual tasks and counts in the full directory.
+  const previewTasks = (items: typeof tasks, distinctNames = false) => {
+    const seen = new Set<string>();
+    return additionalTasks(items).filter(task => {
+      if (!distinctNames) return true;
+      const name = task.name.trim().toLocaleLowerCase();
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
+  };
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
@@ -159,7 +170,7 @@ export default async function ClientPage({ params, searchParams }: {
           { title: 'Updated in 7 days', items: recentChanges, count: recentChanges.length, view: 'all', detail: recentEventLabel }
         ]).map(group => <div className="client-action-summary-card" key={group.title}>
           <div className="client-action-summary-card-head"><h3>{group.title}</h3><strong>{group.count}</strong></div>
-          {additionalTasks(group.items).length ? <ul>{additionalTasks(group.items).slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">{group.items.length ? "All matching tasks are highlighted above in the Client Action Brief." : "No matching items."}</p>}
+          {previewTasks(group.items, group.title === 'Updated in 7 days').length ? <ul>{previewTasks(group.items, group.title === 'Updated in 7 days').slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">{group.items.length ? "All matching tasks are highlighted above in the Client Action Brief." : "No matching items."}</p>}
           <a href={group.title === 'Updated in 7 days' ? tabHref('all') + '&sort=recent' : group.title === 'Due in 7 days' ? tabHref('all') + '&sort=due' : tabHref(group.view)}>{group.view === 'ami' ? 'View all decisions' : group.view === 'waiting' ? 'View all dependencies' : 'View all tasks'} →</a>
         </div>)}
       </div>
@@ -184,7 +195,7 @@ export default async function ClientPage({ params, searchParams }: {
     <p className="filter-results">{search ? "Searching every imported task in this client, including completed and unanalyzed work. " : ""}Sort: {sort === "due" ? "earliest due date first" : sort === "recent" ? "most recently updated first" : "overdue, urgent/high priority, then approaching due dates"}. Team member filters use ClickUp task assignments. AI recommendations remain unverified. {filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
     <div className="detail-sections compact-intel-sections client-workspace-content">
       {view === 'ami' && <CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} />}
-      {view === 'waiting' && <CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} />}
+      {view === 'waiting' && <CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" initialLimit={3} {...sectionProps} />}
       {view === 'active' && <>
         <CompactTaskSection title="Recently active" eyebrow="IN PROGRESS" tasks={recentlyActive} sectionId="active" {...sectionProps} />
         <CompactTaskSection title="Stale active" tasks={stale} sectionId="stale" collapsed {...sectionProps} />
