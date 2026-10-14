@@ -65,6 +65,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
   const [retryCount, setRetryCount] = useState(0);
   const [currentTaskId, setCurrentTaskId] = useState(taskId);
   const [mounted, setMounted] = useState(false);
+  const [showAllComments, setShowAllComments] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -77,6 +78,7 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
     setLoading(true);
     setError(null);
     setTask(null);
+    setShowAllComments(false);
     fetch(`/api/tasks/${currentTaskId}/details`, { signal: controller.signal, cache: 'no-store' })
       .then(async response => {
         if (!response.ok) throw new Error('Unable to load task details. Please try again.');
@@ -132,10 +134,19 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
                 <p>{task.client.name} · {task.list.name}</p>
               </div>
 
+              <section className="task-drawer-section task-drawer-facts" aria-label="Task ownership and timing">
+                <div><span>Assigned to</span><strong>{task.assignees.length ? task.assignees.join(', ') : 'Unassigned'}</strong></div>
+                <div><span>ClickUp status</span><strong>{task.clickupStatus || 'Unknown'}</strong></div>
+                <div><span>Due date</span><strong>{task.dueDate ? formatDate(task.dueDate) : 'No due date'}</strong></div>
+              </section>
+
               {task.intelligence?.needsAmi && <section className="task-drawer-action">
                 <p className="next-step-label">What Ami needs to do</p>
                 <p>{task.intelligence.amiAction || 'Review this task and decide on the next step.'}</p>
+                <small>AI suggestion only. Verify the latest task details in ClickUp before acting.</small>
               </section>}
+
+              {task.intelligence?.waitingOnName && <section className="task-drawer-section"><h3>Identified dependency</h3><p>Waiting on {task.intelligence.waitingOnName}. This is an AI assessment, not a verified ClickUp status.</p></section>}
 
               {task.hierarchy && <section className="task-drawer-section task-hierarchy-section">
                 <h3>Parent and subtasks</h3>
@@ -164,21 +175,13 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
               </section>
 
               <section className="task-drawer-section">
-                <h3>Who's responsible?</h3>
-                <div className="task-drawer-facts">
-                  <div><span>Assigned to</span><strong>{task.assignees.length ? task.assignees.join(', ') : 'Unassigned'}</strong></div>
-                  <div><span>Waiting on</span><strong>{task.intelligence?.waitingOnName || (task.intelligence?.waitingOnType && task.intelligence.waitingOnType !== 'NONE' ? stateLabel(task.intelligence.waitingOnType) + ' (name not specified)' : 'Nobody identified')}</strong></div>
-                  <div><span>Due date</span><strong>{task.dueDate ? formatDate(task.dueDate) : 'No due date'}</strong></div>
-                </div>
-              </section>
-
-              <section className="task-drawer-section">
                 <h3>Recent ClickUp comments <span className="task-drawer-count">{task.comments.length}</span></h3>
-                {task.comments.length ? <div className="task-drawer-comments">{task.comments.map(comment => <div className="task-drawer-comment" key={comment.id}>
+                {task.comments.length ? <div className="task-drawer-comments">{(showAllComments ? task.comments : task.comments.slice(0, 3)).map(comment => <div className="task-drawer-comment" key={comment.id}>
                   <div className="comment-byline"><strong>{comment.authorName?.trim() || 'Unknown author'}</strong><small>{formatDate(comment.clickupCreatedAt)}</small></div>
                   <p>{comment.body}</p>
                 </div>)}</div> : <p>No comments available.</p>}
-                {task.comments.length === 10 && <small className="task-drawer-muted">Showing the 10 most recent comments.</small>}
+                {task.comments.length > 3 && <button type="button" className="task-hierarchy-link" onClick={() => setShowAllComments(value => !value)}>{showAllComments ? 'Show fewer comments' : `Show ${task.comments.length - 3} more comments`}</button>}
+                {task.comments.length === 10 && <small className="task-drawer-muted">Up to 10 recent comments are available in this view.</small>}
               </section>
 
               <details className="task-drawer-evidence">
