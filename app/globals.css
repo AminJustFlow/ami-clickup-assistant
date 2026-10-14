@@ -1112,3 +1112,19 @@ button{font-family:inherit}
 .client-action-brief .client-action-summary-card button{align-self:flex-start}
 @media(max-width:900px){.client-action-brief .client-action-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.client-action-brief{padding:14px}.client-action-brief .client-action-summary-grid{grid-template-columns:1fr}.client-action-brief .client-action-summary-card{min-height:0}}
+
+
+/* Team directory: actionable workload signals */
+.team-workload-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0 8px}
+.team-workload-metric{background:#fff;border:1px solid #dce5e9;border-radius:12px;padding:18px 20px}
+.team-workload-metric strong{display:block;font-size:27px;line-height:1.2;color:#173143;font-variant-numeric:tabular-nums}
+.team-workload-metric span{display:block;margin-top:5px;color:#687e8b;font-size:12px}
+.team-workload-note{color:#687e8b;font-size:12px;line-height:1.5;margin:8px 0 20px}
+.team-workload-entry{align-items:center;min-height:95px}
+.team-workload-person{min-width:0}
+.team-workload-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.team-workload-tags span{font-size:11px;line-height:1.4;color:#4c6470;background:#f0f5f6;border:1px solid #e1e9ec;border-radius:5px;padding:2px 6px;white-space:nowrap}
+.team-workload-tags .team-workload-overdue{background:#fff3e9;border-color:#f4dac7;color:#995521}
+.team-workload-tags .team-workload-attention{background:#e9f5fb;border-color:#c7e4f2;color:#08648b}
+@media(max-width:800px){.team-workload-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.team-workload-metrics{grid-template-columns:1fr 1fr}.team-workload-metric{padding:12px}.team-workload-metric strong{font-size:22px}}
