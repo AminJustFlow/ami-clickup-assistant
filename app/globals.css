@@ -1029,3 +1029,19 @@ button{font-family:inherit}
 .client-detail-shortcuts a:hover,.client-detail-shortcuts a:focus-visible{background:#e3f1f6;border-color:#91c3d4}
 .compact-intel-sections>div[id^="client-"]{scroll-margin-top:24px;min-width:0}
 @media(max-width:760px){.client-detail-shortcuts{gap:6px}.client-detail-shortcuts a{flex:1 1 44%;justify-content:center;text-align:center}}
+
+
+/* Phase 36.2: client task cards with source-aware hierarchy */
+.client-task-card .compact-intel-main{min-width:0}
+.client-task-card h3{font-size:14px;line-height:1.4;margin:5px 0 8px}
+.client-task-card .client-task-facts{display:flex;flex-wrap:wrap;gap:5px 12px;color:#506775;font-size:11px;line-height:1.6;margin-bottom:9px}
+.client-task-card .client-task-facts strong{font-weight:750;color:#334e5e}
+.client-task-card .client-task-due-overdue{color:#9b5215;font-weight:750;background:#fff4e7;padding:1px 6px;border-radius:4px}
+.client-task-card .client-task-action{background:#eef8fc;border-left:3px solid #0b83aa;padding:9px 11px;margin:8px 0;border-radius:0 6px 6px 0}
+.client-task-card .client-task-action>strong{display:block;color:#116888;font-size:11px;line-height:1.4}
+.client-task-card .client-task-action p{margin:5px 0 0;line-height:1.55;overflow-wrap:anywhere}
+.client-task-card .client-task-summary{line-height:1.55;overflow-wrap:anywhere}
+.client-task-card .client-task-ai-note{color:#80612b;font-size:11px;line-height:1.5}
+.client-task-card .client-task-waiting{font-size:11px;color:#536d7a;line-height:1.5;margin:6px 0}
+.client-task-card .client-task-ai-state{display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px;color:#71838e;font-size:10px;margin-top:8px}
+@media(max-width:760px){.client-task-card .client-task-facts{flex-direction:column;align-items:flex-start;gap:3px}.client-task-card .compact-intel-controls{align-items:flex-start}}
