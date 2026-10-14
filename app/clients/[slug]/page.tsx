@@ -3,6 +3,7 @@ import { isOpenAttentionTask, isClosedClickUpStatus } from '@/lib/attention/tria
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../../components/app-nav';
+import { TaskDetailsButton } from '../../components/task-details';
 import { CompactTaskSection } from '../../components/compact-task-list';
 import { foldersForClient } from '@/lib/clients/grouping';
 
@@ -94,6 +95,8 @@ export default async function ClientPage({ params, searchParams }: {
   const overdueCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now).length;
   const overdueRecent = overdueTasks.filter(t => t.clickupUpdatedAt && now.getTime() - t.clickupUpdatedAt.getTime() <= 30 * 86400000);
   const overdueOlder = overdueTasks.filter(t => !t.clickupUpdatedAt || now.getTime() - t.clickupUpdatedAt.getTime() > 30 * 86400000);
+  const upcoming = prioritize(tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate >= now && t.dueDate.getTime() <= now.getTime() + 7 * 86400000));
+  const recentChanges = [...tasks].filter(t => t.clickupUpdatedAt && t.clickupUpdatedAt <= now && now.getTime() - t.clickupUpdatedAt.getTime() <= 7 * 86400000).sort((a, b) => (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
@@ -117,6 +120,21 @@ export default async function ClientPage({ params, searchParams }: {
       <div><strong>{overdueCount}</strong><span>Past due open tasks · all</span></div>
     </div>
     <p className="dashboard-note client-detail-context">{tasks.length.toLocaleString()} imported tasks · {analyzedCount.toLocaleString()} AI analyzed. Open and overdue counts include older imported tasks. These are status-based indicators, not verified current workload.</p>
+    <section className="client-action-summary" aria-label="Client action summary">
+      <div className="client-action-summary-heading"><div><p className="eyebrow">AT A GLANCE</p><h2>What needs attention</h2></div><p>Based on imported ClickUp data and unverified AI assessments. Open a task to confirm its current status.</p></div>
+      <div className="client-action-summary-grid">
+        {([
+          { title: 'Decisions for Ami', items: prioritize(tasks.filter(isOpenAttentionTask)), count: currentNeedsAmi, view: 'ami', detail: (t: typeof tasks[number]) => t.intelligence?.amiAction || 'Review this task in ClickUp' },
+          { title: 'Waiting on others', items: prioritize(tasks.filter(t => !isOpenAttentionTask(t) && !isClosed(t) && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI')), count: currentWaiting, view: 'waiting', detail: (t: typeof tasks[number]) => t.intelligence?.waitingOnName ? 'Waiting on ' + t.intelligence.waitingOnName : 'Dependency identified by AI' },
+          { title: 'Due in 7 days', items: upcoming, count: upcoming.length, view: 'all', detail: (t: typeof tasks[number]) => t.dueDate ? 'Due ' + t.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '' },
+          { title: 'Updated in 7 days', items: recentChanges, count: recentChanges.length, view: 'all', detail: (t: typeof tasks[number]) => t.clickupUpdatedAt ? 'ClickUp updated ' + t.clickupUpdatedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '' }
+        ]).map(group => <div className="client-action-summary-card" key={group.title}>
+          <div className="client-action-summary-card-head"><h3>{group.title}</h3><strong>{group.count}</strong></div>
+          {group.items.length ? <ul>{group.items.slice(0, 3).map(t => <li key={t.id}><div><strong>{t.name}</strong><small>{group.detail(t)}</small></div><TaskDetailsButton taskId={t.id} /></li>)}</ul> : <p className="dashboard-note">No matching items.</p>}
+          <a href={tabHref(group.view)}>{group.view === 'ami' ? 'See decisions' : group.view === 'waiting' ? 'See dependencies' : 'Browse tasks'} →</a>
+        </div>)}
+      </div>
+    </section>
     <nav className="client-workspace-tabs" aria-label="Client workspace views">
       <a aria-current={view === 'ami' ? 'page' : undefined} href={tabHref('ami')}>Needs Ami <span>{needsAmi.length}</span></a>
       <a aria-current={view === 'waiting' ? 'page' : undefined} href={tabHref('waiting')}>Waiting <span>{waiting.length}</span></a>
