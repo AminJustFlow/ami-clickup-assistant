@@ -970,3 +970,17 @@ button{font-family:inherit}
 .recent-updates-workspace .recent-update-actions .task-details-trigger:focus-visible{outline:2px solid #087da9;outline-offset:2px}
 .recent-updates-workspace .recent-update-actions .activity-feed-link{font-size:11px}
 @media(max-width:760px){.recent-updates-workspace .recent-update-actions{align-items:flex-start;flex-direction:row;flex-wrap:wrap;min-width:0;gap:10px}.recent-updates-workspace .recent-update-actions .task-details-trigger{white-space:normal}}
+
+
+/* Phase 35.1: client portfolio directory */
+.clients-portfolio .client-portfolio-stats{margin-bottom:10px}
+.clients-portfolio .client-portfolio-filters{flex-wrap:wrap}
+.clients-portfolio .client-portfolio-entry{align-items:center;min-height:90px;gap:12px}
+.clients-portfolio .client-portfolio-info{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.clients-portfolio .client-portfolio-info strong{overflow-wrap:anywhere}
+.clients-portfolio .client-portfolio-info small{line-height:1.45;color:#6b7d88}
+.clients-portfolio .client-portfolio-metrics{display:flex;flex-wrap:wrap;gap:5px 11px;color:#486472;font-size:11px;line-height:1.5}
+.clients-portfolio .client-portfolio-metrics span{white-space:nowrap}
+.clients-portfolio .client-portfolio-metrics .client-portfolio-overdue{color:#9c5c19;font-weight:750}
+.clients-portfolio .client-portfolio-metrics .client-portfolio-attention{color:#096b91;font-weight:750}
+@media(max-width:760px){.clients-portfolio .client-portfolio-entry{min-height:100px}.clients-portfolio .client-portfolio-metrics{gap:5px 9px}}
