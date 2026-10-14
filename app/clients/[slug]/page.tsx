@@ -93,8 +93,8 @@ export default async function ClientPage({ params, searchParams }: {
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'due', 'focus'] as const) if (filters[key]) query.set(key, filters[key]);
-  const view = ['ami', 'waiting', 'active', 'all'].includes(filters.view ?? '') ? filters.view : 'ami';
-  const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.set('view', nextView); return '?' + params.toString(); };
+  const view = ['ami', 'waiting', 'active', 'all'].includes(filters.view ?? '') ? filters.view : (filters.due === 'overdue' || filters.focus === 'overdue' ? 'all' : 'ami');
+  const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.delete('focus'); params.set('view', nextView); return '?' + params.toString(); };
   query.set('view', view);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
 
@@ -118,7 +118,7 @@ export default async function ClientPage({ params, searchParams }: {
       <a aria-current={view === 'all' ? 'page' : undefined} href={tabHref('all')}>All tasks <span>{filtered.length}</span></a>
     </nav>
     {filters.due === 'overdue' && <p className="dashboard-note client-due-filter-notice">Showing open-status tasks past their due date. Older imported backlog may be included. <a href={`/clients/${encodeURIComponent(slug)}`}>Show all tasks →</a></p>}
-    <nav className="client-task-focus" aria-label="Task focus filters"><a className={!filters.focus ? "active" : ""} href={`/clients/${encodeURIComponent(slug)}`}>All work</a><a className={filters.focus === "ami" ? "active" : ""} href={`?focus=ami`}>Needs Ami only</a><a className={filters.focus === "overdue" ? "active" : ""} href={`?focus=overdue`}>Overdue only</a></nav>
+    <nav className="client-task-focus" aria-label="Task focus filters"><a className={!filters.focus ? "active" : ""} href={`/clients/${encodeURIComponent(slug)}`}>All work</a><a className={filters.focus === "ami" ? "active" : ""} href={`?focus=ami&view=ami`}>Needs Ami only</a><a className={filters.focus === "overdue" ? "active" : ""} href={`?focus=overdue&view=all`}>Overdue only</a></nav>
     <form className="filter-bar clean-filters" method="GET">
       <input type="hidden" name="view" value={view} />
       {filters.focus && <input type="hidden" name="focus" value={filters.focus} />}
