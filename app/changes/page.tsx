@@ -3,6 +3,7 @@ import { isOpenAttentionTask } from '@/lib/attention/triage';
 import { prisma } from '@/lib/db/prisma';
 import { markDigestChecked } from './actions';
 import { AppNav } from '../components/app-nav';
+import { TaskDetailsButton } from '../components/task-details';
 
 export const dynamic = 'force-dynamic';
 
@@ -200,7 +201,10 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
               <ul>{group.entries.map(entry => <li key={entry.key}><span>{entry.date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>{entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer">View in ClickUp ↗</a>}</li>)}</ul>
             </details>}
           </div>
-          {item.url && <a className="activity-feed-link" href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.title} in ClickUp`}>View in ClickUp ↗</a>}
+          <div className="recent-update-actions">
+            <TaskDetailsButton taskId={item.taskId} label="View details" />
+            {item.url && <a className="activity-feed-link" href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.title} in ClickUp`}>View in ClickUp ↗</a>}
+          </div>
         </article>;
       })}
       {shown.length === 0 && <p className="simple-empty">No updates match these filters. Try a longer period or clear the filters.</p>}</div>
