@@ -994,3 +994,11 @@ button{font-family:inherit}
 .clients-portfolio .client-portfolio-activity>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .clients-portfolio .client-portfolio-activity a,.clients-portfolio .client-portfolio-open{color:#08749a;font-weight:750;white-space:nowrap;text-decoration:none}
 .clients-portfolio .client-portfolio-activity a:hover,.clients-portfolio .client-portfolio-open:hover{text-decoration:underline}
+
+
+/* Phase 35.3: open-task freshness and stale backlog indicators */
+.clients-portfolio .client-freshness-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}
+.clients-portfolio .client-freshness-summary>div{display:flex;flex-direction:column;gap:4px;background:#f5f9fa;border:1px solid #dce7ea;border-radius:9px;padding:12px 14px}
+.clients-portfolio .client-freshness-summary strong{font-size:20px;line-height:1.2;color:#193b4c;font-variant-numeric:tabular-nums}
+.clients-portfolio .client-freshness-summary span{font-size:11px;color:#526b78;line-height:1.4}
+@media(max-width:760px){.clients-portfolio .client-freshness-summary{grid-template-columns:1fr;gap:7px}.clients-portfolio .client-freshness-summary>div{padding:10px 12px}}
