@@ -110,7 +110,7 @@ export default async function ClientPage({ params, searchParams }: {
   const briefDecision = briefDecisions[0];
   const briefDependency = briefDependencies[0];
   const briefDeadline = upcoming[0];
-  const featuredTaskIds = new Set([briefDecision?.id, briefDependency?.id, briefDeadline?.id].filter((id): id is string => typeof id === 'string'));
+  const featuredTaskIds = new Set([briefDecision?.id, briefDependency?.id, briefDeadline?.id].filter((id): id is number => typeof id === 'number'));
   const additionalTasks = (items: typeof tasks) => items.filter(task => !featuredTaskIds.has(task.id));
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
