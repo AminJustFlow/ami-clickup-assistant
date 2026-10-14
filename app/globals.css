@@ -1074,3 +1074,8 @@ button{font-family:inherit}
 /* Phase 36.5: five clear workspace views without duplicate focus navigation */
 .client-workspace-tabs a[aria-current="page"]{box-shadow:inset 0 -2px 0 #0a779d}
 @media(max-width:760px){.client-workspace-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.client-workspace-tabs a:last-child{grid-column:1/-1}}
+
+/* Phase 36.6: room for sorting and ownership filters */
+.client-workspace-content .compact-intel-section{scroll-margin-top:20px}
+.client-workspace-tabs a:focus-visible{outline:2px solid #087ba3;outline-offset:2px}
+@media(max-width:760px){.clean-filters label{min-width:0}.clean-filters select{max-width:100%}}
