@@ -6,7 +6,7 @@ import { AppNav } from '../components/app-nav';
 
 export const dynamic = 'force-dynamic';
 
-type ChangeItem = { key: string; date: Date; title: string; detail: string; client: string; url: string | null; category: 'status' | 'assignment' | 'admin' | 'comment' };
+type ChangeItem = { key: string; date: Date; title: string; detail: string; author?: string; client: string; url: string | null; category: 'status' | 'assignment' | 'admin' | 'comment' };
 const categories = [
   { key: 'status', label: 'Status transitions' },
   { key: 'comment', label: 'New comments' },
@@ -68,7 +68,8 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     items.push({
       key: 'comment-' + c.id, date: c.clickupCreatedAt, category: 'comment',
       title: c.task.name, client: c.task.client.name, url: c.task.clickupUrl,
-      detail: (c.authorName ?? 'Someone') + ': ' + (c.body.trim().slice(0, 240) || '(no text)')
+      author: c.authorName ?? 'Unknown author',
+      detail: c.body.trim() || '(no text)'
     });
   }
   items.sort((a, b) => b.date.getTime() - a.date.getTime());
@@ -86,7 +87,7 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
   const routineGroups = new Map<string, (typeof activityGroups)[number]>();
   for (const item of filtered) {
     const routine = item.category === 'comment' && routineMessage.test(item.detail);
-    const key = routine ? [item.client, item.title, item.detail.replace(/^[^:]*:\s*/, '').trim().toLowerCase()].join('|') : '';
+    const key = routine ? [item.client, item.title, item.detail.trim().toLowerCase()].join('|') : '';
     const existing = routine ? routineGroups.get(key) : undefined;
     if (existing) existing.entries.push(item);
     else {
@@ -128,7 +129,7 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
   const categoryLabel: Record<ChangeItem['category'], string> = {
     status: 'Status', comment: 'Comment', assignment: 'Assignment', admin: 'Update'
   };
-  return <main id="main-content" className="ops-shell dashboard-shell">
+  return <main id="main-content" className="ops-shell dashboard-shell recent-updates-workspace">
     <AppNav current="activity" />
     <header className="detail-hero">
       <p className="eyebrow">CLICKUP ACTIVITY</p><h1>Recent updates</h1>
@@ -163,8 +164,8 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
         <label className="search-label">Search<input type="search" name="q" defaultValue={filters.q ?? ''} placeholder="Task or update…" /></label>
         <button type="submit">Apply filters</button><a href="/changes">Clear</a>
       </form>
-      <p className="compact-activity-count">{filtered.length} matching updates · {activityGroups.length} feed entries{activityGroups.length !== filtered.length ? ' (repeated maintenance grouped)' : ''} · Page {currentPage} of {maxPage}</p>
-      <div className="activity-feed-list">{shown.map(group => {
+      <p className="compact-activity-count" role="status">{filtered.length} matching updates · {activityGroups.length} feed entries{activityGroups.length !== filtered.length ? ' (repeated maintenance grouped)' : ''} · Page {currentPage} of {maxPage}</p>
+      <div className="activity-feed-list" aria-label="Recent ClickUp activity">{shown.map(group => {
         const item = group.item;
         const grouped = group.entries.length > 1;
         return <article className="activity-feed-item" key={item.key}>
@@ -172,7 +173,8 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
           <div className="activity-feed-content">
             <div className="activity-feed-meta"><span className="activity-feed-client">{item.client}</span><span className="activity-feed-time">{item.date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><span className={`activity-feed-tag activity-feed-tag-${item.category}`}>{group.routine ? 'Routine' : categoryLabel[item.category]}</span></div>
             <h3>{item.title}</h3>
-            <p className="activity-feed-detail">{item.detail}</p>
+            {item.category === 'comment' && <p className="recent-update-author">Comment by <strong>{item.author}</strong></p>}
+            {item.category === 'comment' && item.detail.length > 220 ? <details className="recent-update-expand"><summary>{item.detail.slice(0, 220)}… <span>Read full comment</span></summary><p>{item.detail}</p></details> : <p className="activity-feed-detail">{item.detail}</p>}
             {grouped && <details className="activity-feed-group"><summary>{group.entries.length} similar maintenance updates · View all</summary>
               <ul>{group.entries.map(entry => <li key={entry.key}><span>{entry.date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>{entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer">View in ClickUp ↗</a>}</li>)}</ul>
             </details>}
