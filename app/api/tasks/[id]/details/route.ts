@@ -11,6 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid task ID' }, { status: 400 });
   }
 
+  const startedAt = performance.now();
   const task = await prisma.task.findFirst({
     where: { id: taskId, deleted: false },
     select: {
@@ -32,11 +33,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   });
 
+  const taskQueryMs = performance.now() - startedAt;
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
   const parentClickupId = clickupParentId(task.rawPayload);
   // Only retrieve the relevant hierarchy, not all workspace tasks.
   // The descendant query uses the ClickUp raw parent field already stored in PostgreSQL.
+  const hierarchyStartedAt = performance.now();
   const related = await prisma.task.findMany({
     where: {
       deleted: false,
@@ -51,6 +54,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       assignees: { select: { employee: { select: { name: true } } } }
     }
   });
+  const hierarchyQueryMs = performance.now() - hierarchyStartedAt;
   const parent = parentClickupId ? related.find(item => item.clickupTaskId === parentClickupId) : null;
   const children = related.filter(item => clickupParentId(item.rawPayload) === task.clickupTaskId);
   const relatedSummary = (item: typeof related[number]) => ({
@@ -69,6 +73,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   ]);
   const completedDirectChildren = hierarchy.byId.get(task.id)?.completedDescendants ?? 0;
 
+  const totalMs = performance.now() - startedAt;
   return NextResponse.json({
     hierarchy: {
       parent: parent ? relatedSummary(parent) : null,
@@ -83,5 +88,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     client: task.client, list: task.list, intelligence: task.intelligence,
     assignees: task.assignees.map(a => a.employee.name),
     comments: task.comments
-  }, { headers: { 'Cache-Control': 'no-store' } });
+  }, { headers: {
+    'Cache-Control': 'no-store',
+    'Server-Timing': `task;dur=${taskQueryMs.toFixed(1)}, hierarchy;dur=${hierarchyQueryMs.toFixed(1)}, total;dur=${totalMs.toFixed(1)}`
+  } });
 }
