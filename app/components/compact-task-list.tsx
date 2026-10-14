@@ -50,7 +50,7 @@ export function CompactTaskRow({ task }: { task: TaskRow }) {
         {dueLabel && <span className={overdue ? 'client-task-due-overdue' : ''}><strong>{overdue ? 'Past due:' : 'Due:'}</strong> {dueLabel}</span>}
       </div>
       {nextAction && <div className="client-task-action"><strong>AI suggested next action · verify in ClickUp</strong><p>{nextAction}</p></div>}
-      {!nextAction && summary && <p className="compact-intel-summary client-task-summary"><strong>AI summary:</strong> {summary}</p>}
+      {!nextAction && summary && <details className="client-task-summary-expand"><summary><strong>AI summary:</strong> <span className="client-task-summary-preview">{summary}</span><span className="client-task-summary-more">Read full summary</span></summary><p>{summary}</p></details>}
       {intel?.needsAmi && !nextAction && <p className="client-task-ai-note">Flagged for Ami review; no specific AI action is available. Open details to verify.</p>}
       {intel?.waitingOnName && <p className="client-task-waiting"><strong>AI identifies dependency:</strong> {intel.waitingOnName}</p>}
       {intel && <div className="client-task-ai-state"><span className="status-pill">{stateLabels[intel.agentState] ?? intel.agentState}</span><span>AI assessment · not verified task status</span></div>}
