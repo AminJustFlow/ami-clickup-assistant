@@ -8,7 +8,7 @@ import { foldersForClient } from '@/lib/clients/grouping';
 
 export const dynamic = 'force-dynamic';
 
-type Filters = { assignee?: string; age?: string; status?: string; q?: string; section?: string; page?: string };
+type Filters = { assignee?: string; age?: string; due?: string; status?: string; q?: string; section?: string; page?: string };
 
 export default async function ClientPage({ params, searchParams }: {
   params: Promise<{ slug: string }>;
@@ -42,7 +42,9 @@ export default async function ClientPage({ params, searchParams }: {
   ))).values()].sort((a, b) => a.name.localeCompare(b.name));
   const statusOptions = [...new Set(tasks.map(t => t.clickupStatus).filter((s): s is string => Boolean(s)))].sort();
   const search = (filters.q ?? '').trim().toLowerCase();
+  const now = new Date();
   const matches = (t: typeof tasks[number]) => {
+    if (filters.due === 'overdue' && (isClosedClickUpStatus(t.clickupStatus) || !t.dueDate || t.dueDate >= now)) return false;
     if (search && ![t.name, t.list.name, t.intelligence?.currentSummary ?? '',
       t.intelligence?.amiAction ?? '', ...t.assignees.map(a => a.employee.name)]
       .some(value => value.toLowerCase().includes(search))) return false;
@@ -75,7 +77,7 @@ export default async function ClientPage({ params, searchParams }: {
   const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !inProgress.includes(t) && !notStarted.includes(t));
   const analyzedCount = tasks.filter(t => t.intelligence).length;
   const query = new URLSearchParams();
-  for (const key of ['q', 'assignee', 'status', 'age'] as const) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['q', 'assignee', 'status', 'age', 'due'] as const) if (filters[key]) query.set(key, filters[key]);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
 
   return <main id="main-content" className="ops-shell dashboard-shell">
@@ -90,7 +92,9 @@ export default async function ClientPage({ params, searchParams }: {
       <div><strong>{needsAmi.length}</strong><span>Need Ami · filtered</span></div>
       <div><strong>{waiting.length}</strong><span>Waiting · filtered</span></div>
     </div>
+    {filters.due === 'overdue' && <p className="dashboard-note client-due-filter-notice">Showing open-status tasks past their due date. Older imported backlog may be included. <a href={`/clients/${encodeURIComponent(slug)}`}>Show all tasks →</a></p>}
     <form className="filter-bar clean-filters" method="GET">
+      {filters.due === 'overdue' && <input type="hidden" name="due" value="overdue" />}
       <label className="search-label">Find a task<input type="search" name="q" defaultValue={filters.q ?? ''} placeholder="Search tasks, people, or summaries…" /></label>
       <label>Team member<select name="assignee" defaultValue={filters.assignee ?? ''}><option value="">Everyone</option>{assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label>ClickUp status<select name="status" defaultValue={filters.status ?? ''}><option value="">Any status</option>{statusOptions.map(status => <option key={status} value={status}>{status}</option>)}</select></label>
