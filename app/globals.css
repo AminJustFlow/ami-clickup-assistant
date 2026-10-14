@@ -1060,3 +1060,13 @@ button{font-family:inherit}
 .client-task-summary-expand[open] .client-task-summary-preview,.client-task-summary-expand[open] .client-task-summary-more{display:none}
 .client-task-summary-expand>p{margin:7px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
 @media(max-width:760px){.client-task-focus a{flex:1 1 auto;text-align:center}}
+
+
+/* Phase 36.4: focused client workspace navigation */
+.client-workspace-tabs{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 15px;border-bottom:1px solid #dce7eb;padding-bottom:9px}
+.client-workspace-tabs a{display:inline-flex;align-items:center;gap:8px;padding:10px 13px;border:1px solid #d8e6eb;border-radius:8px;background:#fff;color:#31566a;text-decoration:none;font-size:12px;font-weight:750;min-height:40px}
+.client-workspace-tabs a span{border-radius:20px;background:#edf3f5;padding:2px 7px;font-size:11px;font-variant-numeric:tabular-nums}
+.client-workspace-tabs a[aria-current="page"]{background:#e6f5fa;border-color:#83bfd3;color:#075d7f}
+.client-workspace-tabs a:hover,.client-workspace-tabs a:focus-visible{border-color:#80b7ca;text-decoration:underline}
+.client-workspace-content{min-height:160px}
+@media(max-width:760px){.client-workspace-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.client-workspace-tabs a{justify-content:space-between;padding:9px 10px}}
