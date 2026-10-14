@@ -93,7 +93,7 @@ export default async function ClientPage({ params, searchParams }: {
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'due', 'focus'] as const) if (filters[key]) query.set(key, filters[key]);
-  const view = ['ami', 'waiting', 'active', 'all'].includes(filters.view ?? '') ? filters.view : (filters.due === 'overdue' || filters.focus === 'overdue' ? 'all' : 'ami');
+  const view: string = filters.view && ['ami', 'waiting', 'active', 'all'].includes(filters.view) ? filters.view : (filters.due === 'overdue' || filters.focus === 'overdue' ? 'all' : 'ami');
   const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.delete('focus'); params.set('view', nextView); return '?' + params.toString(); };
   query.set('view', view);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
