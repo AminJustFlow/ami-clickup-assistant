@@ -8,7 +8,7 @@ import { foldersForClient } from '@/lib/clients/grouping';
 
 export const dynamic = 'force-dynamic';
 
-type Filters = { assignee?: string; age?: string; due?: string; status?: string; q?: string; section?: string; page?: string };
+type Filters = { assignee?: string; age?: string; due?: string; focus?: string; status?: string; q?: string; section?: string; page?: string };
 
 export default async function ClientPage({ params, searchParams }: {
   params: Promise<{ slug: string }>;
@@ -44,6 +44,8 @@ export default async function ClientPage({ params, searchParams }: {
   const search = (filters.q ?? '').trim().toLowerCase();
   const now = new Date();
   const matches = (t: typeof tasks[number]) => {
+    if (filters.focus === 'ami' && !isOpenAttentionTask(t)) return false;
+    if (filters.focus === 'overdue' && (isClosedClickUpStatus(t.clickupStatus) || !t.dueDate || t.dueDate >= now)) return false;
     if (filters.due === 'overdue' && (isClosedClickUpStatus(t.clickupStatus) || !t.dueDate || t.dueDate >= now)) return false;
     if (search && ![t.name, t.list.name, t.intelligence?.currentSummary ?? '',
       t.intelligence?.amiAction ?? '', ...t.assignees.map(a => a.employee.name)]
@@ -60,17 +62,25 @@ export default async function ClientPage({ params, searchParams }: {
     return true;
   };
   const filtered = tasks.filter(matches);
-  const needsAmi = filtered.filter(isOpenAttentionTask);
+  const urgency = (t: typeof tasks[number]) => {
+    const overdue = Boolean(t.dueDate && t.dueDate < now && !isClosedClickUpStatus(t.clickupStatus));
+    const dueSoon = Boolean(t.dueDate && t.dueDate >= now && t.dueDate.getTime() - now.getTime() <= 7 * 86400000);
+    const priority = (t.clickupPriority ?? '').toLowerCase();
+    const score = (overdue ? 100 : dueSoon ? 40 : 0) + (priority === 'urgent' ? 35 : priority === 'high' ? 20 : 0) + (isOpenAttentionTask(t) ? 15 : 0);
+    return score;
+  };
+  const prioritize = (items: typeof tasks) => [...items].sort((a, b) => urgency(b) - urgency(a) || (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
+  const needsAmi = prioritize(filtered.filter(isOpenAttentionTask));
   const isClosed = (t: (typeof tasks)[number]) => t.intelligence?.agentState === 'COMPLETED' || isClosedClickUpStatus(t.clickupStatus);
-  const waiting = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
-    t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI');
+  const waiting = prioritize(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
+    t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
   const inProgress = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
     !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');
-  const stale = inProgress.filter(t => isStaleActive({
+  const stale = prioritize(inProgress.filter(t => isStaleActive({
     state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt,
     commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
-  }));
-  const recentlyActive = inProgress.filter(t => !stale.includes(t));
+  })));
+  const recentlyActive = prioritize(inProgress.filter(t => !stale.includes(t)));
   const notStarted = filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
   const completed = filtered.filter(t => isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
   const unanalyzed = filtered.filter(t => !t.intelligence);
@@ -78,11 +88,11 @@ export default async function ClientPage({ params, searchParams }: {
   const analyzedCount = tasks.filter(t => t.intelligence).length;
   const openCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus)).length;
   const overdueCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now).length;
-  const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age || filters.due);
+  const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age || filters.due || filters.focus);
   const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
-  for (const key of ['q', 'assignee', 'status', 'age', 'due'] as const) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['q', 'assignee', 'status', 'age', 'due', 'focus'] as const) if (filters[key]) query.set(key, filters[key]);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
 
   return <main id="main-content" className="ops-shell dashboard-shell">
@@ -105,7 +115,9 @@ export default async function ClientPage({ params, searchParams }: {
       <a href="#client-stale">Stale active ({stale.length})</a>
     </nav>
     {filters.due === 'overdue' && <p className="dashboard-note client-due-filter-notice">Showing open-status tasks past their due date. Older imported backlog may be included. <a href={`/clients/${encodeURIComponent(slug)}`}>Show all tasks →</a></p>}
+    <nav className="client-task-focus" aria-label="Task focus filters"><a className={!filters.focus ? "active" : ""} href={`/clients/${encodeURIComponent(slug)}`}>All work</a><a className={filters.focus === "ami" ? "active" : ""} href={`?focus=ami`}>Needs Ami only</a><a className={filters.focus === "overdue" ? "active" : ""} href={`?focus=overdue`}>Overdue only</a></nav>
     <form className="filter-bar clean-filters" method="GET">
+      {filters.focus && <input type="hidden" name="focus" value={filters.focus} />}
       {filters.due === 'overdue' && <input type="hidden" name="due" value="overdue" />}
       <label className="search-label">Find a task<input type="search" name="q" defaultValue={filters.q ?? ''} placeholder="Search tasks, people, or summaries…" /></label>
       <label>Team member<select name="assignee" defaultValue={filters.assignee ?? ''}><option value="">Everyone</option>{assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
@@ -113,7 +125,7 @@ export default async function ClientPage({ params, searchParams }: {
       <label>Activity<select name="age" defaultValue={filters.age ?? ''}><option value="">Any time</option><option value="recent">Recently active</option><option value="30">Stale active</option></select></label>
       <button type="submit">Show results</button><a href={`/clients/${slug}`}>Clear filters</a>
     </form>
-    <p className="filter-results">{filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
+    <p className="filter-results">Priority ordering: overdue first, then urgent/high ClickUp priority and approaching due dates. AI recommendations remain unverified. {filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
     <div className="detail-sections compact-intel-sections">
       <div id="client-needs-ami"><CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} /></div>
       <div id="client-waiting"><CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} /></div>

@@ -1045,3 +1045,18 @@ button{font-family:inherit}
 .client-task-card .client-task-waiting{font-size:11px;color:#536d7a;line-height:1.5;margin:6px 0}
 .client-task-card .client-task-ai-state{display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px;color:#71838e;font-size:10px;margin-top:8px}
 @media(max-width:760px){.client-task-card .client-task-facts{flex-direction:column;align-items:flex-start;gap:3px}.client-task-card .compact-intel-controls{align-items:flex-start}}
+
+
+/* Phase 36.3: compact AI summaries and task focus controls */
+.client-task-focus{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.client-task-focus a{padding:7px 11px;border:1px solid #d5e4e9;border-radius:7px;background:#fff;color:#1a6b88;font-size:12px;font-weight:700;text-decoration:none}
+.client-task-focus a.active{background:#e6f5fa;border-color:#8bc5da;color:#075d7f}
+.client-task-focus a:hover,.client-task-focus a:focus-visible{text-decoration:underline}
+.client-task-summary-expand{margin:7px 0;color:#506776;font-size:12px;line-height:1.5}
+.client-task-summary-expand summary{cursor:pointer;list-style:none}
+.client-task-summary-expand summary::-webkit-details-marker{display:none}
+.client-task-summary-expand .client-task-summary-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.client-task-summary-expand .client-task-summary-more{display:inline-block;color:#08739a;font-weight:750;margin-top:4px}
+.client-task-summary-expand[open] .client-task-summary-preview,.client-task-summary-expand[open] .client-task-summary-more{display:none}
+.client-task-summary-expand>p{margin:7px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
+@media(max-width:760px){.client-task-focus a{flex:1 1 auto;text-align:center}}
