@@ -99,7 +99,7 @@ export default async function ClientPage({ params, searchParams }: {
   const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'sort'] as const) if (filters[key]) query.set(key, filters[key]);
-  const view: string = filters.view && ['ami', 'waiting', 'active', 'overdue', 'all'].includes(filters.view) ? filters.view : filters.due === 'overdue' || filters.focus === 'overdue' ? 'overdue' : 'ami';
+  const view: string = search ? 'all' : filters.view && ['ami', 'waiting', 'active', 'overdue', 'all'].includes(filters.view) ? filters.view : filters.due === 'overdue' || filters.focus === 'overdue' ? 'overdue' : 'ami';
   const tabHref = (nextView: string) => { const params = new URLSearchParams(query); params.set('view', nextView); params.delete('section'); params.delete('page'); return '?' + params.toString(); };
   query.set('view', view);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString() };
@@ -126,7 +126,7 @@ export default async function ClientPage({ params, searchParams }: {
     </nav>
     {view === 'overdue' && <p className="dashboard-note client-due-filter-notice">Past-due tasks are based on stored ClickUp due dates and open statuses, not verified current workload. Recently updated tasks appear separately from older backlog. <a href={tabHref('all')}>Browse all tasks →</a></p>}
     <form className="filter-bar clean-filters" method="GET">
-      <input type="hidden" name="view" value={search ? "all" : view} />
+      <input type="hidden" name="view" value="all" />
       <label className="search-label">Find a task<input type="search" name="q" defaultValue={filters.q ?? ''} placeholder="Search tasks, people, or summaries…" /></label>
       <label>Team member<select name="assignee" defaultValue={filters.assignee ?? ''}><option value="">Everyone</option>{assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label>Sort tasks<select name="sort" defaultValue={sort}><option value="priority">Recommended priority</option><option value="due">Due date (earliest)</option><option value="recent">Recently updated</option></select></label>
@@ -134,7 +134,7 @@ export default async function ClientPage({ params, searchParams }: {
       <label>Activity<select name="age" defaultValue={filters.age ?? ''}><option value="">Any time</option><option value="recent">Recently active</option><option value="30">Stale active</option></select></label>
       <button type="submit">Show results</button><a href={`/clients/${slug}?view=${view}`}>Clear filters</a>
     </form>
-    <p className="filter-results">Sort: {sort === "due" ? "earliest due date first" : sort === "recent" ? "most recently updated first" : "overdue, urgent/high priority, then approaching due dates"}. Team member filters use ClickUp task assignments. AI recommendations remain unverified. {filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
+    <p className="filter-results">{search ? "Searching every imported task in this client, including completed and unanalyzed work. " : ""}Sort: {sort === "due" ? "earliest due date first" : sort === "recent" ? "most recently updated first" : "overdue, urgent/high priority, then approaching due dates"}. Team member filters use ClickUp task assignments. AI recommendations remain unverified. {filtered.length} of {tasks.length} imported tasks match.{hasFilters ? " Section counts reflect the current filters." : ""} {analyzedCount} of {tasks.length} have AI assessments; action categories do not cover unanalyzed tasks.</p>
     <div className="detail-sections compact-intel-sections client-workspace-content">
       {view === 'ami' && <CompactTaskSection title="Needs Ami" eyebrow="FIRST PRIORITY" tasks={needsAmi} sectionId="needs-ami" {...sectionProps} />}
       {view === 'waiting' && <CompactTaskSection title="Waiting on someone" eyebrow="DEPENDENCIES" tasks={waiting} sectionId="waiting" {...sectionProps} />}
