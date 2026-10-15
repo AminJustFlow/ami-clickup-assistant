@@ -1157,3 +1157,22 @@ button{font-family:inherit}
 .employee-directory-expanded .employee-directory-row{padding:13px 16px;min-height:48px}
 .employee-directory-expanded .employee-directory-result:last-child{margin-bottom:0}
 @media(max-width:650px){.employee-client-workload .employee-directory{padding:0 12px 12px}.employee-directory-expanded{padding:12px}.employee-directory-expanded .employee-directory-row{padding:12px}}
+
+
+/* Needs Ami: compact verification rows that expand in place. */
+.attention-verify-list{display:grid;gap:10px;margin:14px 0}
+.attention-verify-item{border:1px solid #dce7ed;border-radius:10px;background:#fff;overflow:hidden}
+.attention-verify-item[open]{border-color:#9bcfe3;background:#fbfdfe}
+.attention-verify-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;cursor:pointer;list-style:none}
+.attention-verify-toggle::-webkit-details-marker{display:none}
+.attention-verify-heading{display:grid;gap:3px;min-width:0;font-size:14px;line-height:1.4}
+.attention-verify-heading strong{color:#164764;font-size:12px}
+.attention-verify-heading span{overflow-wrap:anywhere}
+.attention-verify-expand{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;color:#006c95;font-size:12px;font-weight:700}
+.attention-verify-item[open] .attention-verify-expand span{transform:rotate(180deg)}
+.attention-verify-toggle:focus-visible{outline:2px solid #007ba5;outline-offset:-3px}
+.attention-verify-detail{border-top:1px solid #e0eaf0;padding:14px 16px 16px;font-size:13px;line-height:1.55}
+.attention-verify-detail p{margin:6px 0 10px}
+.attention-verify-detail ul{margin:4px 0 14px;padding-left:20px}
+.attention-verify-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+@media(max-width:650px){.attention-verify-toggle{align-items:flex-start;flex-direction:column;gap:10px}.attention-verify-expand{align-self:flex-start}}
