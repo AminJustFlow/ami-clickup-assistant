@@ -164,10 +164,18 @@ async function refreshQueue() {
   // fingerprint is calculated with full client-group context after leasing.
   const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
   const candidates = await prisma.$queryRaw<Array<{ id: number }>>`
-    SELECT t.id FROM "Task" t LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
-    WHERE t.deleted = false AND (i.id IS NULL OR i."analyzedAt" IS NULL OR i."promptVersion" IS DISTINCT FROM ${expectedVersion}
-      OR t."clickupUpdatedAt" > i."analyzedAt")
-    ORDER BY COALESCE(i."needsAmi", false) DESC, COALESCE(i."amiAttentionScore", 0) DESC, t."clickupUpdatedAt" DESC NULLS LAST
+    SELECT t.id FROM "Task" t
+    LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
+    LEFT JOIN "AnalysisJob" j ON j."taskId" = t.id
+    WHERE t.deleted = false
+      AND (i.id IS NULL OR i."analyzedAt" IS NULL OR i."promptVersion" IS DISTINCT FROM ${expectedVersion}
+        OR t."clickupUpdatedAt" > i."analyzedAt")
+      AND (j.id IS NULL OR j.status = 'SUCCEEDED')
+    ORDER BY
+      CASE WHEN i."analyzedAt" IS NULL THEN 0 ELSE 1 END,
+      COALESCE(i."needsAmi", false) DESC,
+      COALESCE(i."amiAttentionScore", 0) DESC,
+      t."clickupUpdatedAt" DESC NULLS LAST, t.id
     LIMIT 500`;
   for (const task of candidates) {
     const existing = await prisma.analysisJob.findUnique({ where: { taskId: task.id }, select: { status: true } });
