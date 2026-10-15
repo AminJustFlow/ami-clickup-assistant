@@ -1147,3 +1147,13 @@ button{font-family:inherit}
 .employee-directory-card:focus-visible,.employee-directory-row:focus-visible,.employee-directory-toggle:focus-visible{outline:2px solid #0782aa;outline-offset:2px}
 @media(max-width:1050px){.employee-directory-featured{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.employee-directory-featured{grid-template-columns:1fr}.employee-directory-row{grid-template-columns:minmax(0,1fr) auto}.employee-directory-row .employee-client-metrics{grid-column:1;grid-row:2}}
+
+/* Phase 40.3: consistent insets for expanded employee client directory */
+.employee-client-workload .employee-directory{padding:0 16px 16px}
+.employee-directory-expanded{margin-top:16px;padding:16px;border:1px solid #e0e9ee;border-radius:10px;background:#f9fbfc}
+.employee-directory-expanded .employee-directory-search{margin:0 0 10px}
+.employee-directory-expanded .employee-directory-result{margin:10px 0}
+.employee-directory-expanded .employee-directory-list{gap:8px}
+.employee-directory-expanded .employee-directory-row{padding:13px 16px;min-height:48px}
+.employee-directory-expanded .employee-directory-result:last-child{margin-bottom:0}
+@media(max-width:650px){.employee-client-workload .employee-directory{padding:0 12px 12px}.employee-directory-expanded{padding:12px}.employee-directory-expanded .employee-directory-row{padding:12px}}
