@@ -176,7 +176,24 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         {brief.topToVerify.length > 0 && <div className="attention-brief-section attention-verify-section">
           <div className="attention-brief-section-body">
             <h3>Validate before acting</h3>
-            {brief.topToVerify.map(task => <p key={task.id}><strong>{task.client.name}:</strong> {task.name} — {task.verificationReasons.join('; ')}. <TaskDetailsButton taskId={task.id} label="Review context" /></p>)}
+            <div className="attention-verify-list">
+              {brief.topToVerify.map(task => <details className="attention-verify-item" key={task.id}>
+                <summary className="attention-verify-toggle">
+                  <span className="attention-verify-heading"><strong>{task.client.name}</strong><span>{task.name}</span></span>
+                  <span className="attention-verify-expand">Review context <span aria-hidden="true">⌄</span></span>
+                </summary>
+                <div className="attention-verify-detail">
+                  <p className="attention-action-label">Why this needs verification</p>
+                  <ul>{task.verificationReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+                  <p className="attention-action-label">AI recommended next action</p>
+                  <p>{task.intelligence?.amiAction || 'Review the latest ClickUp evidence before taking action.'}</p>
+                  <div className="attention-verify-links">
+                    <TaskDetailsButton taskId={task.id} label="Open full evidence" />
+                    {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">Open in ClickUp ↗</a>}
+                  </div>
+                </div>
+              </details>)}
+            </div>
             <Link href={urlFor({ ...activeFilters, priority: 'verify', view: 'active' })}>See all {brief.verify} recommendations needing verification →</Link>
           </div>
         </div>}
