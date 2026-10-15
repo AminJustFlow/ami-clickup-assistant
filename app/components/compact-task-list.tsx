@@ -30,7 +30,7 @@ const stateLabels: Record<string, string> = {
   NOT_STARTED: 'Not started', UNKNOWN: 'Unknown'
 };
 
-export function CompactTaskRow({ task }: { task: TaskRow }) {
+export function CompactTaskRow({ task, compact = false }: { task: TaskRow; compact?: boolean }) {
   const intel = task.intelligence;
   const nextAction = intel?.needsAmi && hasSpecificAmiAction(intel.amiAction) ? intel.amiAction : null;
   const summary = intel?.currentSummary;
@@ -39,7 +39,7 @@ export function CompactTaskRow({ task }: { task: TaskRow }) {
     intel?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus));
   const dueLabel = task.dueDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const priority = task.clickupPriority?.trim();
-  return <article className="compact-intel-row client-task-card">
+  return <article className="compact-intel-row client-task-card" style={compact ? { paddingTop: 12, paddingBottom: 12 } : undefined}>
     <div className="compact-intel-main">
       <div className="compact-intel-meta"><span>{task.client.name} / {task.list.name}</span></div>
       <h3>{task.name}</h3>
@@ -49,12 +49,12 @@ export function CompactTaskRow({ task }: { task: TaskRow }) {
         {priority && <span><strong>Priority:</strong> {priority}</span>}
         {dueLabel && <span className={overdue ? 'client-task-due-overdue' : ''}><strong>{overdue ? 'Past due:' : 'Due:'}</strong> {dueLabel}</span>}
       </div>
-      {nextAction && <div className="client-task-action"><strong>AI suggested next action · verify in ClickUp</strong><p>{nextAction}</p></div>}
+      {nextAction && <div className="client-task-action"><strong>AI suggested next action · verify in ClickUp</strong><p style={compact ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : undefined}>{nextAction}</p></div>}
       {!nextAction && summary && <details className="client-task-summary-expand"><summary><strong>AI summary:</strong> <span className="client-task-summary-preview">{summary}</span><span className="client-task-summary-more">Read full summary</span></summary><p>{summary}</p></details>}
       {intel?.needsAmi && !nextAction && <p className="client-task-ai-note">Flagged for Ami review; no specific AI action is available. Open details to verify.</p>}
-      {intel?.waitingOnName && <p className="client-task-waiting"><strong>AI identifies dependency:</strong> {intel.waitingOnName}</p>}
-      {intel && <div className="client-task-ai-state"><span className="status-pill">{stateLabels[intel.agentState] ?? intel.agentState}</span><span>AI assessment · not verified task status</span></div>}
-      {!intel && <div className="client-task-ai-state"><span className="status-pill">Not analyzed</span></div>}
+      {!compact && intel?.waitingOnName && <p className="client-task-waiting"><strong>AI identifies dependency:</strong> {intel.waitingOnName}</p>}
+      {!compact && intel && <div className="client-task-ai-state"><span className="status-pill">{stateLabels[intel.agentState] ?? intel.agentState}</span><span>AI assessment · not verified task status</span></div>}
+      {!compact && !intel && <div className="client-task-ai-state"><span className="status-pill">Not analyzed</span></div>}
     </div>
     <div className="compact-intel-controls">
       <TaskDetailsButton taskId={task.id} />
@@ -63,7 +63,7 @@ export function CompactTaskRow({ task }: { task: TaskRow }) {
   </article>;
 }
 
-export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, page, query, collapsed = false, initialLimit = 8, emptyMessage = 'No tasks match these filters.' }: {
+export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, page, query, collapsed = false, initialLimit = 8, compact = false, emptyMessage = 'No tasks match these filters.' }: {
   title: string;
   eyebrow?: string;
   tasks: TaskRow[];
@@ -73,6 +73,7 @@ export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, 
   query: string;
   collapsed?: boolean;
   initialLimit?: number;
+  compact?: boolean;
   emptyMessage?: string;
 }) {
   const selected = section === sectionId;
@@ -88,7 +89,7 @@ export function CompactTaskSection({ title, eyebrow, tasks, sectionId, section, 
     return '?' + params.toString() + '#' + sectionId;
   })();
   const contents = <><div className="compact-intel-list">
-    {shown.length ? shown.map(task => <CompactTaskRow key={task.id} task={task} />) : <p className="simple-empty">{emptyMessage}</p>}
+    {shown.length ? shown.map(task => <CompactTaskRow key={task.id} task={task} compact={compact} />) : <p className="simple-empty">{emptyMessage}</p>}
   </div>
     {remaining > 0 && <div className="compact-intel-more"><span>Showing {shown.length} of {tasks.length}</span><a href={nextHref}>Show {Math.min(20, remaining)} more →</a></div>}
   </>;

@@ -34,6 +34,8 @@ export default async function EmployeePage({ params, searchParams }: {
   const pastDueFacts = openFacts.filter(t => t.dueDate && t.dueDate < now);
   const dueSoonFacts = openFacts.filter(t => t.dueDate && t.dueDate >= now && t.dueDate <= nextWeek);
   const attentionFacts = openFacts.filter(isOpenAttentionTask);
+  const olderBacklog = pastDueFacts.filter(t => t.dueDate && t.dueDate.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const recentOverdue = pastDueFacts.length - olderBacklog.length;
   const byClient = [...new Map(assignmentFacts.map(t => [t.clientId, { id: t.clientId, name: t.client.name }] as const)).values()]
     .map(client => ({ ...client,
       open: openFacts.filter(t => t.clientId === client.id).length,
@@ -76,7 +78,7 @@ export default async function EmployeePage({ params, searchParams }: {
   const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !active.includes(t) && !notStarted.includes(t));
   const query = new URLSearchParams();
   for (const key of ['q', 'client', 'status'] as const) if (filters[key]) query.set(key, filters[key]);
-  const sectionProps = { section: filters.section, page: filters.page, query: query.toString(), initialLimit: 5 };
+  const sectionProps = { section: filters.section, page: filters.page, query: query.toString(), initialLimit: 5, compact: true };
 
   return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="team" />
@@ -85,23 +87,24 @@ export default async function EmployeePage({ params, searchParams }: {
       <p>Find assignments, dependencies, and recent work by client.</p></div></header>
     <div className="detail-stat-strip employee-workload-stats">
       <div><strong>{openFacts.length.toLocaleString()}</strong><span>Open assignments</span></div>
-      <div><strong>{pastDueFacts.length.toLocaleString()}</strong><span>Past due</span></div>
+      <div><strong>{pastDueFacts.length.toLocaleString()}</strong><span>Past due (all ages)</span></div>
       <div><strong>{dueSoonFacts.length.toLocaleString()}</strong><span>Due in 7 days</span></div>
       <div><strong>{attentionFacts.length.toLocaleString()}</strong><span>Needs Ami · AI</span></div>
     </div>
+    <p className="team-workload-note">Of {pastDueFacts.length} past-due assignments, {recentOverdue} became overdue within the last 30 days and {olderBacklog.length} have due dates more than 30 days ago. Older deadlines may reflect historical backlog; verify in ClickUp before treating them as urgent.</p>
     <p className="team-workload-note">These totals use all imported assignments in active JF Corporate clients, including tasks without AI analysis. A task is open unless its ClickUp status is closed. Past-due dates may include historical backlog; counts do not measure hours or capacity. Needs Ami is an AI assessment, not necessarily work assigned to this employee.</p>
     <section className="clean-panel employee-client-workload">
       <div className="panel-heading"><div><p className="eyebrow">CLIENT BREAKDOWN</p><h2>Open work by client</h2>
         <p>Choose a client to filter the analyzed task list below.</p></div><span className="panel-count">{byClient.length}</span></div>
-      {byClient.length ? <div className="employee-client-grid">{byClient.slice(0, 8).map(client => {
+      {byClient.length ? <div className="employee-client-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 10 }}>{byClient.slice(0, 8).map(client => {
         const params = new URLSearchParams();
         params.set('client', String(client.id));
-        return <a key={client.id} href={`/employees/${employeeId}?${params.toString()}#employee-task-list`} className="employee-client-entry">
-          <strong>{client.name}</strong><span>{client.open} open · {client.overdue} past due{client.attention ? ` · ${client.attention} Needs Ami` : ''}</span>
+        return <a key={client.id} href={`/employees/${employeeId}?${params.toString()}#employee-task-list`} className="employee-client-entry" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', background: '#f8fbfc', border: '1px solid #dce7eb', borderRadius: 8, textDecoration: 'none', minWidth: 0 }}>
+          <strong style={{ color: '#173b4d', fontSize: 13, overflowWrap: 'anywhere' }}>{client.name}</strong><span style={{ color: '#526b78', fontSize: 12 }}>{client.open} open · {client.overdue} past due{client.attention ? ` · ${client.attention} Needs Ami` : ''}</span>
         </a>;
       })}</div> : <p className="simple-empty">No open assignments found.</p>}
       {byClient.length > 8 && <details className="employee-more-clients"><summary>Show {byClient.length - 8} more clients</summary>
-        <div className="employee-client-grid">{byClient.slice(8).map(client => <a key={client.id} href={`/employees/${employeeId}?client=${client.id}#employee-task-list`} className="employee-client-entry"><strong>{client.name}</strong><span>{client.open} open · {client.overdue} past due{client.attention ? ` · ${client.attention} Needs Ami` : ''}</span></a>)}</div>
+        <div className="employee-client-grid">{byClient.slice(8).map(client => <a key={client.id} href={`/employees/${employeeId}?client=${client.id}#employee-task-list`} className="employee-client-entry"><strong style={{ color: '#173b4d', fontSize: 13, overflowWrap: 'anywhere' }}>{client.name}</strong><span style={{ color: '#526b78', fontSize: 12 }}>{client.open} open · {client.overdue} past due{client.attention ? ` · ${client.attention} Needs Ami` : ''}</span></a>)}</div>
       </details>}
     </section>
     <div className="employee-task-list-anchor" id="employee-task-list"><h2>Task priorities and activity</h2><p>AI-analyzed tasks only. Use filters to narrow this list; ClickUp remains the source of truth.</p></div>
