@@ -1128,3 +1128,22 @@ button{font-family:inherit}
 .team-workload-tags .team-workload-attention{background:#e9f5fb;border-color:#c7e4f2;color:#08648b}
 @media(max-width:800px){.team-workload-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.team-workload-metrics{grid-template-columns:1fr 1fr}.team-workload-metric{padding:12px}.team-workload-metric strong{font-size:22px}}
+
+/* Employee client directory */
+.employee-directory-featured{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.employee-directory-card{display:flex;flex-direction:column;gap:7px;min-width:0;padding:13px 14px;border:1px solid #dce7eb;border-radius:8px;background:#f8fbfc;text-decoration:none}
+.employee-directory-card strong,.employee-directory-row strong{font-size:12px;color:#183c50;overflow-wrap:anywhere}
+.employee-client-metrics{display:flex;gap:5px;flex-wrap:wrap;font-size:11px;color:#536f7f}
+.employee-client-metrics>span+span:before{content:"·";margin-right:5px;color:#a4b1ba}
+.employee-directory-more{margin-top:14px;border-top:1px solid #e2e9ed;padding-top:12px}
+.employee-directory-toggle{border:1px solid #c8dee7;border-radius:7px;background:#eef7fa;color:#126b8d;padding:9px 12px;font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:14px}
+.employee-directory-expanded{margin-top:13px}
+.employee-directory-search{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:650;color:#415f70}
+.employee-directory-search input{width:100%;max-width:450px;border:1px solid #cddce3;border-radius:7px;padding:10px 12px;background:white}
+.employee-directory-result{font-size:11px;color:#617a88;margin:9px 0}
+.employee-directory-list{display:grid;gap:6px}
+.employee-directory-row{display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(180px,1fr) auto;align-items:center;gap:12px;border:1px solid #e1e9ed;border-radius:7px;padding:11px 13px;text-decoration:none;background:#fff}
+.employee-directory-card:hover,.employee-directory-row:hover{background:#eef7fa;border-color:#9fcbd9}
+.employee-directory-card:focus-visible,.employee-directory-row:focus-visible,.employee-directory-toggle:focus-visible{outline:2px solid #0782aa;outline-offset:2px}
+@media(max-width:1050px){.employee-directory-featured{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.employee-directory-featured{grid-template-columns:1fr}.employee-directory-row{grid-template-columns:minmax(0,1fr) auto}.employee-directory-row .employee-client-metrics{grid-column:1;grid-row:2}}

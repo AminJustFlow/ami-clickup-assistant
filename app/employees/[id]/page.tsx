@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../../components/app-nav';
 import { CompactTaskSection } from '../../components/compact-task-list';
+import { EmployeeClientDirectory } from '../../components/employee-client-directory';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,16 +97,7 @@ export default async function EmployeePage({ params, searchParams }: {
     <section className="clean-panel employee-client-workload">
       <div className="panel-heading"><div><p className="eyebrow">CLIENT BREAKDOWN</p><h2>Open work by client</h2>
         <p>Choose a client to filter the analyzed task list below.</p></div><span className="panel-count">{byClient.length}</span></div>
-      {byClient.length ? <div className="employee-client-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 10 }}>{byClient.slice(0, 8).map(client => {
-        const params = new URLSearchParams();
-        params.set('client', String(client.id));
-        return <a key={client.id} href={`/employees/${employeeId}?${params.toString()}#employee-task-list`} className="employee-client-entry" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', background: '#f8fbfc', border: '1px solid #dce7eb', borderRadius: 8, textDecoration: 'none', minWidth: 0 }}>
-          <strong style={{ color: '#173b4d', fontSize: 13, overflowWrap: 'anywhere' }}>{client.name}</strong><span style={{ color: '#526b78', fontSize: 12 }}>{client.open} open · {client.overdue} past due{client.attention ? ` · ${client.attention} Needs Ami` : ''}</span>
-        </a>;
-      })}</div> : <p className="simple-empty">No open assignments found.</p>}
-      {byClient.length > 8 && <details className="employee-more-clients"><summary>Show {byClient.length - 8} more clients</summary>
-        <div className="employee-client-grid">{byClient.slice(8).map(client => <a key={client.id} href={`/employees/${employeeId}?client=${client.id}#employee-task-list`} className="employee-client-entry"><strong style={{ color: '#173b4d', fontSize: 13, overflowWrap: 'anywhere' }}>{client.name}</strong><span style={{ color: '#526b78', fontSize: 12 }}>{client.open} open · {client.overdue} past due{client.attention ? ` · ${client.attention} Needs Ami` : ''}</span></a>)}</div>
-      </details>}
+      <EmployeeClientDirectory clients={byClient} employeeId={employeeId} />
     </section>
     <div className="employee-task-list-anchor" id="employee-task-list"><h2>Task priorities and activity</h2><p>AI-analyzed tasks only. Use filters to narrow this list; ClickUp remains the source of truth.</p></div>
     <form className="filter-bar clean-filters" method="GET">
