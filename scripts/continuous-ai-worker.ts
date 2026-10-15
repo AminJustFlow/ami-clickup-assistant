@@ -18,11 +18,29 @@ const once = process.argv.includes('--once');
 const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
 const standardDailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
-// Approved one-time $2 regular-budget supplement, only for 2026-10-13 UTC.
-// Reverts automatically at the next UTC day boundary without an env change.
-const oneTimeBudgetDay = '2026-10-13';
+// One-time, estimated $30 regular-budget supplement for the backlog.
+// Only active 2026-10-15 through 2026-10-21 UTC; unused funds expire.
+// Regular baseline remains $2/day. Fresh-activity allowance is separate.
+const backlogStartDay = '2026-10-15';
+const backlogEndDay = '2026-10-21';
+const backlogExtraLimitUsd = 30;
+const backlogActive = (now = new Date()) => {
+  const day = now.toISOString().slice(0, 10);
+  return day >= backlogStartDay && day <= backlogEndDay;
+};
 const dailyBudgetFor = (now: Date = new Date()) =>
-  now.toISOString().slice(0, 10) === oneTimeBudgetDay ? standardDailyBudget + 2 : standardDailyBudget;
+  backlogActive(now) ? standardDailyBudget + backlogExtraLimitUsd : standardDailyBudget;
+
+// Aggregate the *extra* regular spend (including reservations) across all
+// allowance days. This prevents the supplement from resetting at midnight.
+async function backlogExtraUsed(tx: Prisma.TransactionClient): Promise<number> {
+  const rows = await tx.$queryRaw<Array<{ extra: Prisma.Decimal }>>`
+    SELECT COALESCE(SUM(GREATEST(0,
+      "actualEstimatedUsd" - "freshActualUsd"
+      + "reservedUsd" - "freshReservedUsd" - ${standardDailyBudget})), 0) AS extra
+    FROM "AiBudgetDay" WHERE day BETWEEN ${backlogStartDay}::date AND ${backlogEndDay}::date`;
+  return Number(rows[0]?.extra ?? 0);
+}
 const dailyBudget = standardDailyBudget;
 const freshBudget = Number(process.env.AI_FRESH_ACTIVITY_BUDGET_USD || '3');
 const batchBudget = Number(process.env.AI_BATCH_BUDGET_USD);
@@ -133,6 +151,9 @@ async function recoverHistoricalFailures() {
       const regularSpent = Number(budget.actualEstimatedUsd) - Number(budget.freshActualUsd)
         + Number(budget.reservedUsd) - Number(budget.freshReservedUsd);
       if (regularSpent + reservation > dailyBudgetFor() + 1e-9) return false;
+      if (backlogActive() && await backlogExtraUsed(tx) +
+        Math.max(0, regularSpent + reservation - standardDailyBudget) -
+        Math.max(0, regularSpent - standardDailyBudget) > backlogExtraLimitUsd + 1e-9) return false;
       const rows = await tx.$queryRaw<Array<{ id: number }>>`
         SELECT j.id FROM "AnalysisJob" j
         JOIN "Task" t ON t.id = j."taskId"
@@ -243,6 +264,16 @@ export async function leaseJob(client = prisma) {
             + "reservedUsd" - "freshReservedUsd" + ${reservation} <= ${dailyBudgetFor()}
             AND "actualEstimatedUsd" + "reservedUsd" + ${reservation} <= ${dailyBudgetFor() + freshBudget})
         )`;
+    if (reserved && !fresh && backlogActive(now)) {
+      // Serialize the global allowance check against other workers via the
+      // AiBudgetDay rows read in this serializable transaction.
+      const used = await backlogExtraUsed(tx);
+      if (used > backlogExtraLimitUsd + 1e-9) {
+        await tx.$executeRaw`UPDATE "AiBudgetDay" SET "reservedUsd" = GREATEST(0, "reservedUsd" - ${reservation}) WHERE day = ${budgetDayText}::date`;
+        await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now), lastError: 'regular_allowance_checked' } });
+        return { skipped: true as const };
+      }
+    }
     if (!reserved) {
       await tx.analysisJob.update({ where: { id: job.id }, data: { status: 'PAUSED_BUDGET', nextAttemptAt: nextUtcBudgetDay(now), lastError: fresh ? 'fresh_allowance_checked' : 'regular_allowance_checked' } }); return { skipped: true as const };
     }
@@ -353,16 +384,23 @@ export async function completeJob(jobId: number, usage: { input: number; output:
 
 async function cycle() {
   await prisma.analysisJob.updateMany({ where: { status: 'PAUSED_BUDGET', nextAttemptAt: { lte: new Date() } }, data: { status: 'PENDING' } });
-  // Resume regular-budget pauses only while the temporary allowance has room.
-  // Avoid repeatedly requeuing jobs after the allowance has been exhausted.
-  if (new Date().toISOString().slice(0, 10) === oneTimeBudgetDay) {
-    const day = utcBudgetDay(new Date());
-    const budget = await prisma.aiBudgetDay.findUnique({ where: { day } });
-    const regularUsed = budget
-      ? Number(budget.actualEstimatedUsd) - Number(budget.freshActualUsd)
-        + Number(budget.reservedUsd) - Number(budget.freshReservedUsd)
-      : 0;
-    if (regularUsed + reservation <= dailyBudgetFor() + 1e-9) {
+  // Reconsider paused regular jobs only when the remaining cumulative
+  // allowance can fund at least one reservation; never requeue on exhaustion.
+  if (backlogActive()) {
+    const canResume = await serializable(prisma, async tx => {
+      const day = utcBudgetDay(new Date());
+      const budget = await tx.aiBudgetDay.findUnique({ where: { day } });
+      const regularUsed = budget
+        ? Number(budget.actualEstimatedUsd) - Number(budget.freshActualUsd)
+          + Number(budget.reservedUsd) - Number(budget.freshReservedUsd)
+        : 0;
+      const extraUsed = await backlogExtraUsed(tx);
+      const additionalExtra = Math.max(0, regularUsed + reservation - standardDailyBudget)
+        - Math.max(0, regularUsed - standardDailyBudget);
+      return regularUsed + reservation <= dailyBudgetFor() + 1e-9
+        && extraUsed + additionalExtra <= backlogExtraLimitUsd + 1e-9;
+    });
+    if (canResume) {
       await prisma.analysisJob.updateMany({
         where: { status: 'PAUSED_BUDGET', lastError: 'regular_allowance_checked' },
         data: { status: 'PENDING', nextAttemptAt: new Date() }
