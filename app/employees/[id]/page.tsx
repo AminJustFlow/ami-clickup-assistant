@@ -78,7 +78,7 @@ export default async function EmployeePage({ params, searchParams }: {
   const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !active.includes(t) && !notStarted.includes(t));
   const query = new URLSearchParams();
   for (const key of ['q', 'client', 'status'] as const) if (filters[key]) query.set(key, filters[key]);
-  const sectionProps = { section: filters.section, page: filters.page, query: query.toString(), initialLimit: 5 };
+  const sectionProps = { section: filters.section, page: filters.page, query: query.toString(), initialLimit: 5, compact: true };
 
   return <main id="main-content" className="ops-shell dashboard-shell">
     <AppNav current="team" />
