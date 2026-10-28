@@ -1,172 +1,81 @@
-import { TaskDetailsButton } from './components/task-details';
-import { isStaleActive } from '@/lib/intelligence/staleness';
+import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
-import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
-import { isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { TaskDetailsButton } from './components/task-details';
+import { markBriefReviewed } from './actions';
+import { buildDailyBrief, briefSince, DAILY_BRIEF_COOKIE, formatEastern, type BriefTask } from '@/lib/brief/daily-brief';
 
 export const dynamic = 'force-dynamic';
+const stateLabel = (value: string | null) => value ? value.replaceAll('_', ' ').toLowerCase().replace(/^./, letter => letter.toUpperCase()) : 'Not analyzed';
+const dayLabel = (value: Date | null) => value ? value.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown';
+const evidenceLabel = (task: BriefTask) => `${task.evidenceAt ? `Evidence ${formatEastern(task.evidenceAt)}` : 'Evidence time unavailable'} · ${task.analyzedAt ? `Analyzed ${formatEastern(task.analyzedAt)}` : 'Not analyzed'}`;
 
-const waitingStates = ['WAITING_ON_AMI', 'WAITING_ON_TEAM', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'BLOCKED', 'ISSUE'];
-
-const stateLabel: Record<string, string> = {
-  WAITING_ON_AMI: 'Waiting on Ami',
-  WAITING_ON_TEAM: 'Waiting on team',
-  WAITING_ON_CLIENT: 'Waiting on client',
-  WAITING_ON_VENDOR: 'Waiting on vendor',
-  BLOCKED: 'Blocked',
-  ISSUE: 'Issue',
-  ACTIVE: 'Active',
-  COMPLETED: 'Completed'
-};
+function BriefTaskRow({ task, progress = false }: { task: BriefTask; progress?: boolean }) {
+  return <article className="brief-task-row">
+    <div className="brief-task-main">
+      <div className="brief-task-meta"><span>{task.clientName}</span><span className={`brief-tag ${progress ? 'brief-tag-progress' : ''}`}>{progress ? 'Progress' : task.overdue ? 'Overdue' : stateLabel(task.state)}</span>{task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}</div>
+      <h3>{task.name}</h3><p>{task.action || task.summary || (progress ? 'Recorded as completed during this reporting window.' : 'Open the task to verify the latest context.')}</p><small>{evidenceLabel(task)}</small>
+    </div>
+    <div className="brief-task-actions"><TaskDetailsButton taskId={task.id} label="Evidence" />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}</div>
+  </article>;
+}
 
 export default async function Home() {
-  const tasks = await prisma.task.findMany({
-    where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, intelligence: { isNot: null } },
-    include: {
-      client: true,
-      intelligence: true,
-      attentionDisposition: true,
-      comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
-      assignees: { include: { employee: true } }
-    },
-    orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
-  });
+  const now = new Date();
+  const jar = await cookies();
+  const since = briefSince(jar.get(DAILY_BRIEF_COOKIE)?.value, now);
+  const [clients, tasks, changes] = await Promise.all([
+    prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, name: true, slug: true, clickupFolderId: true, lastSyncedAt: true } }),
+    prisma.task.findMany({ where: { client: { active: true, space: { name: 'JF Corporate' } } }, select: {
+      id: true, name: true, clientId: true, clickupUrl: true, clickupStatus: true, dueDate: true, clickupUpdatedAt: true, deleted: true,
+      comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } }, attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
+      intelligence: { select: { agentState: true, needsAmi: true, amiAction: true, currentSummary: true, waitingOnType: true, waitingOnName: true, importanceScore: true, amiAttentionScore: true, riskLevel: true, lastMeaningfulChange: true, lastMeaningfulChangeAt: true, sourceFingerprint: true, analyzedAt: true } }
+    } }),
+    prisma.intelligenceChange.findMany({ where: { detectedAt: { gte: since }, task: { client: { active: true, space: { name: 'JF Corporate' } } } }, select: { taskId: true, nextState: true, nextNeedsAmi: true, detectedAt: true } })
+  ]);
+  const brief = buildDailyBrief({ now, since, clients, tasks, changes });
+  const warnings = [
+    brief.coverage.percent < 100 ? `${brief.coverage.imported - brief.coverage.analyzed} imported tasks do not have saved intelligence.` : null,
+    brief.coverage.staleClientCount ? `${brief.coverage.staleClientCount} imported folder${brief.coverage.staleClientCount === 1 ? '' : 's'} have not synced successfully in the last 30 minutes.` : null,
+    !brief.coverage.oldestSyncAt ? 'No successful client synchronization timestamp is available.' : null
+  ].filter((warning): warning is string => !!warning);
 
-  const needsAmi = tasks.filter(isOpenAttentionTask);
-  const openAmiIds = new Set(needsAmi.map(task => task.id));
-  const today = new Date();
-  const isOverdue = (task: (typeof tasks)[number]) => !!task.dueDate && task.dueDate < today && task.intelligence?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus);
-  const overdueAmi = needsAmi.filter(isOverdue);
-  const prioritizedAmi = [...needsAmi].sort((a,b) => Number(isOverdue(b)) - Number(isOverdue(a)) || (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
-  const waiting = tasks.filter((task) => task.intelligence && waitingStates.includes(task.intelligence.agentState));
-  const active = tasks.filter((task) => task.intelligence?.agentState === 'ACTIVE');
-  const stale = active.filter(t => isStaleActive({ state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt, commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }));
-  const staleIds = new Set(stale.map(t => t.id));
-  const completed = tasks.filter((task) => task.intelligence?.agentState === 'COMPLETED');
-
-  const clientRows = new Map<string, { name: string; total: number; analyzed: number; needsAmi: number; waiting: number; active: number; stale: number; overdue: number; blocked: number }>();
-  const allClients = await prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, slug: true, name: true, clickupFolderId: true } });
-  const groups = groupClientFolders(allClients);
-  const canonicalById = new Map(groups.flatMap(group => group.folders.map(folder => [folder.id, group.canonical.slug] as const)));
-  const importedCounts = await prisma.task.groupBy({ by: ['clientId'], where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } }, _count: { _all: true } });
-  const totalsByClient = new Map(importedCounts.map(row => [row.clientId, row._count._all]));
-  for (const group of groups) {
-    clientRows.set(group.canonical.slug, {
-      name: group.canonical.name,
-      total: group.folders.reduce((sum, folder) => sum + (totalsByClient.get(folder.id) ?? 0), 0),
-      analyzed: 0, needsAmi: 0, waiting: 0, active: 0, stale: 0, overdue: 0, blocked: 0
-    });
-  }
-  for (const task of tasks) {
-    const slug = canonicalById.get(task.clientId) ?? task.client.slug;
-    const row = clientRows.get(slug);
-    if (!row) continue;
-    row.analyzed += 1;
-    if (openAmiIds.has(task.id)) row.needsAmi += 1;
-    if (isOverdue(task)) row.overdue += 1;
-    if (task.intelligence?.agentState === 'BLOCKED' || task.intelligence?.agentState === 'ISSUE') row.blocked += 1;
-    if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
-    if (task.intelligence?.agentState === 'ACTIVE' && !staleIds.has(task.id)) row.active += 1;
-    if (staleIds.has(task.id)) row.stale += 1;
-  }
-
-  const employeeRows = new Map<string, { id: number; total: number; waiting: number; needsAmi: number; stale: number }>();
-  for (const task of tasks) {
-    for (const { employee } of task.assignees) {
-      const row = employeeRows.get(employee.name) ?? { id: employee.id, total: 0, waiting: 0, needsAmi: 0, stale: 0 };
-      row.total += 1;
-      if (task.intelligence && waitingStates.includes(task.intelligence.agentState) && task.intelligence.agentState !== 'WAITING_ON_AMI') row.waiting += 1;
-      if (openAmiIds.has(task.id)) row.needsAmi += 1;
-      if (staleIds.has(task.id)) row.stale += 1;
-      employeeRows.set(employee.name, row);
-    }
-  }
-
-
-  const externalWaiting = waiting.filter(t => t.intelligence?.agentState !== 'WAITING_ON_AMI');
-  const waitingGroups = new Map<string, typeof externalWaiting>();
-  for (const task of externalWaiting) {
-    const kind = task.intelligence?.waitingOnType ?? 'OTHER';
-    const name = task.intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
-    const key = kind + ':' + name.toLowerCase();
-    const group = waitingGroups.get(key) ?? [];
-    group.push(task);
-    waitingGroups.set(key, group);
-  }
-  const groupedWaiting = [...waitingGroups.entries()].sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-  const unattributedFolders = [...clientRows.entries()].filter(([, client]) => needsClientAttribution(client.name)).sort((a,b) => b[1].total - a[1].total);
-  const orderedClients = [...clientRows.entries()].filter(([, client]) => !needsClientAttribution(client.name)).sort((a,b) => b[1].overdue-a[1].overdue || b[1].blocked-a[1].blocked || b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[1].name.localeCompare(b[1].name));
-  const orderedEmployees = [...employeeRows.entries()].sort((a,b) => b[1].needsAmi-a[1].needsAmi || b[1].waiting-a[1].waiting || a[0].localeCompare(b[0]));
-  const featuredClients = orderedClients.slice(0, 8);
-  const featuredEmployees = orderedEmployees.slice(0, 6);
-  const featuredWaiting = groupedWaiting.slice(0, 5);
-
-  return <main className="ops-shell dashboard-shell">
+  return <main className="ops-shell dashboard-shell brief-shell" id="main-content">
     <AppNav current="overview" />
+    <header className="brief-hero"><div><p className="eyebrow">AMI DAILY EXECUTIVE BRIEF</p><h1>What needs your attention today</h1><p>Current decisions, emerging risks, recent progress, and client health—assembled from stored ClickUp intelligence.</p><div className="brief-window"><span>Since {formatEastern(brief.since)}</span><span>Generated {formatEastern(brief.generatedAt)}</span></div></div><form action={markBriefReviewed}><button className="digest-button brief-reviewed-button" type="submit">Mark brief reviewed</button></form></header>
 
-    <header className="dashboard-hero">
-      <div><p className="eyebrow">OPERATIONS OVERVIEW</p><h1>What needs attention today?</h1><p>Decisions to make, people to follow up with, and client progress — all in one place.</p></div>
-      <a className="quiet-action" href="/attention">Open Ami action inbox <span aria-hidden="true">↗</span></a>
-    </header>
+    <section className="brief-trust-bar" aria-label="Report coverage and freshness">
+      <div><strong>{brief.coverage.percent}%</strong><span>Coverage</span><small>{brief.coverage.analyzed} analyzed / {brief.coverage.imported} imported</small></div>
+      <div><strong>{brief.coverage.oldestSyncAt ? dayLabel(brief.coverage.oldestSyncAt) : 'Unknown'}</strong><span>Oldest successful sync</span><small>{brief.coverage.oldestSyncAt ? formatEastern(brief.coverage.oldestSyncAt) : 'No sync evidence'}</small></div>
+      <div><strong>{brief.clients.length}</strong><span>Client groups</span><small>Active canonical clients</small></div>
+    </section>
+    {warnings.length > 0 && <aside className="brief-warning" aria-label="Data quality warnings"><strong>Read with care</strong><ul>{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul><a href="/system">View system status ↗</a></aside>}
 
-    <section className="dashboard-metrics" aria-label="Work summary">
-      <a href="/attention" className="overview-stat primary-stat metric-link"><span>Needs your attention</span><strong>{needsAmi.length}</strong><small>{overdueAmi.length} overdue · Open inbox ↗</small></a>
-      <a href="#waiting-title" className="overview-stat metric-link"><span>Waiting on others</span><strong>{externalWaiting.length}</strong><small>Team, clients and vendors ↓</small></a>
-      <div className="overview-stat"><span>In progress</span><strong>{active.length}</strong><small>{stale.length} may need a follow-up</small></div>
-      <div className="overview-stat"><span>Completed</span><strong>{completed.length}</strong><small>Of {tasks.length} analyzed tasks</small></div>
+    <section className="brief-metrics" aria-label="Executive totals">
+      <a href="#decisions"><span>Decisions for Ami</span><strong>{brief.totals.decisions}</strong><small>{brief.decisions.filter(task => task.overdue).length} overdue</small></a>
+      <a href="#risks"><span>Blocked or high risk</span><strong>{brief.totals.blocked}</strong><small>{brief.newRisks.length} changed in this window</small></a>
+      <a href="#clients"><span>All overdue work</span><strong>{brief.totals.overdue}</strong><small>Across imported tasks</small></a>
+      <a href="#clients"><span>Stale active work</span><strong>{brief.totals.stale}</strong><small>30+ days since source activity</small></a>
+      <a href="#progress"><span>Completed since review</span><strong>{brief.totals.completedSince}</strong><small>{brief.totals.externalDependencies} external dependencies</small></a>
     </section>
 
-    <div className="dashboard-main" id="main-content">
-      <div className="dashboard-primary">
-        <section className="clean-panel" aria-labelledby="attention-title">
-          <div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2 id="attention-title">Decisions for Ami</h2><p>Questions, approvals, and next steps that need your response.</p></div><a className="task-action" href="/attention">Open full action inbox ↗</a><span className="panel-count">{needsAmi.length}</span></div>
-          {needsAmi.length === 0 ? <div className="friendly-empty"><span aria-hidden="true">✓</span><strong>You're all caught up</strong><p>No tasks currently require your action.</p></div> :
-            <div className="clean-task-list">{prioritizedAmi.slice(0, 5).map(task => <article className="clean-task" key={task.id}>
-              <div className="task-topline"><span>{task.client.name}</span><span className={`status-pill attention-pill ${isOverdue(task) ? 'priority-overdue' : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? 'priority-high' : 'priority-standard'}`}>{isOverdue(task) ? "Overdue" : (task.intelligence?.amiAttentionScore ?? 0) >= 70 ? "High priority" : "Needs decision"}</span></div>
-              <p className="next-step-label">Your next action</p><p className="ami-next-action">{task.intelligence?.amiAction || task.intelligence?.currentSummary || 'Review this task.'}</p><h3 className="task-context-title">{task.name}</h3>{task.intelligence?.agentState !== 'WAITING_ON_AMI' && <span className="secondary-dependency">Also {stateLabel[task.intelligence?.agentState ?? '']?.toLowerCase() ?? 'in progress'}</span>}
-              <TaskDetailsButton taskId={task.id} />{task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noreferrer">View in ClickUp <span aria-hidden="true">↗</span></a>}
-            </article>)}{needsAmi.length > 5 && <div className="dashboard-list-more"><span>{needsAmi.length - 5} more AI-flagged tasks</span><a href="/attention">View action inbox ↗</a></div>}</div>}
-        </section>
+    <div className="brief-report-grid"><div className="brief-report-primary">
+      <section className="clean-panel brief-section" id="decisions"><div className="panel-heading"><div><p className="eyebrow">FIRST PRIORITY</p><h2>Decisions for Ami</h2><p>Open recommendations, excluding decisions already reviewed or dismissed for the current evidence.</p></div><a href="/attention">Open action inbox ↗</a></div>{brief.decisions.length ? <div className="brief-task-list">{brief.decisions.map(task => <BriefTaskRow key={task.id} task={task} />)}</div> : <div className="brief-empty"><strong>No open decisions found</strong><p>{brief.coverage.percent < 100 ? 'This applies only to analyzed tasks; incomplete coverage may hide requests.' : 'All currently analyzed recommendations have been cleared.'}</p></div>}</section>
+      <section className="clean-panel brief-section" id="risks"><div className="panel-heading"><div><p className="eyebrow">SINCE LAST REVIEW</p><h2>New risks and stalled work</h2><p>Current high-risk, blocked, or issue tasks with new evidence or analysis in this reporting window.</p></div><a href="/changes">View recent updates ↗</a></div>{brief.newRisks.length ? <div className="brief-task-list">{brief.newRisks.map(task => <BriefTaskRow key={task.id} task={task} />)}</div> : <div className="brief-empty"><strong>No newly detected risks</strong><p>Existing risks remain visible in the client sections below.</p></div>}</section>
+      <section className="clean-panel brief-section" id="progress"><div className="panel-heading"><div><p className="eyebrow">MOVING FORWARD</p><h2>Meaningful progress</h2><p>Tasks recorded as completed since the last brief review.</p></div><a href="/changes">Review all activity ↗</a></div>{brief.progress.length ? <div className="brief-task-list">{brief.progress.map(task => <BriefTaskRow key={task.id} task={task} progress />)}</div> : <div className="brief-empty"><strong>No completed work detected in this window</strong><p>This is different from having no ClickUp activity; open Recent updates for comments and field changes.</p></div>}</section>
+    </div><aside className="brief-report-aside"><section className="clean-panel brief-guide"><p className="eyebrow">HOW TO READ THIS</p><h2>Evidence, not automation</h2><p>This brief summarizes stored task intelligence. It does not call AI when opened and cannot update ClickUp.</p><p>Open <strong>Evidence</strong> to verify comments, dates, ownership, and the saved analysis before acting.</p></section><section className="clean-panel brief-guide"><p className="eyebrow">DEPENDENCIES</p><h2>{brief.totals.externalDependencies} waiting on others</h2><p>Includes current tasks waiting on teammates, clients, or vendors.</p><a href="/search?q=waiting">Find dependency tasks ↗</a></section></aside></div>
 
-
-      </div>
-
-      <aside className="dashboard-sidebar">
-        <section className="clean-panel" id="clients" aria-labelledby="clients-title">
-          <div className="panel-heading"><div><p className="eyebrow">CLIENT HEALTH</p><h2 id="clients-title">Clients needing attention</h2></div><span className="panel-count">{orderedClients.length}</span></div>
-          <p className="client-health-note">Based on analyzed tasks only; incomplete coverage may hide issues.</p><div className="entity-list">{featuredClients.map(([slug,client]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">{client.name.slice(0,1).toUpperCase()}</span><span className="entity-copy"><strong>{client.name}</strong><small>{client.analyzed} analyzed / {client.total} imported</small><span className="client-health-signals">{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} overdue</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.needsAmi > 0 && <span className="client-signal decision">{client.needsAmi} for Ami</span>}{client.overdue === 0 && client.blocked === 0 && client.needsAmi === 0 && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}</span></span><span className="entity-arrow">›</span></a>)}{orderedClients.length > 8 && <div className="dashboard-list-more"><span>{orderedClients.length - 8} more clients</span><a href="/clients">View all clients ↗</a></div>}</div>
-        </section>
-        {unattributedFolders.length > 0 && <details className="clean-panel collapsible-panel">
-          <summary>Invoiced folders awaiting client assignment <span>{unattributedFolders.length}</span></summary>
-          <p className="section-explainer">These ClickUp folders have generic names, so we cannot safely identify their client. Their tasks remain imported and accessible, but they are not counted as separate clients.</p>
-          <div className="entity-list">{unattributedFolders.map(([slug, folder]) => <a className="entity-row" key={slug} href={`/clients/${slug}`}><span className="entity-avatar">?</span><span className="entity-copy"><strong>{folder.name}</strong><small>{folder.total} imported tasks · Identify client before grouping</small></span><span className="entity-arrow">›</span></a>)}</div>
-        </details>}
-        <section className="clean-panel" id="team" aria-labelledby="team-title">
-          <div className="panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2 id="team-title">Team</h2></div><span className="panel-count">{orderedEmployees.length}</span></div>
-          <div className="entity-list">{featuredEmployees.map(([name,employee]) => <a className="entity-row" key={employee.id} href={`/employees/${employee.id}`}><span className="entity-avatar team-avatar">{name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}</span><span className="entity-copy"><strong>{name}</strong><small>{employee.total} assigned · {employee.waiting} waiting</small></span><span className="entity-arrow">›</span></a>)}{orderedEmployees.length > 6 && <div className="dashboard-list-more"><span>{orderedEmployees.length - 6} more team members</span><a href="/team">View full team ↗</a></div>}</div>
-        </section>
-        <section className="clean-panel" aria-labelledby="waiting-title">
-          <div className="panel-heading"><div><p className="eyebrow">DEPENDENCIES</p><h2 id="waiting-title">Who are we waiting on?</h2><p>Tasks waiting on teammates, clients, or vendors.</p></div><span className="panel-count">{externalWaiting.length}</span></div>
-          {externalWaiting.length === 0 ? <div className="friendly-empty"><strong>No outstanding dependencies</strong><p>Nothing is currently marked as waiting.</p></div> :
-            <div className="waiting-groups compact-dependencies">{featuredWaiting.map(([key, group]) => {
-              const kind = group[0].intelligence?.waitingOnType ?? 'OTHER';
-              const name = group[0].intelligence?.waitingOnName?.trim() || (kind === 'TEAM' ? 'Unspecified team member' : kind === 'CLIENT' ? 'Unspecified client contact' : kind === 'VENDOR' ? 'Unspecified vendor' : 'Unspecified owner');
-              return <details className="waiting-person" key={key}>
-                <summary><span className="waiting-person-title"><strong>{name}</strong><small>{kind === 'TEAM' ? 'Team' : kind === 'CLIENT' ? 'Client' : kind === 'VENDOR' ? 'Vendor' : 'Other dependency'}</small></span><span className="panel-count">{group.length}</span></summary>
-                <div className="dependency-preview">
-                  <p className="dependency-preview-client">{group[0].client.name}</p>
-                  <strong>{group[0].name}</strong>
-                  <p>{group[0].intelligence?.currentSummary || 'Awaiting an update.'}</p>
-                  <TaskDetailsButton taskId={group[0].id} />
-                  {group[0].clickupUrl && <a className="task-action" href={group[0].clickupUrl} target="_blank" rel="noreferrer">ClickUp ↗</a>}
-                  {group.length > 1 && <p className="dashboard-note">{group.length - 1} more task{group.length - 1 === 1 ? '' : 's'} for this contact. <a href="/search">Search tasks ↗</a></p>}
-                </div>
-              </details>;
-            })}{groupedWaiting.length > 5 && <div className="dashboard-list-more"><span>{groupedWaiting.length - 5} additional contacts</span><a href="/search">Find waiting tasks ↗</a></div>}</div>}
-        </section>
-        <div className="dashboard-note">Intelligence is inferred from ClickUp tasks and comments. Open a task to verify its latest details. <a href="/system">System status and AI usage ↗</a></div>
-      </aside>
-    </div>
+    <section className="brief-clients" id="clients"><div className="brief-clients-heading"><div><p className="eyebrow">FULL CLIENT REPORT</p><h2>Client health</h2><p>Every active client group, ordered by decisions and operational risk.</p></div><a href="/clients">Open client directory ↗</a></div>
+      <div className="brief-client-list">{brief.clients.map(client => <details className={`brief-client ${client.healthy ? 'brief-client-healthy' : ''}`} key={client.slug} open={!client.healthy}><summary><span className="brief-client-title"><span className="entity-avatar">{client.name.slice(0, 1).toUpperCase()}</span><span><strong>{client.name}</strong><small>{client.analyzed} analyzed / {client.imported} imported</small></span></span><span className="brief-client-signals">{client.decisions.length > 0 && <span className="client-signal decision">{client.decisions.length} for Ami</span>}{client.overdue > 0 && <span className="client-signal overdue">{client.overdue} overdue</span>}{client.blocked > 0 && <span className="client-signal blocked">{client.blocked} blocked</span>}{client.healthy && <span className="client-signal quiet">No flagged issues in analyzed tasks</span>}</span><span className="brief-client-chevron" aria-hidden="true">⌄</span></summary>
+        <div className="brief-client-body"><div className="brief-client-overview"><div><strong>{client.decisions.length}</strong><span>Decisions</span></div><div><strong>{client.risks.length}</strong><span>Active risks</span></div><div><strong>{client.dependencies.length}</strong><span>Dependencies</span></div><div><strong>{client.progress.length}</strong><span>Completed</span></div></div>
+          {client.imported > client.analyzed && <p className="brief-client-caution">Coverage is incomplete: {client.imported - client.analyzed} task{client.imported - client.analyzed === 1 ? '' : 's'} lack saved intelligence.</p>}
+          {client.decisions.length > 0 && <div className="brief-client-group"><h3>Needs Ami</h3>{client.decisions.slice(0, 5).map(task => <BriefTaskRow key={task.id} task={task} />)}</div>}
+          {client.risks.some(task => !client.decisions.some(decision => decision.id === task.id)) && <div className="brief-client-group"><h3>Risks and blockers</h3>{client.risks.filter(task => !client.decisions.some(decision => decision.id === task.id)).slice(0, 5).map(task => <BriefTaskRow key={task.id} task={task} />)}</div>}
+          {client.dependencies.length > 0 && <div className="brief-client-dependencies"><h3>Waiting on others</h3><ul>{client.dependencies.slice(0, 8).map(task => <li key={task.id}><span><strong>{task.name}</strong><small>{task.waitingOnName || stateLabel(task.waitingOnType)} · {evidenceLabel(task)}</small></span><TaskDetailsButton taskId={task.id} label="Evidence" /></li>)}</ul></div>}
+          {client.healthy && client.progress.length === 0 && <div className="brief-empty"><strong>No current issues found in analyzed tasks</strong><p>This is not a guarantee of client health when coverage or synchronization is incomplete.</p></div>}
+          {client.progress.length > 0 && <div className="brief-client-progress"><h3>Recent progress</h3>{client.progress.slice(0, 5).map(task => <p key={task.id}><strong>{task.name}</strong><span>{task.summary || 'Recorded as completed.'}</span><small>{evidenceLabel(task)}</small></p>)}</div>}
+          <a className="brief-client-link" href={`/clients/${client.slug}`}>Open full client view ↗</a></div></details>)}</div>
+      {brief.clients.length === 0 && <div className="brief-empty"><strong>No active clients found</strong><p>Import or activate client folders before relying on this report.</p></div>}
+    </section><p className="dashboard-note brief-footnote">“Healthy” means no issues were found in currently analyzed tasks. Always consider the displayed synchronization and coverage warnings.</p>
   </main>;
 }
