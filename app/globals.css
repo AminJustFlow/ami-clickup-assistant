@@ -1182,3 +1182,9 @@ button{font-family:inherit}
 .attention-verify-detail ul{margin:4px 0 14px;padding-left:20px}
 .attention-verify-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
 @media(max-width:650px){.attention-verify-toggle{align-items:flex-start;flex-direction:column;gap:10px}.attention-verify-expand{align-self:flex-start}}
+/* Calm action-first brief: three headline signals and expandable trust context. */
+.brief-shell .brief-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.brief-warning>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.brief-warning>summary::-webkit-details-marker{display:none}
+.brief-warning:not([open])>ul,.brief-warning:not([open])>a,.brief-warning:not([open])>p{display:none}
+@media(max-width:720px){.brief-shell .brief-metrics{grid-template-columns:1fr}}

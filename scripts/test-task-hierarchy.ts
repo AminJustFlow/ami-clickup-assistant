@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildTaskHierarchy, clickupParentId, type HierarchyTask } from '../lib/tasks/hierarchy';
+import { groupTaskInsights } from '../lib/tasks/insight-groups';
 
 const task = (id: number, parent: string | null, status = 'open'): HierarchyTask => ({
   id, clickupTaskId: String(id), rawPayload: { parent }, name: 'Task ' + id,
@@ -31,4 +32,12 @@ assert.equal(loop.byId.size, 2);
 const deleted = buildTaskHierarchy([{ ...task(9, null), deleted: true }, task(10, '9')]);
 assert.equal(deleted.byId.size, 1);
 assert.equal(deleted.missingParents, 1);
+const grouped = groupTaskInsights(
+  [task(11, null), task(12, '11'), task(13, '11'), task(14, null)],
+  [task(11, null), task(12, '11'), task(13, '11'), task(14, null)]
+);
+assert.equal(grouped.length, 2, 'a parent and its subtasks form one insight group');
+assert.equal(grouped.find(group => group.groupKey === '11')?.members.length, 3);
+const childOnly = groupTaskInsights([task(20, null), task(21, '20')], [task(21, '20')]);
+assert.equal(childOnly[0]?.primary.id, 21, 'a matching child remains visible when its parent has no signal');
 console.log('Task hierarchy regression checks passed');

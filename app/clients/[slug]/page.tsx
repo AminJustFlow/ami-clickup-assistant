@@ -6,6 +6,7 @@ import { AppNav } from '../../components/app-nav';
 import { TaskDetailsButton } from '../../components/task-details';
 import { CompactTaskSection } from '../../components/compact-task-list';
 import { foldersForClient } from '@/lib/clients/grouping';
+import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ export default async function ClientPage({ params, searchParams }: {
   const tasks = await prisma.task.findMany({
     where: { clientId: { in: relatedFolders.map(folder => folder.id) }, deleted: false },
     select: {
-      id: true, name: true, clickupStatus: true, clickupPriority: true,
+      id: true, clickupTaskId: true, rawPayload: true, name: true, clickupStatus: true, clickupPriority: true,
       dueDate: true, clickupUpdatedAt: true, clickupUrl: true,
       client: { select: { name: true, slug: true } },
       intelligence: true,
@@ -75,25 +76,29 @@ export default async function ClientPage({ params, searchParams }: {
       ? (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity) || urgency(b) - urgency(a)
       : urgency(b) - urgency(a) || (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
   const allMatching = prioritize(filtered);
-  const needsAmi = prioritize(filtered.filter(isOpenAttentionTask));
+  const grouped = (items: typeof tasks) => groupedInsightRepresentatives(tasks, items, (a, b) => urgency(b) - urgency(a) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
+  const needsAmi = prioritize(grouped(filtered.filter(isOpenAttentionTask)));
   const isClosed = (t: (typeof tasks)[number]) => t.intelligence?.agentState === 'COMPLETED' || isClosedClickUpStatus(t.clickupStatus);
-  const waiting = prioritize(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
-    t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
+  const waiting = prioritize(grouped(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
+    t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI')));
   const inProgress = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
     !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');
-  const stale = prioritize(inProgress.filter(t => isStaleActive({
+  const stale = prioritize(grouped(inProgress.filter(t => isStaleActive({
     state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt,
     commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
-  })));
-  const recentlyActive = prioritize(inProgress.filter(t => !stale.includes(t)));
-  const notStarted = filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
+  }))));
+  const recentlyActive = prioritize(grouped(inProgress.filter(t => !isStaleActive({
+    state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt,
+    commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
+  }))));
+  const notStarted = grouped(filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !isOpenAttentionTask(t)));
   const completed = filtered.filter(t => isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
   const unanalyzed = filtered.filter(t => !t.intelligence);
   const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !inProgress.includes(t) && !notStarted.includes(t));
   const analyzedCount = tasks.filter(t => t.intelligence).length;
   const openCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus)).length;
-  const overdueTasks = prioritize(filtered.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now));
-  const overdueCount = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now).length;
+  const overdueTasks = prioritize(grouped(filtered.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now)));
+  const overdueCount = grouped(tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now)).length;
   const overdueRecent = overdueTasks.filter(t => t.clickupUpdatedAt && now.getTime() - t.clickupUpdatedAt.getTime() <= 30 * 86400000);
   const overdueOlder = overdueTasks.filter(t => !t.clickupUpdatedAt || now.getTime() - t.clickupUpdatedAt.getTime() > 30 * 86400000);
   const upcoming = tasks.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate >= now && t.dueDate.getTime() <= now.getTime() + 7 * 86400000).sort((a, b) => (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity));
@@ -105,8 +110,8 @@ export default async function ClientPage({ params, searchParams }: {
     const action = type.includes('comment') ? 'Comment activity' : type.includes('status') ? 'Status activity' : type.includes('assign') ? 'Assignment activity' : type.includes('due') ? 'Due-date activity' : 'Task activity';
     return action + (event.actorName ? ' · ' + event.actorName : '') + ' · ' + event.occurredAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
-  const briefDecisions = prioritize(tasks.filter(isOpenAttentionTask));
-  const briefDependencies = prioritize(tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence?.waitingOnType && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
+  const briefDecisions = prioritize(grouped(tasks.filter(isOpenAttentionTask)));
+  const briefDependencies = prioritize(grouped(tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence?.waitingOnType && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI')));
   const briefDecision = briefDecisions[0];
   const briefDependency = briefDependencies[0];
   const briefDeadline = upcoming[0];
@@ -124,8 +129,8 @@ export default async function ClientPage({ params, searchParams }: {
     });
   };
   const hasFilters = Boolean(filters.q || filters.assignee || filters.status || filters.age);
-  const currentNeedsAmi = tasks.filter(isOpenAttentionTask).length;
-  const currentWaiting = tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI').length;
+  const currentNeedsAmi = grouped(tasks.filter(isOpenAttentionTask)).length;
+  const currentWaiting = grouped(tasks.filter(t => !isOpenAttentionTask(t) && !isClosedClickUpStatus(t.clickupStatus) && t.intelligence?.agentState !== 'COMPLETED' && t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI')).length;
   const query = new URLSearchParams();
   for (const key of ['q', 'assignee', 'status', 'age', 'sort'] as const) if (filters[key]) query.set(key, filters[key]);
   const view: string = search ? 'all' : filters.view && ['ami', 'waiting', 'active', 'overdue', 'all'].includes(filters.view) ? filters.view : filters.due === 'overdue' || filters.focus === 'overdue' ? 'overdue' : 'ami';
@@ -160,7 +165,7 @@ export default async function ClientPage({ params, searchParams }: {
           <a href={tabHref('all') + '&sort=due'}>Review deadlines →</a></div>
       </div>
     </section>
-    <section className="client-action-summary" aria-label="Client action summary">
+    {false && <section className="client-action-summary" aria-label="Client action summary">
       <div className="client-action-summary-heading"><div><p className="eyebrow">AT A GLANCE</p><h2>What needs attention</h2></div><p>Additional tasks not already featured above. Counts include all matching tasks; AI assessments are unverified.</p></div>
       <div className="client-action-summary-grid">
         {([
@@ -174,7 +179,7 @@ export default async function ClientPage({ params, searchParams }: {
           <a href={group.title === 'Updated in 7 days' ? tabHref('all') + '&sort=recent' : group.title === 'Due in 7 days' ? tabHref('all') + '&sort=due' : tabHref(group.view)}>{group.view === 'ami' ? 'View all decisions' : group.view === 'waiting' ? 'View all dependencies' : 'View all tasks'} →</a>
         </div>)}
       </div>
-    </section>
+    </section>}
     <nav className="client-workspace-tabs" aria-label="Client workspace views">
       <a aria-current={view === 'ami' ? 'page' : undefined} href={tabHref('ami')}>Needs Ami <span>{needsAmi.length}</span></a>
       <a aria-current={view === 'waiting' ? 'page' : undefined} href={tabHref('waiting')}>Waiting <span>{waiting.length}</span></a>

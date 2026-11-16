@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../../components/app-nav';
 import { CompactTaskSection } from '../../components/compact-task-list';
 import { EmployeeClientDirectory } from '../../components/employee-client-directory';
+import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export default async function EmployeePage({ params, searchParams }: {
   // Directory-aligned counts include all imported assignments, even those not AI-analyzed.
   const assignmentFacts = await prisma.task.findMany({
     where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, assignees: { some: { employeeId } } },
-    select: { id: true, clientId: true, clickupStatus: true, dueDate: true,
+    select: { id: true, clickupTaskId: true, rawPayload: true, clientId: true, clickupStatus: true, dueDate: true,
       client: { select: { name: true } },
       intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true } },
       attentionDisposition: { select: { sourceFingerprint: true, decision: true } }
@@ -31,10 +32,11 @@ export default async function EmployeePage({ params, searchParams }: {
   });
   const now = new Date();
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const openFacts = assignmentFacts.filter(t => !isClosedClickUpStatus(t.clickupStatus));
-  const pastDueFacts = openFacts.filter(t => t.dueDate && t.dueDate < now);
-  const dueSoonFacts = openFacts.filter(t => t.dueDate && t.dueDate >= now && t.dueDate <= nextWeek);
-  const attentionFacts = openFacts.filter(isOpenAttentionTask);
+  const groupFacts = (items: typeof assignmentFacts) => groupedInsightRepresentatives(assignmentFacts, items);
+  const openFacts = groupFacts(assignmentFacts.filter(t => !isClosedClickUpStatus(t.clickupStatus)));
+  const pastDueFacts = groupFacts(assignmentFacts.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate < now));
+  const dueSoonFacts = groupFacts(assignmentFacts.filter(t => !isClosedClickUpStatus(t.clickupStatus) && t.dueDate && t.dueDate >= now && t.dueDate <= nextWeek));
+  const attentionFacts = groupFacts(assignmentFacts.filter(t => !isClosedClickUpStatus(t.clickupStatus) && isOpenAttentionTask(t)));
   const olderBacklog = pastDueFacts.filter(t => t.dueDate && t.dueDate.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const recentOverdue = pastDueFacts.length - olderBacklog.length;
   const byClient = [...new Map(assignmentFacts.map(t => [t.clientId, { id: t.clientId, name: t.client.name }] as const)).values()]
@@ -64,17 +66,22 @@ export default async function EmployeePage({ params, searchParams }: {
     (!filters.client || String(t.clientId) === filters.client) &&
     (!filters.status || t.intelligence?.agentState === filters.status);
   const filtered = tasks.filter(matches);
-  const needsAmi = filtered.filter(isOpenAttentionTask);
+  const grouped = (items: typeof tasks) => groupedInsightRepresentatives(tasks, items, (a, b) =>
+    (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
+  const needsAmi = grouped(filtered.filter(isOpenAttentionTask));
   const isClosed = (t: (typeof tasks)[number]) => isClosedClickUpStatus(t.clickupStatus);
-  const waiting = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
-    t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI');
+  const waiting = grouped(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
+    t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
   const active = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) && !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');
-  const stale = active.filter(t => isStaleActive({
+  const stale = grouped(active.filter(t => isStaleActive({
     state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt,
     commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
-  }));
-  const recent = active.filter(t => !stale.includes(t));
-  const notStarted = filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
+  })));
+  const recent = grouped(active.filter(t => !isStaleActive({
+    state: 'ACTIVE', taskUpdatedAt: t.clickupUpdatedAt,
+    commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
+  })));
+  const notStarted = grouped(filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !isOpenAttentionTask(t)));
   const completed = filtered.filter(t => isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
   const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !active.includes(t) && !notStarted.includes(t));
   const query = new URLSearchParams();

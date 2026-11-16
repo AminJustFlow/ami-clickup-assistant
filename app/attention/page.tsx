@@ -6,6 +6,7 @@ import { TaskDetailsButton } from '../components/task-details';
 import { setAttentionDecision } from './actions';
 import { compareAttentionPriority, dailyBrief } from '@/lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +62,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         ...(priority === 'overdue' ? { dueDate: { lt: now } } : {})
       },
       select: {
-        id: true, name: true, dueDate: true, clickupUpdatedAt: true, clickupUrl: true, clickupStatus: true,
+        id: true, clickupTaskId: true, rawPayload: true, name: true, dueDate: true, clickupUpdatedAt: true, clickupUrl: true, clickupStatus: true,
         client: { select: { name: true } },
         attentionDisposition: { select: { decision: true, reason: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
@@ -85,8 +86,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     const urgency = verificationReasons.length ? 'Verify recommendation' : overdue ? 'Overdue' : intel.amiAttentionScore >= 70 ? 'High priority' : 'Normal';
     return { ...task, closed, recorded, overdue, urgency, verificationReasons };
   });
-  const active = categorized.filter(isOpenAttentionTask);
-  const history = categorized.filter(task => task.closed || !!task.recorded);
+  const active = groupedInsightRepresentatives(categorized, categorized.filter(isOpenAttentionTask), (a, b) => compareAttentionPriority(a, b, now));
+  const history = groupedInsightRepresentatives(categorized, categorized.filter(task => task.closed || !!task.recorded), (a, b) => compareAttentionPriority(a, b, now));
   const brief = dailyBrief(active, now);
   const featuredIds = new Set(brief.topReady.map(task => task.id));
   const selected = (view === 'active' ? active.filter(task => !featuredIds.has(task.id)) : history)
@@ -113,14 +114,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       <h1>Decisions that need you</h1>
       <p>Focus on the next decision. Open context when needed, and track your review without changing ClickUp.</p>
     </header>
-    <section className="detail-stat-strip" aria-label="Attention overview">
-      <div><strong>{active.length}</strong><span>Open decisions in current scope</span></div>
-      <div><strong>{overdueCount}</strong><span>Past due</span></div>
-      <div><strong>{highCount}</strong><span>High priority or overdue</span></div>
-      <div><strong>{verifyCount}</strong><span>Recommendations to verify</span></div>
-      <div><strong>{importedCount ? Math.round(100 * analyzedCount / importedCount) : 0}%</strong><span>AI analysis coverage</span></div>
-    </section>
-    <p className="dashboard-note attention-coverage">{analyzedCount.toLocaleString()} of {importedCount.toLocaleString()} imported tasks analyzed across active clients. Unanalyzed tasks cannot appear here. Human reviews are stored only in this app.</p>
+    <details className="brief-warning attention-coverage"><summary><strong>{active.length} open decision{active.length === 1 ? '' : 's'}</strong> · {importedCount ? Math.round(100 * analyzedCount / importedCount) : 0}% analysis coverage{verifyCount ? ` · ${verifyCount} to verify` : ''}</summary><p>{analyzedCount.toLocaleString()} of {importedCount.toLocaleString()} imported tasks are analyzed. {overdueCount} open decision{overdueCount === 1 ? ' is' : 's are'} past due and {highCount} are high priority or overdue. Recommendations marked for verification should be checked against ClickUp before acting.</p></details>
     {params.notice === 'stale' && <p className="attention-notice" role="status">This task's AI assessment changed. Review its latest context before updating it.</p>}
     <section className="clean-panel attention-panel attention-brief-panel" aria-labelledby="daily-brief-title">
       <div className="panel-heading">
@@ -131,11 +125,11 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         </div>
         <Link href="/review?filter=unreviewed" className="task-action">Audit AI recommendations ↗</Link>
       </div>
-      <div className="detail-stat-strip" aria-label="Daily decision summary">
+      {false && <div className="detail-stat-strip" aria-label="Daily decision summary">
         <div><strong>{brief.ready}</strong><span>Ready to review · no verification flag</span></div>
         <div><strong>{brief.verify}</strong><span>Verify source before acting</span></div>
         <div><strong>{brief.overdueReady}</strong><span>Past due and ready for review</span></div>
-      </div>
+      </div>}
       <div className="attention-progress" aria-label="Review progress">
         <p><strong>{triagedCount} of {triageTotal}</strong> current recommendations triaged · {reviewedCount} reviewed · {dismissedCount} dismissed · {active.length} remaining</p>
         <div className="attention-progress-track" role="img" aria-label={`${reviewedCount} reviewed, ${dismissedCount} dismissed, ${active.length} remaining out of ${triageTotal} recommendations`}>
@@ -155,6 +149,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <p className="attention-action-label">Recommended next action</p>
                 <p className="attention-row-action attention-featured-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
                 <h3 className="attention-featured-task-title">Task: {task.name}</h3>
+                {!!task.insightGroupMembers?.length && <details className="task-extra"><summary>{task.insightGroupMembers.length} related subtask decision{task.insightGroupMembers.length === 1 ? '' : 's'}</summary><ul>{task.insightGroupMembers.map(member => <li key={member.id}><strong>{member.name}</strong> — {member.intelligence?.amiAction || member.intelligence?.currentSummary || 'Review task evidence.'} <TaskDetailsButton taskId={member.id} label="Evidence" /></li>)}</ul></details>}
                 <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
               </div>
               <div className="attention-row-actions">
@@ -198,7 +193,6 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
           </div>
         </div>}
       </div>
-      <p className="dashboard-note">Rule-based summary of analyzed tasks; verify ClickUp evidence before acting.</p>
     </section>
     <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
@@ -240,6 +234,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
               <div className="attention-row-byline"><span>{task.client.name}</span><span className={task.verificationReasons.length ? 'attention-urgency normal' : task.overdue ? 'attention-urgency overdue' : intel.amiAttentionScore >= 70 ? 'attention-urgency high' : 'attention-urgency normal'}>{task.closed ? 'Completed in ClickUp / AI' : task.recorded ? (task.recorded === 'REVIEWED' ? 'Reviewed' : 'Dismissed') : task.urgency}</span></div>
               <h3>{task.name}</h3>
               <p className="attention-row-action">{intel.amiAction || intel.currentSummary || 'Review the task for next steps.'}</p>
+              {!!task.insightGroupMembers?.length && <details className="task-extra"><summary>{task.insightGroupMembers.length} related subtask decision{task.insightGroupMembers.length === 1 ? '' : 's'}</summary><ul>{task.insightGroupMembers.map(member => <li key={member.id}><strong>{member.name}</strong> — {member.intelligence?.amiAction || member.intelligence?.currentSummary || 'Review task evidence.'} <TaskDetailsButton taskId={member.id} label="Evidence" /></li>)}</ul></details>}
               {task.verificationReasons.length > 0 && <p className="attention-notice" role="note"><strong>Verify before acting:</strong> {task.verificationReasons.join('; ')}. Check the latest ClickUp comments and task status.</p>}
               <div className="attention-meta">
                 {task.dueDate && <span className={task.overdue ? 'attention-overdue' : ''}>{task.overdue ? 'Past due' : 'Due'}: {dateLabel(task.dueDate)}</span>}
@@ -272,7 +267,6 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <div>{currentPage > 1 && <Link href={urlFor(activeFilters, currentPage - 1)}>← Previous</Link>}{currentPage < totalPages && <Link href={urlFor(activeFilters, currentPage + 1)}>Next →</Link>}</div>
       </nav>
     </section>
-    <p className="dashboard-note">Verification flags mean the AI recommendation may be outdated or incomplete. Check ClickUp before acting.</p>
-    <p className="dashboard-note">Reviews and dismissals are recorded only in this app. ClickUp tasks are unchanged; new analysis may reopen a recommendation.</p>
+    <p className="dashboard-note">Reviews and dismissals are stored in this app only; ClickUp is unchanged.</p>
   </main>;
 }

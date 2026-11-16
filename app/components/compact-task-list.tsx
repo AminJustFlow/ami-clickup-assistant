@@ -11,6 +11,7 @@ type TaskRow = {
   client: { name: string };
   list: { name: string };
   assignees: { employee: { name: string } }[];
+  insightGroupMembers?: TaskRow[];
   intelligence?: {
     agentState: string;
     needsAmi: boolean;
@@ -55,6 +56,13 @@ export function CompactTaskRow({ task, compact = false }: { task: TaskRow; compa
       {!compact && intel?.waitingOnName && <p className="client-task-waiting"><strong>AI identifies dependency:</strong> {intel.waitingOnName}</p>}
       {!compact && intel && <div className="client-task-ai-state"><span className="status-pill">{stateLabels[intel.agentState] ?? intel.agentState}</span><span>AI assessment · not verified task status</span></div>}
       {!compact && !intel && <div className="client-task-ai-state"><span className="status-pill">Not analyzed</span></div>}
+      {task.insightGroupMembers && task.insightGroupMembers.length > 0 && <details className="task-extra">
+        <summary>{task.insightGroupMembers.length} related subtask insight{task.insightGroupMembers.length === 1 ? '' : 's'}</summary>
+        <ul>{task.insightGroupMembers.map(member => <li key={member.id}>
+          <strong>{member.name}</strong>{member.intelligence?.amiAction || member.intelligence?.currentSummary ? <> — {member.intelligence?.amiAction || member.intelligence?.currentSummary}</> : null}
+          {' '}<TaskDetailsButton taskId={member.id} label="Evidence" />
+        </li>)}</ul>
+      </details>}
     </div>
     <div className="compact-intel-controls">
       <TaskDetailsButton taskId={task.id} />

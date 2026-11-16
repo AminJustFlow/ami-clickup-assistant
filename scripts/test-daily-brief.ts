@@ -17,7 +17,7 @@ const clients = [
 
 function task(id: number, overrides: Partial<BriefTaskInput> = {}): BriefTaskInput {
   return {
-    id, name: `Task ${id}`, clientId: 1, clickupUrl: `https://app.clickup.com/t/${id}`, clickupStatus: 'open', dueDate: null,
+    id, clickupTaskId: String(id), rawPayload: { parent: null }, name: `Task ${id}`, clientId: 1, clickupUrl: `https://app.clickup.com/t/${id}`, clickupStatus: 'open', dueDate: null,
     clickupUpdatedAt: new Date('2026-10-28T12:00:00Z'), deleted: false, comments: [], attentionDisposition: null,
     intelligence: {
       agentState: 'ACTIVE', needsAmi: false, amiAction: null, currentSummary: `Summary ${id}`, waitingOnType: 'NONE', waitingOnName: null,
@@ -41,13 +41,23 @@ const brief = buildDailyBrief({ now, since: new Date('2026-10-27T14:00:00Z'), cl
 assert.deepEqual(brief.decisions.map(item => item.id), [1]);
 assert.deepEqual(brief.newRisks.map(item => item.id), [2]);
 assert.deepEqual(brief.progress.map(item => item.id), [7]);
+assert.deepEqual(brief.topActions.map(item => item.id), [1, 2], 'home actions show decisions before interventions and never use overdue-only work');
+assert.deepEqual(brief.topActions.map(item => item.actionKind), ['DECISION', 'INTERVENTION']);
 assert.equal(brief.coverage.imported, 7);
 assert.equal(brief.coverage.analyzed, 6);
 assert.equal(brief.coverage.staleClientCount, 2);
 assert.equal(brief.totals.stale, 1);
+assert.equal(brief.totals.overdue, brief.totals.overdueRecent + brief.totals.overdueOlder, 'overdue age bands reconcile to the visible total');
 assert.equal(brief.clients.length, 2);
 assert.equal(brief.clients.find(client => client.slug === 'acme')?.imported, 6, 'auxiliary folders consolidate into the canonical client');
 assert.equal(brief.clients.find(client => client.slug === 'quiet')?.healthy, true);
+
+const parentDecision = task(20, { intelligence: { ...task(20).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI', amiAction: 'Approve launch' } });
+const childDecision = task(21, { rawPayload: { parent: '20' }, intelligence: { ...task(21).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI', amiAction: 'Confirm launch copy' } });
+const groupedBrief = buildDailyBrief({ now, since: new Date('2026-10-27T14:00:00Z'), clients, tasks: [parentDecision, childDecision], changes: [] });
+assert.equal(groupedBrief.totals.decisions, 1, 'parent and child decisions count as one work group');
+assert.equal(groupedBrief.decisions[0]?.relatedInsights?.length, 1, 'the distinct child decision remains available in the group');
+assert.equal(groupedBrief.topActions.length, 1, 'one hierarchy occupies one top-action slot');
 
 const base = { id: 1, name: 'x', clientName: 'x', clientSlug: 'x', clickupUrl: null, clickupStatus: 'open', dueDate: null, clickupUpdatedAt: now, evidenceAt: now, analyzedAt: now, summary: null, action: null, state: 'ACTIVE', risk: 'LOW', waitingOnType: 'NONE', waitingOnName: null, attentionScore: 1, overdue: false } satisfies Omit<BriefTask, 'priority'>;
 const ordered: BriefTask[] = [{ ...base, id: 5, priority: 'DEPENDENCY' }, { ...base, id: 3, priority: 'AMI_DECISION' }, { ...base, id: 1, priority: 'OVERDUE_DECISION' }, { ...base, id: 2, priority: 'HIGH_RISK' }, { ...base, id: 4, priority: 'STALE' }];
