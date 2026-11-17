@@ -4,6 +4,7 @@ import { compareAttentionPriority, dailyBrief } from '../lib/attention/daily-bri
 import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
+import { compareRecentFirst, latestActivityTime } from '../lib/tasks/recency';
 
 const healthy = { name: 'Alpha', total: 10, analyzed: 10, needsAmi: 0, overdue: 0, blocked: 0, waiting: 0, dueSoon: 0 };
 assert.equal(clientHealthStatus(healthy), 'No flagged issues');
@@ -73,7 +74,7 @@ const brief = dailyBrief([
   { id: 4, overdue: false, verificationReasons: [], intelligence: { amiAttentionScore: 80 } }
 ]);
 assert.deepEqual({ open: brief.open, ready: brief.ready, verify: brief.verify, overdueReady: brief.overdueReady }, { open: 4, ready: 3, verify: 1, overdueReady: 1 });
-assert.deepEqual(brief.topReady.map(item => item.id), [3, 4, 2]);
+assert.deepEqual(brief.topReady.map(item => item.id), [2, 3, 4]);
 assert.deepEqual(brief.topToVerify.map(item => item.id), [1]);
 assert.deepEqual(dailyBrief([]).topReady, []);
 
@@ -90,10 +91,18 @@ const ranked = dailyBrief([
   item(4, '2026-10-12T10:00:00Z', 5, true),
   item(5, '2026-10-13T13:00:00Z', 100, false, ['Low confidence'])
 ], clock);
-assert.deepEqual(ranked.topReady.map(task => task.id), [4, 3, 2]);
+assert.deepEqual(ranked.topReady.map(task => task.id), [1, 2, 3]);
 assert.deepEqual(ranked.topToVerify.map(task => task.id), [5]);
 assert.equal(compareAttentionPriority(item(1, null, 70), item(2, null, 60), clock) < 0, true);
 assert.equal(compareAttentionPriority(item(1, null, 70), item(2, null, 70), clock) < 0, true);
+
+const recencyTasks = [
+  { id: 1, clickupUpdatedAt: new Date('2026-01-30T12:00:00Z'), dueDate: new Date('2026-01-30T12:00:00Z') },
+  { id: 2, clickupUpdatedAt: new Date('2026-11-01T12:00:00Z') },
+  { id: 3, clickupUpdatedAt: new Date('2026-10-01T12:00:00Z'), comments: [{ clickupCreatedAt: new Date('2026-11-10T12:00:00Z') }] }
+].sort(compareRecentFirst);
+assert.deepEqual(recencyTasks.map(task => task.id), [3, 2, 1], 'latest real activity always wins over old due dates');
+assert.equal(latestActivityTime({ id: 4, clickupUpdatedAt: null }), 0);
 
 
 const before = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'open' }, assignees: [{ id: 2 }], due_date: '1', description: 'A' });

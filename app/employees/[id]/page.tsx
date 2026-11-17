@@ -6,6 +6,7 @@ import { AppNav } from '../../components/app-nav';
 import { CompactTaskSection } from '../../components/compact-task-list';
 import { EmployeeClientDirectory } from '../../components/employee-client-directory';
 import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
+import { compareRecentFirst } from '@/lib/tasks/recency';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,7 @@ export default async function EmployeePage({ params, searchParams }: {
     include: {
       client: true, intelligence: true, attentionDisposition: true, list: true,
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+      events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { occurredAt: true } },
       assignees: { include: { employee: true } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
@@ -66,8 +68,7 @@ export default async function EmployeePage({ params, searchParams }: {
     (!filters.client || String(t.clientId) === filters.client) &&
     (!filters.status || t.intelligence?.agentState === filters.status);
   const filtered = tasks.filter(matches);
-  const grouped = (items: typeof tasks) => groupedInsightRepresentatives(tasks, items, (a, b) =>
-    (b.intelligence?.amiAttentionScore ?? 0) - (a.intelligence?.amiAttentionScore ?? 0) || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0));
+  const grouped = (items: typeof tasks) => groupedInsightRepresentatives(tasks, items, compareRecentFirst);
   const needsAmi = grouped(filtered.filter(isOpenAttentionTask));
   const isClosed = (t: (typeof tasks)[number]) => isClosedClickUpStatus(t.clickupStatus);
   const waiting = grouped(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
@@ -82,8 +83,8 @@ export default async function EmployeePage({ params, searchParams }: {
     commentDates: t.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt])
   })));
   const notStarted = grouped(filtered.filter(t => t.intelligence?.agentState === 'NOT_STARTED' && !isClosed(t) && !isOpenAttentionTask(t)));
-  const completed = filtered.filter(t => isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t));
-  const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !active.includes(t) && !notStarted.includes(t));
+  const completed = filtered.filter(t => isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t)).sort(compareRecentFirst);
+  const other = filtered.filter(t => t.intelligence && !isClosed(t) && !needsAmi.includes(t) && !waiting.includes(t) && !active.includes(t) && !notStarted.includes(t)).sort(compareRecentFirst);
   const query = new URLSearchParams();
   for (const key of ['q', 'client', 'status'] as const) if (filters[key]) query.set(key, filters[key]);
   const sectionProps = { section: filters.section, page: filters.page, query: query.toString(), initialLimit: 5, compact: true };

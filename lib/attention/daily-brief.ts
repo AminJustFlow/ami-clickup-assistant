@@ -1,3 +1,5 @@
+import { compareRecentFirst } from '../tasks/recency';
+
 /**
  * Deterministic, read-only briefing. Counts reflect analyzed and open Ami
  * recommendations only; they are not a claim about all ClickUp work.
@@ -10,36 +12,16 @@ export type BriefItem = {
   dueDate?: Date | null;
   clickupUpdatedAt?: Date | null;
   verificationReasons: string[];
-  intelligence: { amiAttentionScore: number | null; amiAction?: string | null } | null;
+  intelligence: { amiAttentionScore: number | null; amiAction?: string | null; lastMeaningfulChangeAt?: Date | null } | null;
 };
 
 /**
- * Stable, deterministic ranking of actionable decisions. Overdue work stays first;
- * approaching deadlines are elevated without overriding existing overdue work.
- * Never use this comparator to rank unverified recommendations above verified ones.
+ * Stable newest-first ranking. Urgency remains visible metadata and never
+ * overrides the latest real activity.
  */
 export function compareAttentionPriority<T extends BriefItem>(a: T, b: T, now = new Date()): number {
-  const urgencyBand = (item: T) => {
-    if (item.overdue) return 0;
-    const due = item.dueDate?.getTime();
-    if (due != null && Number.isFinite(due) && due >= now.getTime() && due <= now.getTime() + 48 * 60 * 60 * 1000) return 1;
-    return 2;
-  };
-  const bandDifference = urgencyBand(a) - urgencyBand(b);
-  if (bandDifference) return bandDifference;
-  // Within urgent bands, the nearest deadline wins.
-  if (urgencyBand(a) < 2) {
-    const dateA = a.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
-    const dateB = b.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
-    if (dateA !== dateB) return dateA - dateB;
-  }
-  const score = (item: T) => {
-    const value = item.intelligence?.amiAttentionScore;
-    return value != null && Number.isFinite(value) ? value : 0;
-  };
-  return score(b) - score(a)
-    || (b.clickupUpdatedAt?.getTime() ?? 0) - (a.clickupUpdatedAt?.getTime() ?? 0)
-    || a.id - b.id;
+  void now;
+  return compareRecentFirst(a, b);
 }
 
 export function dailyBrief<T extends BriefItem>(items: readonly T[], now = new Date()) {

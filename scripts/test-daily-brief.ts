@@ -60,8 +60,14 @@ assert.equal(groupedBrief.decisions[0]?.relatedInsights?.length, 1, 'the distinc
 assert.equal(groupedBrief.topActions.length, 1, 'one hierarchy occupies one top-action slot');
 
 const base = { id: 1, name: 'x', clientName: 'x', clientSlug: 'x', clickupUrl: null, clickupStatus: 'open', dueDate: null, clickupUpdatedAt: now, evidenceAt: now, analyzedAt: now, summary: null, action: null, state: 'ACTIVE', risk: 'LOW', waitingOnType: 'NONE', waitingOnName: null, attentionScore: 1, overdue: false } satisfies Omit<BriefTask, 'priority'>;
-const ordered: BriefTask[] = [{ ...base, id: 5, priority: 'DEPENDENCY' }, { ...base, id: 3, priority: 'AMI_DECISION' }, { ...base, id: 1, priority: 'OVERDUE_DECISION' }, { ...base, id: 2, priority: 'HIGH_RISK' }, { ...base, id: 4, priority: 'STALE' }];
+const ordered: BriefTask[] = [
+  { ...base, id: 5, priority: 'DEPENDENCY', evidenceAt: new Date('2026-10-28T15:00:00Z') },
+  { ...base, id: 3, priority: 'AMI_DECISION', evidenceAt: new Date('2026-10-28T13:00:00Z') },
+  { ...base, id: 1, priority: 'OVERDUE_DECISION', evidenceAt: new Date('2026-01-01T00:00:00Z'), clickupUpdatedAt: new Date('2026-01-01T00:00:00Z') },
+  { ...base, id: 2, priority: 'HIGH_RISK', evidenceAt: new Date('2026-10-28T14:00:00Z') },
+  { ...base, id: 4, priority: 'STALE', evidenceAt: new Date('2026-10-28T12:00:00Z') }
+];
 ordered.sort(compareBriefTasks);
-assert.deepEqual(ordered.map(item => item.priority), ['OVERDUE_DECISION', 'HIGH_RISK', 'AMI_DECISION', 'STALE', 'DEPENDENCY']);
+assert.deepEqual(ordered.map(item => item.priority), ['DEPENDENCY', 'HIGH_RISK', 'AMI_DECISION', 'STALE', 'OVERDUE_DECISION']);
 
 console.log('Daily brief tests passed: checkpoints, time zone, ranking, exclusions, grouping, freshness, coverage, and progress.');

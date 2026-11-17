@@ -64,10 +64,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       select: {
         id: true, clickupTaskId: true, rawPayload: true, name: true, dueDate: true, clickupUpdatedAt: true, clickupUrl: true, clickupStatus: true,
         client: { select: { name: true } },
+        comments: { orderBy: { clickupUpdatedAt: 'desc' }, take: 1, select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+        events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { occurredAt: true } },
         attentionDisposition: { select: { decision: true, reason: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
           amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
-          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true
+          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true, lastMeaningfulChangeAt: true
         } }
       },
       orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
@@ -92,8 +94,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const featuredIds = new Set(brief.topReady.map(task => task.id));
   const selected = (view === 'active' ? active.filter(task => !featuredIds.has(task.id)) : history)
     .filter(task => (priority !== 'overdue' || task.overdue) && (priority !== 'verify' || task.verificationReasons.length > 0))
-    .sort((a, b) => Number(a.verificationReasons.length > 0) - Number(b.verificationReasons.length > 0)
-      || compareAttentionPriority(a, b, now));
+    .sort((a, b) => compareAttentionPriority(a, b, now));
   const total = selected.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);

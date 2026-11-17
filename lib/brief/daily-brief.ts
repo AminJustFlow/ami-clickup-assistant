@@ -2,6 +2,7 @@ import { groupClientFolders, type ClientFolder } from '@/lib/clients/grouping';
 import { isOpenAttentionTask } from '@/lib/attention/triage';
 import { isStaleActive, lastSourceActivity } from '@/lib/intelligence/staleness';
 import { groupTaskInsights } from '@/lib/tasks/insight-groups';
+import { compareRecentFirst } from '@/lib/tasks/recency';
 
 export const DAILY_BRIEF_COOKIE = 'ami_daily_brief_last_reviewed';
 export const DAY_MS = 86_400_000;
@@ -28,6 +29,7 @@ export type BriefTask = {
   attentionScore: number;
   priority: BriefPriority;
   overdue: boolean;
+  groupActivityAt?: Date | null;
   relatedInsights?: BriefTask[];
 };
 
@@ -118,15 +120,11 @@ export function formatEastern(value: Date): string {
 
 const closed = (status: string | null) => /^(done|complete|completed|closed|cancelled|canceled)$/i.test(status?.trim() ?? '');
 
-function rank(priority: BriefPriority): number {
-  return ({ OVERDUE_DECISION: 0, HIGH_RISK: 1, AMI_DECISION: 2, STALE: 3, DEPENDENCY: 4, RECENT: 5 })[priority];
-}
-
 export function compareBriefTasks(a: BriefTask, b: BriefTask): number {
-  return rank(a.priority) - rank(b.priority)
-    || b.attentionScore - a.attentionScore
-    || (b.evidenceAt?.getTime() ?? 0) - (a.evidenceAt?.getTime() ?? 0)
-    || a.name.localeCompare(b.name);
+  return compareRecentFirst(
+    { id: a.id, clickupUpdatedAt: a.groupActivityAt ?? a.clickupUpdatedAt, intelligence: { lastMeaningfulChangeAt: a.groupActivityAt ?? a.evidenceAt } },
+    { id: b.id, clickupUpdatedAt: b.groupActivityAt ?? b.clickupUpdatedAt, intelligence: { lastMeaningfulChangeAt: b.groupActivityAt ?? b.evidenceAt } }
+  );
 }
 
 export function buildDailyBrief(input: {
@@ -160,10 +158,11 @@ export function buildDailyBrief(input: {
     const stale = !!intel && isStaleActive({ state: intel.agentState, taskUpdatedAt: task.clickupUpdatedAt, commentDates: task.comments.flatMap(c => [c.clickupCreatedAt, c.clickupUpdatedAt]) }, now);
     const dependency = !!intel && ['WAITING_ON_TEAM', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR'].includes(intel.agentState);
     const priority: BriefPriority = openDecision && overdue ? 'OVERDUE_DECISION' : highRisk ? 'HIGH_RISK' : openDecision ? 'AMI_DECISION' : stale ? 'STALE' : dependency ? 'DEPENDENCY' : 'RECENT';
+    const evidenceTime = Math.max(intel?.lastMeaningfulChangeAt?.getTime() ?? 0, activity?.getTime() ?? 0);
     return {
       id: task.id, name: task.name, clientName: group?.canonical.name ?? 'Unattributed client', clientSlug: group?.canonical.slug ?? '',
       clickupUrl: task.clickupUrl, clickupStatus: task.clickupStatus, dueDate: task.dueDate, clickupUpdatedAt: task.clickupUpdatedAt,
-      evidenceAt: intel?.lastMeaningfulChangeAt ?? activity, analyzedAt: intel?.analyzedAt ?? null,
+      evidenceAt: evidenceTime ? new Date(evidenceTime) : null, analyzedAt: intel?.analyzedAt ?? null,
       summary: intel?.currentSummary ?? null, action: intel?.amiAction ?? null, state: intel?.agentState ?? null, risk: intel?.riskLevel ?? null,
       waitingOnType: intel?.waitingOnType ?? null, waitingOnName: intel?.waitingOnName ?? null,
       attentionScore: intel?.amiAttentionScore ?? 0, priority, overdue
@@ -172,10 +171,14 @@ export function buildDailyBrief(input: {
 
   const briefById = new Map(sourceTasks.map(task => [task.id, toBriefTask(task)]));
   const groupBrief = (matches: BriefTaskInput[]) => groupTaskInsights(sourceTasks, matches, (a, b) =>
-    compareBriefTasks(briefById.get(a.id)!, briefById.get(b.id)!)).map(group => ({
-      ...briefById.get(group.primary.id)!,
-      relatedInsights: group.members.filter(member => member.id !== group.primary.id).map(member => briefById.get(member.id)!)
-    }));
+    compareBriefTasks(briefById.get(a.id)!, briefById.get(b.id)!)).map(group => {
+      const memberBriefs = group.members.map(member => briefById.get(member.id)!);
+      const groupActivityTime = Math.max(...memberBriefs.map(member => Math.max(member.evidenceAt?.getTime() ?? 0, member.clickupUpdatedAt?.getTime() ?? 0)));
+      return {
+        ...briefById.get(group.primary.id)!, groupActivityAt: groupActivityTime ? new Date(groupActivityTime) : null,
+        relatedInsights: group.members.filter(member => member.id !== group.primary.id).map(member => briefById.get(member.id)!)
+      };
+    });
   const openDecisions = groupBrief(sourceTasks.filter(task => isOpenAttentionTask({
     clickupStatus: task.clickupStatus,
     intelligence: task.intelligence ? { needsAmi: task.intelligence.needsAmi, agentState: task.intelligence.agentState, sourceFingerprint: task.intelligence.sourceFingerprint, analyzedAt: task.intelligence.analyzedAt } : null,
@@ -193,10 +196,8 @@ export function buildDailyBrief(input: {
       || (intel.analyzedAt?.getTime() ?? 0) >= since.getTime()
       || (changesByTask.get(task.id) ?? []).some(change => change.detectedAt >= since);
   });
-  const recentRisks = groupTaskInsights(sourceTasks, recentRiskTasks, (a, b) => compareBriefTasks(briefById.get(a.id)!, briefById.get(b.id)!)).map(group => ({
-    ...briefById.get(group.primary.id)!,
-    relatedInsights: group.members.filter(member => member.id !== group.primary.id).map(member => briefById.get(member.id)!),
-    changedAt: group.primary.intelligence!.lastMeaningfulChangeAt ?? group.primary.intelligence!.analyzedAt ?? now, kind: 'RISK' as const
+  const recentRisks = groupBrief(recentRiskTasks).map(task => ({
+    ...task, changedAt: task.groupActivityAt ?? task.evidenceAt ?? task.analyzedAt ?? now, kind: 'RISK' as const
   })).sort((a, b) => compareBriefTasks(a, b));
 
   const completedTasks = sourceTasks.filter(task => {
@@ -205,10 +206,9 @@ export function buildDailyBrief(input: {
     return (intel.lastMeaningfulChangeAt?.getTime() ?? 0) >= since.getTime()
       || (changesByTask.get(task.id) ?? []).some(change => change.nextState === 'COMPLETED' && change.detectedAt >= since);
   });
-  const completed = groupTaskInsights(sourceTasks, completedTasks, (a, b) => (b.intelligence?.lastMeaningfulChangeAt?.getTime() ?? 0) - (a.intelligence?.lastMeaningfulChangeAt?.getTime() ?? 0)).map(group => {
-    const task = group.primary;
+  const completed = groupBrief(completedTasks).map(task => {
     const changeDate = (changesByTask.get(task.id) ?? []).filter(change => change.nextState === 'COMPLETED').sort((a, b) => b.detectedAt.getTime() - a.detectedAt.getTime())[0]?.detectedAt;
-    return { ...briefById.get(task.id)!, relatedInsights: group.members.filter(member => member.id !== task.id).map(member => briefById.get(member.id)!), changedAt: changeDate ?? task.intelligence!.lastMeaningfulChangeAt ?? task.clickupUpdatedAt ?? now, kind: 'PROGRESS' as const };
+    return { ...task, changedAt: task.groupActivityAt ?? changeDate ?? task.evidenceAt ?? task.clickupUpdatedAt ?? now, kind: 'PROGRESS' as const };
   }).sort((a, b) => b.changedAt.getTime() - a.changedAt.getTime());
 
   const clients: ClientBrief[] = groups.map(group => {
@@ -236,7 +236,7 @@ export function buildDailyBrief(input: {
   const topActions: TopAction[] = [
     ...openDecisions.map(task => ({ ...task, actionKind: 'DECISION' as const, actionReason: task.overdue ? 'A concrete decision is waiting and its due date has passed.' : 'A concrete response or decision is waiting for Ami.' })),
     ...interventions.map(task => ({ ...task, actionKind: 'INTERVENTION' as const, actionReason: task.state === 'BLOCKED' ? 'Work is blocked and may need management intervention.' : 'This work has a current high-risk or issue signal.' }))
-  ].slice(0, 3);
+  ].sort(compareBriefTasks).slice(0, 3);
   const overdueTasks = sourceTasks.filter(task => briefById.get(task.id)!.overdue);
   const overdueGroups = groupTaskInsights(sourceTasks, overdueTasks);
   const overdueRecent = overdueGroups.filter(group => group.members.some(task => task.clickupUpdatedAt && now.getTime() - task.clickupUpdatedAt.getTime() <= 30 * DAY_MS)).length;

@@ -1,16 +1,20 @@
 import { isClosedClickUpStatus, hasSpecificAmiAction } from '@/lib/attention/triage';
 import { TaskDetailsButton } from './task-details';
+import { latestActivityTime } from '@/lib/tasks/recency';
 
 type TaskRow = {
   id: number;
   name: string;
   clickupUrl: string | null;
   clickupStatus: string | null;
+  clickupUpdatedAt?: Date | null;
   clickupPriority?: string | null;
   dueDate?: Date | null;
   client: { name: string };
   list: { name: string };
   assignees: { employee: { name: string } }[];
+  comments?: { clickupCreatedAt?: Date | null; clickupUpdatedAt?: Date | null }[];
+  events?: { occurredAt?: Date | null }[];
   insightGroupMembers?: TaskRow[];
   intelligence?: {
     agentState: string;
@@ -20,6 +24,7 @@ type TaskRow = {
     waitingOnName: string | null;
     confidence?: number | null;
     analyzedAt?: Date | null;
+    lastMeaningfulChangeAt?: Date | null;
   } | null;
 };
 
@@ -40,6 +45,8 @@ export function CompactTaskRow({ task, compact = false }: { task: TaskRow; compa
     intel?.agentState !== 'COMPLETED' && !isClosedClickUpStatus(task.clickupStatus));
   const dueLabel = task.dueDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const priority = task.clickupPriority?.trim();
+  const activityTime = latestActivityTime(task);
+  const activityLabel = activityTime ? new Date(activityTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
   return <article className="compact-intel-row client-task-card" style={compact ? { paddingTop: 12, paddingBottom: 12 } : undefined}>
     <div className="compact-intel-main">
       <div className="compact-intel-meta"><span>{task.client.name} / {task.list.name}</span></div>
@@ -47,6 +54,7 @@ export function CompactTaskRow({ task, compact = false }: { task: TaskRow; compa
       <div className="client-task-facts" aria-label="ClickUp task information">
         <span><strong>Assigned:</strong> {owners}</span>
         <span><strong>ClickUp:</strong> {task.clickupStatus ?? 'Unknown'}</span>
+        {activityLabel && <span><strong>Last activity:</strong> {activityLabel}</span>}
         {priority && <span><strong>Priority:</strong> {priority}</span>}
         {dueLabel && <span className={overdue ? 'client-task-due-overdue' : ''}><strong>{overdue ? 'Past due:' : 'Due:'}</strong> {dueLabel}</span>}
       </div>

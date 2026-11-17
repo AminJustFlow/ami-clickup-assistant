@@ -1,4 +1,5 @@
 import { clickupParentId } from './hierarchy';
+import { latestActivityTime, type RecencyTask } from './recency';
 
 export type InsightHierarchyTask = {
   id: number;
@@ -45,13 +46,16 @@ export function groupTaskInsights<T extends InsightHierarchyTask>(
     const members = [...values].sort(compare);
     const root = members.find(task => task.clickupTaskId === groupKey);
     return { groupKey, primary: root ?? members[0], members };
-  }).sort((a, b) => compare(a.primary, b.primary));
+  }).sort((a, b) => compare(a.members[0], b.members[0]));
 }
 
-export function groupedInsightRepresentatives<T extends InsightHierarchyTask>(
+export function groupedInsightRepresentatives<T extends InsightHierarchyTask & RecencyTask>(
   allTasks: readonly T[], matchingTasks: readonly T[], compare?: (a: T, b: T) => number
-): Array<T & { insightGroupMembers?: T[] }> {
+): Array<T & { insightGroupMembers?: T[]; groupActivityAt?: Date | null }> {
   return groupTaskInsights(allTasks, matchingTasks, compare).map(group =>
-    Object.assign(group.primary, { insightGroupMembers: group.members.filter(member => member.id !== group.primary.id) })
+    Object.assign(group.primary, {
+      insightGroupMembers: group.members.filter(member => member.id !== group.primary.id),
+      groupActivityAt: (() => { const time = Math.max(...group.members.map(latestActivityTime)); return time ? new Date(time) : null; })()
+    })
   );
 }

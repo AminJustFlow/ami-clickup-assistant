@@ -1,6 +1,7 @@
 import { TaskDetailsButton } from '../components/task-details';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../components/app-nav';
+import { compareRecentFirst } from '@/lib/tasks/recency';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,13 +30,16 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       select: {
         id: true, name: true, clickupStatus: true, clickupUpdatedAt: true, clickupUrl: true,
         client: { select: { name: true, slug: true } },
-        intelligence: { select: { needsAmi: true, agentState: true, amiAction: true, currentSummary: true } },
+        intelligence: { select: { needsAmi: true, agentState: true, amiAction: true, currentSummary: true, lastMeaningfulChangeAt: true } },
+        comments: { orderBy: { clickupUpdatedAt: 'desc' }, take: 1, select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+        events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { occurredAt: true } },
         assignees: { select: { employee: { select: { name: true } } } }
       },
       orderBy: { clickupUpdatedAt: 'desc' },
       take: 60
     })
   ]) : [[], [], []];
+  tasks.sort(compareRecentFirst);
 
   return <main className="ops-shell dashboard-shell" id="main-content">
     <AppNav current="overview" />

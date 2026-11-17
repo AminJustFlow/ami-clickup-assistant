@@ -3,6 +3,7 @@ import { buildTaskContext } from '@/lib/intelligence/context';
 import { analyzeWithRules } from '@/lib/intelligence/engine';
 import { saveReview } from './actions';
 import { attentionVerificationReasons, isClosedClickUpStatus } from '@/lib/attention/triage';
+import { compareRecentFirst } from '@/lib/tasks/recency';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,8 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     include: {
       client: true, list: true, intelligence: true,
       assignees: { include: { employee: true } },
-      comments: { orderBy: { clickupCreatedAt: 'asc' } }, reviewFeedback: true
+      comments: { orderBy: { clickupCreatedAt: 'asc' } },
+      events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { occurredAt: true } }, reviewFeedback: true
     },
     orderBy: { clickupUpdatedAt: 'desc' }
   });
@@ -46,7 +48,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     const feedback = task.reviewFeedback;
     const staleReview = !!feedback && (feedback.analyzedAt?.getTime() ?? 0) !== (saved.analyzedAt?.getTime() ?? 0);
     return { task, rules, saved, ai, flags, notes, feedback, staleReview };
-  }).sort((a, b) => Number(b.flags.some(f => f.priority)) - Number(a.flags.some(f => f.priority)) || b.flags.length - a.flags.length);
+  }).sort((a, b) => compareRecentFirst(a.task, b.task));
 
   const flagged = rows.filter(r => r.flags.length > 0).length;
   const reviewed = rows.filter(r => r.feedback && !r.staleReview).length;
