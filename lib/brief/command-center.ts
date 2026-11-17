@@ -61,6 +61,8 @@ export async function loadCommandCenter(now = new Date()) {
   };
   const deadlineStart = new Date(now.getTime() - 2 * 86_400_000);
   const deadlineEnd = new Date(now.getTime() + 7 * 86_400_000);
+  const corroborationStart = new Date(now.getTime() - 7 * 86_400_000);
+  const newTaskStart = new Date(now.getTime() - 30 * 86_400_000);
   const [readiness, actionRows, updates, riskRows, reviews, brief, deadlineRows, activityRows] = await Promise.all([
     operationalReadiness(now),
     loadActionCandidates(now),
@@ -85,6 +87,10 @@ export async function loadCommandCenter(now = new Date()) {
       where: { AND: [openCurrentWhere, { dueDate: { gte: deadlineStart, lte: deadlineEnd } }, { OR: [
         { list: { type: 'AMI' } },
         { assignees: { some: { employee: { name: { equals: AMI_EMPLOYEE_NAME, mode: 'insensitive' } } } } }
+      ] }, { OR: [
+        { clickupCreatedAt: { gte: newTaskStart } },
+        { comments: { some: { OR: [{ clickupCreatedAt: { gte: corroborationStart } }, { clickupUpdatedAt: { gte: corroborationStart } }] } } },
+        { intelligence: { is: { classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE', verificationStatus: 'VERIFIED', freshnessStatus: 'CURRENT' } } }
       ] }] },
       select: fallbackSelect, orderBy: [{ dueDate: 'asc' }, { clickupUpdatedAt: 'desc' }], take: 30
     }),
@@ -92,7 +98,10 @@ export async function loadCommandCenter(now = new Date()) {
       where: { AND: [openCurrentWhere, { OR: [
         { clickupCreatedAt: { gte: current.previousStart } },
         { comments: { some: { OR: [{ clickupCreatedAt: { gte: current.previousStart } }, { clickupUpdatedAt: { gte: current.previousStart } }] } } },
-        { events: { some: { occurredAt: { gte: current.previousStart }, eventType: { in: recentEventTypes } } } }
+        { AND: [
+          { clickupUpdatedAt: { gte: current.previousStart } },
+          { events: { some: { occurredAt: { gte: current.previousStart }, eventType: { in: recentEventTypes } } } }
+        ] }
       ] }] },
       select: fallbackSelect, orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }], take: 40
     })
@@ -131,29 +140,33 @@ export async function loadCommandCenter(now = new Date()) {
     let label = 'New ClickUp task';
     let summary = 'Created in ClickUp since the prior workday.';
     let sourceAt = createdAt;
-    let priority = 3;
-    if (deadline) {
-      const assignees = task.assignees.map(item => item.employee.name).join(', ') || 'Ami';
-      label = dueAt < now.getTime() ? 'Recently overdue' : dueAt <= now.getTime() + 2 * 86_400_000 ? 'Due within 2 days' : 'Upcoming Ami deadline';
-      summary = `Assigned to ${assignees}. This is a ClickUp deadline, not an AI-classified decision.`;
-      sourceAt = dueAt;
-      priority = dueAt >= now.getTime() && dueAt <= now.getTime() + 2 * 86_400_000 ? 0 : dueAt < now.getTime() ? 1 : 3;
-    } else if (commentAt >= eventAt && commentAt >= createdAt && comment) {
+    let priority = 2;
+    let sourceKind = 'created';
+    if (commentAt >= eventAt && commentAt >= createdAt && comment) {
       label = 'Recent human comment';
       const body = comment.body.replace(/\s+/g, ' ').trim();
       summary = `${comment.authorName || 'A ClickUp user'}: ${body.slice(0, 180)}${body.length > 180 ? '…' : ''}`;
       sourceAt = commentAt;
-      priority = 2;
+      priority = 0;
+      sourceKind = 'comment';
     } else if (eventAt >= createdAt && event) {
       label = eventLabels[event.eventType] ?? 'Observed ClickUp change';
       summary = 'ClickUp changed since the prior workday. Open the source details before deciding whether action is needed.';
       sourceAt = eventAt;
-      priority = 2;
+      priority = 1;
+      sourceKind = 'event';
+    } else if (deadline) {
+      const assignees = task.assignees.map(item => item.employee.name).join(', ') || 'Ami';
+      label = dueAt < now.getTime() ? 'Recently overdue' : dueAt <= now.getTime() + 2 * 86_400_000 ? 'Due within 2 days' : 'Upcoming Ami deadline';
+      summary = `Assigned to ${assignees}. A recent source signal keeps this deadline in today’s check list.`;
+      sourceAt = dueAt;
+      priority = 3;
+      sourceKind = 'due';
     }
-    const fingerprint = `${deadline ? 'due' : 'source'}-${new Date(sourceAt || now.getTime()).toISOString()}`;
+    const fingerprint = `${sourceKind}-${new Date(sourceAt || now.getTime()).toISOString()}`;
     return { ...task, label, summary, sourceAt, priority, fingerprint, itemKey: briefItemKey('CHECK', task.id, fingerprint) };
   }).filter(item => !reviewed.has(item.itemKey)).sort((a, b) =>
-    a.priority - b.priority || (a.priority === 2 ? b.sourceAt - a.sourceAt : a.sourceAt - b.sourceAt) || a.id - b.id);
+    a.priority - b.priority || (a.priority < 3 ? b.sourceAt - a.sourceAt : a.sourceAt - b.sourceAt) || a.id - b.id);
   const groupedChecks = new Map<string, typeof checks[number]>();
   for (const check of checks) {
     const groupKey = `${check.clientId}:${clickupParentId(check.rawPayload) ?? check.clickupTaskId}`;

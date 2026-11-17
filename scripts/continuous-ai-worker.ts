@@ -204,12 +204,18 @@ async function refreshQueue() {
             OR cm."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')))
         OR EXISTS (SELECT 1 FROM "TaskEvent" oe WHERE oe."taskId" = t.id
           AND oe."occurredAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+          AND t."clickupUpdatedAt" >= NOW() - INTERVAL '7 days'
           AND oe."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE'))
         OR (t."dueDate" BETWEEN NOW() - INTERVAL '7 days' AND NOW() + INTERVAL '14 days'
           AND (l.type = 'AMI' OR EXISTS (
             SELECT 1 FROM "TaskAssignee" ta JOIN "Employee" ae ON ae.id = ta."employeeId"
             WHERE ta."taskId" = t.id AND LOWER(ae.name) = LOWER(${AMI_EMPLOYEE_NAME})
-          )))
+          )) AND (t."clickupCreatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+            OR EXISTS (SELECT 1 FROM "Comment" dc WHERE dc."taskId" = t.id
+              AND (dc."clickupCreatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+                OR dc."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')))
+            OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
+              AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT')))
         OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
           AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT'
           AND (i."needsAmi" = true OR i."riskLevel" IN ('HIGH', 'CRITICAL')
@@ -289,12 +295,18 @@ export async function leaseJob(client = prisma) {
               OR cm."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')))
           OR EXISTS (SELECT 1 FROM "TaskEvent" oe WHERE oe."taskId" = t.id
             AND oe."occurredAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+            AND t."clickupUpdatedAt" >= NOW() - INTERVAL '7 days'
             AND oe."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE'))
           OR (t."dueDate" BETWEEN NOW() - INTERVAL '7 days' AND NOW() + INTERVAL '14 days'
             AND (l.type = 'AMI' OR EXISTS (
               SELECT 1 FROM "TaskAssignee" ta JOIN "Employee" ae ON ae.id = ta."employeeId"
               WHERE ta."taskId" = t.id AND LOWER(ae.name) = LOWER(${AMI_EMPLOYEE_NAME})
-            )))
+            )) AND (t."clickupCreatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+              OR EXISTS (SELECT 1 FROM "Comment" dc WHERE dc."taskId" = t.id
+                AND (dc."clickupCreatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+                  OR dc."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')))
+              OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
+                AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT')))
           OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
             AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT'
             AND (i."needsAmi" = true OR i."riskLevel" IN ('HIGH', 'CRITICAL')

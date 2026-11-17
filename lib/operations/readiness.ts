@@ -9,6 +9,7 @@ export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
   const configuredDays = Number(process.env.AI_EVIDENCE_PILOT_DAYS || '30');
   const recentDays = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
   const recent = new Date(now.getTime() - recentDays * 86_400_000);
+  const veryRecent = new Date(now.getTime() - 7 * 86_400_000);
   const relevantDeadlineStart = new Date(now.getTime() - 7 * 86_400_000);
   const relevantDeadlineEnd = new Date(now.getTime() + 14 * 86_400_000);
   return {
@@ -22,12 +23,17 @@ export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
         { events: { some: {
           occurredAt: { gte: recent },
           eventType: { in: ['OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE'] }
-        } } },
+        } }, clickupUpdatedAt: { gte: veryRecent } },
         { AND: [
           { dueDate: { gte: relevantDeadlineStart, lte: relevantDeadlineEnd } },
           { OR: [
             { list: { type: 'AMI' } },
             { assignees: { some: { employee: { name: { equals: AMI_EMPLOYEE_NAME, mode: 'insensitive' } } } } }
+          ] },
+          { OR: [
+            { clickupCreatedAt: { gte: recent } },
+            { comments: { some: { OR: [{ clickupCreatedAt: { gte: recent } }, { clickupUpdatedAt: { gte: recent } }] } } },
+            { intelligence: { is: { classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE', verificationStatus: 'VERIFIED', freshnessStatus: 'CURRENT' } } }
           ] }
         ] },
         { intelligence: { is: {
