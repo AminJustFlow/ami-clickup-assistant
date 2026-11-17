@@ -84,7 +84,7 @@ jobs:
       - name: Verify production
         run: |
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error https://intelligence.justflownh.com/api/health; then exit 0; fi
+            if curl --fail --silent --show-error 'https://intelligence.justflownh.com/api/health?mode=liveness'; then exit 0; fi
             sleep 5
           done
           exit 1
