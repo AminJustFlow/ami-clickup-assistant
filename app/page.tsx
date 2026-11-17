@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
 import { TaskDetailsButton } from './components/task-details';
@@ -22,15 +23,42 @@ export default async function Home() {
   const now = new Date();
   const jar = await cookies();
   const since = briefSince(jar.get(DAILY_BRIEF_COOKIE)?.value, now);
-  const [clients, tasks, changes] = await Promise.all([
+  const [clients, taskRows, changes, parentRows, commentActivity] = await Promise.all([
     prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, name: true, slug: true, clickupFolderId: true, lastSyncedAt: true } }),
     prisma.task.findMany({ where: { client: { active: true, space: { name: 'JF Corporate' } } }, select: {
-      id: true, clickupTaskId: true, rawPayload: true, name: true, clientId: true, clickupUrl: true, clickupStatus: true, dueDate: true, clickupUpdatedAt: true, deleted: true,
-      comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } }, attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
+      id: true, clickupTaskId: true, name: true, clientId: true, clickupUrl: true, clickupStatus: true, dueDate: true, clickupUpdatedAt: true, deleted: true,
+      attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
       intelligence: { select: { agentState: true, needsAmi: true, amiAction: true, currentSummary: true, waitingOnType: true, waitingOnName: true, importanceScore: true, amiAttentionScore: true, riskLevel: true, lastMeaningfulChange: true, lastMeaningfulChangeAt: true, sourceFingerprint: true, analyzedAt: true } }
     } }),
-    prisma.intelligenceChange.findMany({ where: { detectedAt: { gte: since }, task: { client: { active: true, space: { name: 'JF Corporate' } } } }, select: { taskId: true, nextState: true, nextNeedsAmi: true, detectedAt: true } })
+    prisma.intelligenceChange.findMany({ where: { detectedAt: { gte: since }, task: { client: { active: true, space: { name: 'JF Corporate' } } } }, select: { taskId: true, nextState: true, nextNeedsAmi: true, detectedAt: true } }),
+    prisma.$queryRaw<Array<{ id: number; parentId: string | null }>>(Prisma.sql`
+      SELECT t.id,
+        CASE jsonb_typeof(t."rawPayload"->'parent')
+          WHEN 'string' THEN t."rawPayload"->>'parent'
+          WHEN 'object' THEN t."rawPayload"->'parent'->>'id'
+          ELSE NULL
+        END AS "parentId"
+      FROM "Task" t
+      JOIN "Client" c ON c.id = t."clientId"
+      JOIN "Space" s ON s."clickupSpaceId" = c."clickupSpaceId"
+      WHERE c.active = true AND s.name = 'JF Corporate'
+    `),
+    prisma.comment.groupBy({
+      by: ['taskId'],
+      where: { task: { client: { active: true, space: { name: 'JF Corporate' } } } },
+      _max: { clickupCreatedAt: true, clickupUpdatedAt: true }
+    })
   ]);
+  const parentByTaskId = new Map(parentRows.map(row => [row.id, row.parentId]));
+  const activityByTaskId = new Map(commentActivity.map(row => [row.taskId, row._max]));
+  const tasks = taskRows.map(task => {
+    const activity = activityByTaskId.get(task.id);
+    return {
+      ...task,
+      rawPayload: { parent: parentByTaskId.get(task.id) ?? null },
+      comments: activity ? [{ clickupCreatedAt: activity.clickupCreatedAt, clickupUpdatedAt: activity.clickupUpdatedAt }] : []
+    };
+  });
   const brief = buildDailyBrief({ now, since, clients, tasks, changes });
   const warnings = [
     brief.coverage.percent < 100 ? `${brief.coverage.imported - brief.coverage.analyzed} imported tasks do not have saved intelligence.` : null,
