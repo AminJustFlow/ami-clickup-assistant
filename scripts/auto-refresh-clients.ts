@@ -26,10 +26,15 @@ async function syncOne(client: { id: number; slug: string }) {
     const message = error instanceof Error ? error.message : String(error);
     await prisma.syncRun.update({ where: { id: run.id }, data: { status: 'FAILED', failed: 1, error: message, completedAt: new Date() } });
     console.error('[sync] ' + client.slug + ': ' + message);
+  } finally {
+    await prisma.workerHeartbeat.updateMany({ where: { name: 'clickup-sync' }, data: { lastSeenAt: new Date() } });
   }
 }
 
 async function cycle() {
+  await prisma.workerHeartbeat.upsert({ where: { name: 'clickup-sync' },
+    create: { name: 'clickup-sync', status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date() },
+    update: { status: 'PROCESSING', lastStartedAt: new Date(), lastSeenAt: new Date(), lastError: null } });
   const clients = await prisma.client.findMany({ where: { active: true }, select: { id: true, slug: true }, orderBy: [{ lastSyncedAt: 'asc' }, { id: 'asc' }] });
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(concurrency, clients.length) }, async () => {
@@ -58,4 +63,4 @@ async function main() {
   });
   do { await cycle(); if (once || stopping) break; await new Promise(r => setTimeout(r, intervalMinutes * 60_000)); } while (!stopping);
 }
-main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
+main().catch(async error => { console.error(error); await prisma.workerHeartbeat.upsert({ where: { name: 'clickup-sync' }, create: { name: 'clickup-sync', status: 'FAILED', lastSeenAt: new Date(), lastError: String(error) }, update: { status: 'FAILED', lastSeenAt: new Date(), lastError: String(error) } }); process.exitCode = 1; }).finally(() => prisma.$disconnect());

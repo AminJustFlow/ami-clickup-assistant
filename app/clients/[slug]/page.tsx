@@ -8,6 +8,7 @@ import { CompactTaskSection } from '../../components/compact-task-list';
 import { foldersForClient } from '@/lib/clients/grouping';
 import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
 import { compareRecentFirst } from '@/lib/tasks/recency';
+import { markEntityReviewed } from '@/app/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,13 @@ export default async function ClientPage({ params, searchParams }: {
       assignees: { select: { employee: { select: { id: true, name: true } } } }
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
+  });
+  const checkpoint = await prisma.entityReviewCheckpoint.findUnique({ where: { entityType_entityKey: { entityType: 'CLIENT', entityKey: slug } } });
+  const updatesSince = checkpoint?.reviewedAt ?? new Date(Date.now() - 7 * 86_400_000);
+  const operationalUpdates = await prisma.operationalUpdate.findMany({
+    where: { verified: true, task: { clientId: { in: relatedFolders.map(folder => folder.id) }, deleted: false }, OR: [{ evidenceAt: { gt: updatesSince } }, { evidenceAt: null, createdAt: { gt: updatesSince } }] },
+    include: { task: { select: { id: true, name: true } } },
+    orderBy: [{ evidenceAt: 'desc' }, { createdAt: 'desc' }], take: 8
   });
   const assigneeOptions = [...new Map(tasks.flatMap(t => t.assignees.map(a =>
     [String(a.employee.id), { id: String(a.employee.id), name: a.employee.name }] as const
@@ -131,7 +139,7 @@ export default async function ClientPage({ params, searchParams }: {
     <AppNav current="clients" />
     <header className="detail-hero"><div><a className="back-link" href="/clients">← All clients</a>
       <p className="eyebrow">CLIENT OVERVIEW</p><h1>{relatedFolders[0]?.name ?? client.name}</h1>
-      <p>Find decisions, blockers, and current work without scrolling through full AI reports.</p></div></header>
+      <p>Understand the current situation, meaningful changes, decisions, and dependencies before opening ClickUp.</p></div><form action={markEntityReviewed}><input type="hidden" name="entityType" value="CLIENT" /><input type="hidden" name="entityKey" value={slug} /><input type="hidden" name="returnTo" value={`/clients/${slug}`} /><button className="digest-button" type="submit">Mark client reviewed</button></form></header>
     {relatedFolders.length > 1 && <details className="clean-panel compact-intel-folders"><summary>{relatedFolders.length} ClickUp folders consolidated into this client</summary><p>{relatedFolders.map(folder => folder.name).join(' · ')}</p></details>}
     <div className="detail-stat-strip client-detail-priority-stats">
       <div><strong>{currentNeedsAmi}</strong><span>Needs Ami decisions · all</span></div>
@@ -140,6 +148,9 @@ export default async function ClientPage({ params, searchParams }: {
       <div><strong>{overdueCount}</strong><span>Past due open tasks · all</span></div>
     </div>
     <p className="dashboard-note client-detail-context">{tasks.length.toLocaleString()} imported tasks · {analyzedCount.toLocaleString()} AI analyzed. Open and overdue counts include older imported tasks. These are status-based indicators, not verified current workload.</p>
+    <section className="clean-panel entity-current-situation"><div className="panel-heading"><div><p className="eyebrow">CURRENT SITUATION</p><h2>{currentNeedsAmi ? `${currentNeedsAmi} verified decision${currentNeedsAmi === 1 ? '' : 's'} waiting on Ami` : currentWaiting ? `${currentWaiting} active dependenc${currentWaiting === 1 ? 'y' : 'ies'}` : 'No verified decision or dependency is currently identified'}</h2><p>{checkpoint ? `Changes since this client was reviewed ${checkpoint.reviewedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.` : 'Showing meaningful developments from the last 7 days.'}</p></div><span className="panel-count">{operationalUpdates.length}</span></div>
+      {operationalUpdates.length ? <div className="entity-update-list">{operationalUpdates.map(update => <article key={update.id}><span>{update.kind.replaceAll('_', ' ').toLowerCase()}</span><div><strong>{update.task.name}</strong><p>{update.summary}</p></div><TaskDetailsButton taskId={update.taskId} label="Context" /></article>)}</div> : <p className="brief-empty">No verified material development has been recorded in this review window.</p>}
+    </section>
     <section className="client-action-brief clean-panel" aria-label="Client action brief">
       <div className="client-action-summary-heading"><div><p className="eyebrow">CLIENT ACTION BRIEF</p><h2>Where to focus first</h2></div><p>Suggested starting points from imported ClickUp tasks and unverified AI assessments. Confirm details before acting.</p></div>
       <div className="client-action-summary-grid">

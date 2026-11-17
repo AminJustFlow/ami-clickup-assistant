@@ -7,6 +7,7 @@ import { CompactTaskSection } from '../../components/compact-task-list';
 import { EmployeeClientDirectory } from '../../components/employee-client-directory';
 import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
 import { compareRecentFirst } from '@/lib/tasks/recency';
+import { markEntityReviewed } from '@/app/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,13 @@ export default async function EmployeePage({ params, searchParams }: {
     },
     orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }]
   });
+  const checkpoint = await prisma.entityReviewCheckpoint.findUnique({ where: { entityType_entityKey: { entityType: 'EMPLOYEE', entityKey: String(employeeId) } } });
+  const updatesSince = checkpoint?.reviewedAt ?? new Date(Date.now() - 7 * 86_400_000);
+  const operationalUpdates = await prisma.operationalUpdate.findMany({
+    where: { verified: true, task: { deleted: false, assignees: { some: { employeeId } } }, OR: [{ evidenceAt: { gt: updatesSince } }, { evidenceAt: null, createdAt: { gt: updatesSince } }] },
+    include: { task: { select: { id: true, name: true, client: { select: { name: true } } } } },
+    orderBy: [{ evidenceAt: 'desc' }, { createdAt: 'desc' }], take: 8
+  });
   const clientOptions = [...new Map(tasks.map(t => [t.client.id, { id: t.client.id, name: t.client.name }] as const)).values()]
     .sort((a, b) => a.name.localeCompare(b.name));
   const statusOptions = [...new Set(tasks.map(t => t.intelligence?.agentState).filter((s): s is NonNullable<typeof s> => Boolean(s)))].sort();
@@ -93,7 +101,7 @@ export default async function EmployeePage({ params, searchParams }: {
     <AppNav current="team" />
     <header className="detail-hero"><div><a className="back-link" href="/team">← All team members</a>
       <p className="eyebrow">TEAM MEMBER</p><h1>{employee.name}</h1>
-      <p>Find assignments, dependencies, and recent work by client.</p></div></header>
+      <p>See what changed, what is waiting on this person, where they are blocked, and where Ami owes a decision.</p></div><form action={markEntityReviewed}><input type="hidden" name="entityType" value="EMPLOYEE" /><input type="hidden" name="entityKey" value={String(employeeId)} /><input type="hidden" name="returnTo" value={`/employees/${employeeId}`} /><button className="digest-button" type="submit">Mark teammate reviewed</button></form></header>
     <div className="detail-stat-strip employee-workload-stats">
       <div><strong>{openFacts.length.toLocaleString()}</strong><span>Open assignments</span></div>
       <div><strong>{pastDueFacts.length.toLocaleString()}</strong><span>Past due (all ages)</span></div>
@@ -102,6 +110,9 @@ export default async function EmployeePage({ params, searchParams }: {
     </div>
     <p className="team-workload-note">Of {pastDueFacts.length} past-due assignments, {recentOverdue} became overdue within the last 30 days and {olderBacklog.length} have due dates more than 30 days ago. Older deadlines may reflect historical backlog; verify in ClickUp before treating them as urgent.</p>
     <p className="team-workload-note">These totals use all imported assignments in active JF Corporate clients, including tasks without AI analysis. A task is open unless its ClickUp status is closed. Past-due dates may include historical backlog; counts do not measure hours or capacity. Needs Ami is an AI assessment, not necessarily work assigned to this employee.</p>
+    <section className="clean-panel entity-current-situation"><div className="panel-heading"><div><p className="eyebrow">SINCE LAST REVIEW</p><h2>{operationalUpdates.length ? `${operationalUpdates.length} meaningful development${operationalUpdates.length === 1 ? '' : 's'}` : 'No verified development recorded'}</h2><p>{checkpoint ? `Since ${checkpoint.reviewedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.` : 'Showing the last 7 days.'} Assignment counts are not performance or capacity judgments.</p></div></div>
+      {operationalUpdates.length ? <div className="entity-update-list">{operationalUpdates.map(update => <article key={update.id}><span>{update.kind.replaceAll('_', ' ').toLowerCase()}</span><div><strong>{update.task.client.name} · {update.task.name}</strong><p>{update.summary}</p></div></article>)}</div> : <p className="brief-empty">Meaningful progress, blockers, handoffs, and completions will appear here after verified analysis.</p>}
+    </section>
     <section className="clean-panel employee-client-workload">
       <div className="panel-heading"><div><p className="eyebrow">CLIENT BREAKDOWN</p><h2>Open work by client</h2>
         <p>Choose a client to filter the analyzed task list below.</p></div><span className="panel-count">{byClient.length}</span></div>

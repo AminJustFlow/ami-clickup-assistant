@@ -31,7 +31,7 @@ function task(id: number, overrides: Partial<BriefTaskInput> = {}): BriefTaskInp
 const tasks: BriefTaskInput[] = [
   task(1, { dueDate: new Date('2026-10-20T00:00:00Z'), intelligence: { ...task(1).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI', amiAttentionScore: 80 } }),
   task(2, { clientId: 2, intelligence: { ...task(2).intelligence!, agentState: 'BLOCKED', riskLevel: 'HIGH', amiAttentionScore: 95 } }),
-  task(3, { intelligence: { ...task(3).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI', amiAttentionScore: 90 }, attentionDisposition: { sourceFingerprint: 'fp-3', decision: 'REVIEWED' } }),
+  task(3, { intelligence: { ...task(3).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI', amiAttentionScore: 90 }, attentionDisposition: { sourceFingerprint: 'fp-3', decision: 'DISMISSED' } }),
   task(4, { deleted: true, intelligence: { ...task(4).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI' } }),
   task(5, { clickupStatus: 'closed', intelligence: { ...task(5).intelligence!, needsAmi: true, agentState: 'WAITING_ON_AMI' } }),
   task(6, { clientId: 3, intelligence: null }),

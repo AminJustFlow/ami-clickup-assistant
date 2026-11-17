@@ -5,6 +5,7 @@ import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiActio
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
 import { compareRecentFirst, latestActivityTime } from '../lib/tasks/recency';
+import { briefItemKey, workday } from '../lib/brief/workday';
 
 const healthy = { name: 'Alpha', total: 10, analyzed: 10, needsAmi: 0, overdue: 0, blocked: 0, waiting: 0, dueSoon: 0 };
 assert.equal(clientHealthStatus(healthy), 'No flagged issues');
@@ -33,8 +34,9 @@ assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, a
 assert.equal(isVerifiedOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: null }), true);
 assert.equal(isVerifiedOpenAttentionTask({ clickupStatus: 'open', intelligence: { ...intel, verificationStatus: null }, attentionDisposition: null }), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'closed', intelligence: intel, attentionDisposition: null }), false);
-assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DONE' } }), false);
-assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: { ...intel, sourceFingerprint: 'fp-2' }, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DONE' } }), true);
+assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'REVIEWED' } }), true, 'daily review must not permanently hide unresolved work');
+assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DISMISSED' } }), false);
+assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: { ...intel, sourceFingerprint: 'fp-2' }, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DISMISSED' } }), true);
 
 const qualityTask = { clickupUpdatedAt: new Date('2026-10-10T12:05:00Z'), intelligence: { ...intel, confidence: 0.65, amiAction: null } };
 assert.deepEqual(attentionVerificationReasons(qualityTask), [
@@ -107,6 +109,9 @@ const recencyTasks = [
 ].sort(compareRecentFirst);
 assert.deepEqual(recencyTasks.map(task => task.id), [3, 2, 1], 'latest real activity always wins over old due dates');
 assert.equal(latestActivityTime({ id: 4, clickupUpdatedAt: null }), 0);
+assert.equal(workday(new Date('2026-11-17T08:59:00Z')).key, '2026-11-16', 'the ET workday does not reset before 4 AM');
+assert.equal(workday(new Date('2026-11-17T09:00:00Z')).key, '2026-11-17', 'the ET workday resets at 4 AM');
+assert.equal(briefItemKey('ACTION', 12, 'fp-1'), 'ACTION:12:fp-1');
 
 
 const before = snapshotFromRaw({ id: '1', name: 'Task', status: { status: 'open' }, assignees: [{ id: 2 }], due_date: '1', description: 'A' });

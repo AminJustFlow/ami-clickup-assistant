@@ -57,6 +57,8 @@ model Client {
   tasks           Task[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  @@index([active, lastSyncedAt])
 }
 
 model Workspace {
@@ -125,11 +127,64 @@ model Task {
   events              TaskEvent[]
   intelligence        TaskIntelligence?
   intelligenceChanges IntelligenceChange[]
+  operationalUpdates   OperationalUpdate[]
+  briefItemReviews     BriefItemReview[]
   reviewFeedback      IntelligenceReview?
   attentionDisposition AttentionDisposition?
   analysisJob         AnalysisJob?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@index([deleted, clickupUpdatedAt])
+  @@index([deleted, dueDate])
+}
+
+model OperationalUpdate {
+  id                Int      @id @default(autoincrement())
+  taskId            Int
+  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind              String
+  summary           String
+  impact            String?
+  evidenceAt        DateTime?
+  sourceFingerprint String
+  verified          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@unique([taskId, sourceFingerprint])
+  @@index([evidenceAt])
+  @@index([kind, evidenceAt])
+}
+
+model WorkdayBrief {
+  id          Int       @id @default(autoincrement())
+  day         DateTime  @unique @db.Date
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model BriefItemReview {
+  id                Int      @id @default(autoincrement())
+  day               DateTime @db.Date
+  itemKey           String
+  taskId            Int?
+  task              Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  sourceFingerprint String?
+  decision          String   @default("DONE_TODAY")
+  reviewedAt        DateTime @default(now())
+
+  @@unique([day, itemKey])
+  @@index([taskId, day])
+}
+
+model EntityReviewCheckpoint {
+  id         Int      @id @default(autoincrement())
+  entityType String
+  entityKey  String
+  reviewedAt DateTime @default(now()) @updatedAt
+
+  @@unique([entityType, entityKey])
 }
 
 enum JobStatus {
@@ -276,6 +331,9 @@ model TaskIntelligence {
   sourceFingerprint      String?
   analyzedAt             DateTime?
   updatedAt              DateTime      @updatedAt
+
+  @@index([classificationVersion, verificationStatus, needsAmi])
+  @@index([agentState, riskLevel])
 }
 
 model IntelligenceChange {

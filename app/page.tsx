@@ -1,81 +1,73 @@
-import { cookies } from 'next/headers';
-import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db/prisma';
 import { AppNav } from './components/app-nav';
 import { TaskDetailsButton } from './components/task-details';
-import { markBriefReviewed } from './actions';
-import { buildDailyBrief, briefSince, DAILY_BRIEF_COOKIE, formatEastern, type BriefTask } from '@/lib/brief/daily-brief';
+import { markBriefItemDone, markBriefReviewed } from './actions';
+import { loadCommandCenter } from '@/lib/brief/command-center';
 
 export const dynamic = 'force-dynamic';
-const stateLabel = (value: string | null) => value ? value.replaceAll('_', ' ').toLowerCase().replace(/^./, letter => letter.toUpperCase()) : 'Not analyzed';
-const dayLabel = (value: Date | null) => value ? value.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown';
-const evidenceLabel = (task: BriefTask) => `${task.evidenceAt ? `Evidence ${formatEastern(task.evidenceAt)}` : 'Evidence time unavailable'} · ${task.analyzedAt ? `Analyzed ${formatEastern(task.analyzedAt)}` : 'Not analyzed'}`;
 
-function BriefTaskRow({ task, progress = false }: { task: BriefTask; progress?: boolean }) {
-  return <article className="brief-task-row"><div className="brief-task-main">
-    <div className="brief-task-meta"><span>{task.clientName}</span><span className={`brief-tag ${progress ? 'brief-tag-progress' : ''}`}>{progress ? 'Progress' : task.overdue ? 'Overdue' : stateLabel(task.state)}</span>{task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}</div>
-    <h3>{task.name}</h3><p>{task.action || task.summary || (progress ? 'Recorded as completed during this reporting window.' : 'Open the task to verify the latest context.')}</p><small>{evidenceLabel(task)}</small>
-    {task.relatedInsights?.length ? <details className="task-extra"><summary>{task.relatedInsights.length} related subtask insight{task.relatedInsights.length === 1 ? '' : 's'}</summary><ul>{task.relatedInsights.map(item => <li key={item.id}><strong>{item.name}</strong>{item.action || item.summary ? ` — ${item.action || item.summary}` : ''}</li>)}</ul></details> : null}
-  </div><div className="brief-task-actions"><TaskDetailsButton taskId={task.id} label="Evidence" />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}</div></article>;
+const dateTime = (date: Date | null) => date ? date.toLocaleString('en-US', {
+  timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+}) : 'Unavailable';
+const stateLabel = (value: string | null | undefined) => value ? value.replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase()) : 'Current issue';
+
+function DoneToday({ itemKey, taskId, fingerprint }: { itemKey: string; taskId: number; fingerprint: string | null }) {
+  return <form action={markBriefItemDone}>
+    <input type="hidden" name="itemKey" value={itemKey} />
+    <input type="hidden" name="taskId" value={taskId} />
+    <input type="hidden" name="fingerprint" value={fingerprint ?? ''} />
+    <button className="brief-done-button" type="submit">Done for today</button>
+  </form>;
 }
 
 export default async function Home() {
-  const now = new Date();
-  const jar = await cookies();
-  const since = briefSince(jar.get(DAILY_BRIEF_COOKIE)?.value, now);
-  const [clients, taskRows, changes, parentRows, commentActivity] = await Promise.all([
-    prisma.client.findMany({ where: { active: true, space: { name: 'JF Corporate' } }, select: { id: true, name: true, slug: true, clickupFolderId: true, lastSyncedAt: true } }),
-    prisma.task.findMany({ where: { client: { active: true, space: { name: 'JF Corporate' } } }, select: {
-      id: true, clickupTaskId: true, name: true, clientId: true, clickupUrl: true, clickupStatus: true, dueDate: true, clickupUpdatedAt: true, deleted: true,
-      attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
-      intelligence: { select: { agentState: true, needsAmi: true, amiAction: true, currentSummary: true, waitingOnType: true, waitingOnName: true, importanceScore: true, amiAttentionScore: true, riskLevel: true, lastMeaningfulChange: true, lastMeaningfulChangeAt: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true, classificationVersion: true } }
-    } }),
-    prisma.intelligenceChange.findMany({ where: { detectedAt: { gte: since }, task: { client: { active: true, space: { name: 'JF Corporate' } } } }, select: { taskId: true, nextState: true, nextNeedsAmi: true, detectedAt: true } }),
-    prisma.$queryRaw<Array<{ id: number; parentId: string | null }>>(Prisma.sql`
-      SELECT t.id,
-        CASE jsonb_typeof(t."rawPayload"->'parent')
-          WHEN 'string' THEN t."rawPayload"->>'parent'
-          WHEN 'object' THEN t."rawPayload"->'parent'->>'id'
-          ELSE NULL
-        END AS "parentId"
-      FROM "Task" t
-      JOIN "Client" c ON c.id = t."clientId"
-      JOIN "Space" s ON s."clickupSpaceId" = c."clickupSpaceId"
-      WHERE c.active = true AND s.name = 'JF Corporate'
-    `),
-    prisma.comment.groupBy({
-      by: ['taskId'],
-      where: { task: { client: { active: true, space: { name: 'JF Corporate' } } } },
-      _max: { clickupCreatedAt: true, clickupUpdatedAt: true }
-    })
-  ]);
-  const parentByTaskId = new Map(parentRows.map(row => [row.id, row.parentId]));
-  const activityByTaskId = new Map(commentActivity.map(row => [row.taskId, row._max]));
-  const tasks = taskRows.map(task => {
-    const activity = activityByTaskId.get(task.id);
-    return {
-      ...task,
-      rawPayload: { parent: parentByTaskId.get(task.id) ?? null },
-      comments: activity ? [{ clickupCreatedAt: activity.clickupCreatedAt, clickupUpdatedAt: activity.clickupUpdatedAt }] : []
-    };
-  });
-  const brief = buildDailyBrief({ now, since, clients, tasks, changes });
-  const warnings = [
-    brief.coverage.percent < 100 ? `${brief.coverage.imported - brief.coverage.analyzed} imported tasks do not have saved intelligence.` : null,
-    brief.coverage.staleClientCount ? `${brief.coverage.staleClientCount} imported folder${brief.coverage.staleClientCount === 1 ? '' : 's'} have not synced successfully in the last 30 minutes.` : null,
-    !brief.coverage.oldestSyncAt ? 'No successful client synchronization timestamp is available.' : null
-  ].filter((warning): warning is string => !!warning);
-  const clientExceptions = brief.clients.filter(client => !client.healthy).length;
+  const brief = await loadCommandCenter();
+  const remaining = brief.actionTotal + brief.changeTotal + brief.riskTotal;
+  return <main className="ops-shell dashboard-shell brief-shell command-center" id="main-content">
+    <AppNav current="overview" />
+    <header className="brief-hero"><div>
+      <p className="eyebrow">AMI'S WORKDAY · {brief.current.key}</p>
+      <h1>Start here before ClickUp</h1>
+      <p>See what needs you, what changed, and where to look next—without sorting through every notification.</p>
+      <div className="brief-window"><span>Updates since {dateTime(brief.current.previousStart)} ET</span><span>{brief.reviewedToday} item{brief.reviewedToday === 1 ? '' : 's'} reviewed today</span></div>
+    </div><form action={markBriefReviewed}><button className="digest-button brief-reviewed-button" type="submit">{brief.completedAt ? 'Brief completed · update time' : 'Finish daily brief'}</button></form></header>
 
-  return <main className="ops-shell dashboard-shell brief-shell" id="main-content"><AppNav current="overview" />
-    <header className="brief-hero"><div><p className="eyebrow">AMI DAILY BRIEF</p><h1>What needs your attention today</h1><p>Start with the next decision. Everything else can wait until you need it.</p><div className="brief-window"><span>Since {formatEastern(brief.since)}</span><span>Generated {formatEastern(brief.generatedAt)}</span></div></div><form action={markBriefReviewed}><button className="digest-button brief-reviewed-button" type="submit">Mark brief reviewed</button></form></header>
+    <section className={`command-readiness ${brief.readiness.ready ? 'ready' : 'limited'}`} aria-label="Data readiness">
+      <div><strong>{brief.readiness.ready ? 'Current and ready' : 'Coverage is limited'}</strong><span>{brief.readiness.ready ? 'ClickUp sync and operational analysis are current.' : 'Use the verified items below, but do not treat an empty section as proof that nothing needs attention.'}</span></div>
+      <dl><div><dt>Current-work coverage</dt><dd>{brief.readiness.operationalCoveragePercent}%</dd></div><div><dt>Operational tasks</dt><dd>{brief.readiness.analyzedOperationalTasks}/{brief.readiness.operationalTasks}</dd></div><div><dt>Oldest client sync</dt><dd>{dateTime(brief.readiness.oldestSyncAt)}</dd></div></dl>
+      {!brief.readiness.ready && <details><summary>Why coverage is limited</summary><ul>{brief.readiness.reasons.map(reason => <li key={reason}>{reason.replaceAll('_', ' ')}</li>)}</ul><a href="/system">Open system status →</a></details>}
+    </section>
 
-    <details className="brief-warning" aria-label="Data coverage and freshness"><summary><strong>Data confidence: {brief.coverage.percent}% analyzed</strong>{warnings.length ? ` · ${warnings.length} item${warnings.length === 1 ? '' : 's'} to know` : ' · Synced and covered'}</summary><ul>{warnings.length ? warnings.map(warning => <li key={warning}>{warning}</li>) : <li>No current coverage or synchronization warnings.</li>}</ul><a href="/system">System details ↗</a></details>
+    <section className="clean-panel brief-section command-primary" aria-labelledby="start-title">
+      <div className="panel-heading"><div><p className="eyebrow">1 · START HERE</p><h2 id="start-title">{brief.actions.length ? `Your next ${brief.actions.length} decision${brief.actions.length === 1 ? '' : 's'}` : 'No verified action is ready'}</h2><p>Only current, evidence-backed requests where you are the next actor appear here.</p></div><a href="/attention">Open My Decisions →</a></div>
+      {brief.actions.length ? <div className="brief-task-list">{brief.actions.map(task => {
+        const intel = task.intelligence!;
+        const reasons = Array.isArray(intel.priorityReasons) ? intel.priorityReasons.filter((reason): reason is string => typeof reason === 'string') : [];
+        return <article className="brief-task-row command-action" key={task.itemKey}><div className="brief-task-main">
+          <div className="brief-task-meta"><span>{task.client.name}</span><span className="brief-tag">{intel.priorityLevel ?? 'Current'} priority</span>{task.dueDate && <span>Due {dateTime(task.dueDate)}</span>}</div>
+          <h3>{intel.amiAction || task.name}</h3><p><strong>Task:</strong> {task.name}</p>
+          {reasons[0] && <small><strong>Why now:</strong> {reasons[0]}</small>}
+        </div><div className="brief-task-actions"><TaskDetailsButton taskId={task.id} label="Evidence" />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">Open ClickUp ↗</a>}<DoneToday itemKey={task.itemKey} taskId={task.id} fingerprint={task.fingerprint} /></div></article>;
+      })}</div> : <div className="brief-empty"><strong>{brief.readiness.ready ? 'No verified action is waiting on Ami' : 'No verified action is visible in the current analyzed scope'}</strong><p>{brief.readiness.ready ? 'New unresolved requests will appear here automatically.' : 'Analysis coverage must recover before this can be treated as a complete inbox.'}</p></div>}
+      {brief.actionTotal > brief.actions.length && <p className="brief-footnote">{brief.actionTotal - brief.actions.length} more verified decision{brief.actionTotal - brief.actions.length === 1 ? '' : 's'} available in My Decisions.</p>}
+    </section>
 
-    <section className="brief-metrics" aria-label="Current overview"><a href="/attention"><span>Decisions for Ami</span><strong>{brief.totals.decisions}</strong><small>Concrete responses or choices</small></a><a href="/clients"><span>Blocked or high risk</span><strong>{brief.totals.blocked}</strong><small>Current intervention signals</small></a><a href="/clients?focus=overdue"><span>All overdue work</span><strong>{brief.totals.overdue}</strong><small>{brief.totals.overdueRecent} recently active · {brief.totals.overdueOlder} older</small></a></section>
+    <div className="command-grid">
+      <section className="clean-panel brief-section" aria-labelledby="changed-title"><div className="panel-heading"><div><p className="eyebrow">2 · WHAT CHANGED</p><h2 id="changed-title">Meaningful developments</h2><p>Decisions, blockers, handoffs, completions, and reopenings—not raw notification activity.</p></div><a href="/changes">See all →</a></div>
+        {brief.changes.length ? <div className="brief-task-list">{brief.changes.map(update => <article className="brief-task-row" key={update.itemKey}><div className="brief-task-main"><div className="brief-task-meta"><span>{update.task.client.name}</span><span className="brief-tag">{stateLabel(update.kind)}</span><span>{dateTime(update.evidenceAt ?? update.createdAt)}</span></div><h3>{update.task.name}</h3><p>{update.summary}</p></div><div className="brief-task-actions"><TaskDetailsButton taskId={update.taskId} label="Context" />{update.task.clickupUrl && <a href={update.task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}<DoneToday itemKey={update.itemKey} taskId={update.taskId} fingerprint={update.fingerprint} /></div></article>)}</div> : <div className="brief-empty"><strong>No new verified developments</strong><p>{brief.readiness.ready ? 'Material changes since the prior workday will appear here.' : 'Coverage is limited; this is not confirmation that no work changed.'}</p></div>}
+      </section>
 
-    <section className="clean-panel brief-section" id="next-actions"><div className="panel-heading"><div><p className="eyebrow">START HERE</p><h2>{brief.topActions.length ? `Your next ${brief.topActions.length} action${brief.topActions.length === 1 ? '' : 's'}` : 'No immediate action'}</h2><p>Decisions first, then serious blockers. An old due date alone never appears here.</p></div><a href="/attention">Open action inbox ↗</a></div>{brief.topActions.length ? <div className="brief-task-list">{brief.topActions.map(task => <div key={`${task.actionKind}-${task.id}`}><p className="dashboard-note"><strong>{task.actionKind === 'DECISION' ? 'What you need to decide' : 'Why this needs attention'}:</strong> {task.actionReason}</p><BriefTaskRow task={task} /></div>)}</div> : <div className="brief-empty"><strong>You are caught up</strong><p>There are no current analyzed decisions or serious intervention signals for Ami.</p></div>}</section>
+      <section className="clean-panel brief-section" aria-labelledby="watch-title"><div className="panel-heading"><div><p className="eyebrow">3 · WATCH TODAY</p><h2 id="watch-title">Current blockers and risks</h2><p>Recent, analyzed work that may need management awareness.</p></div></div>
+        {brief.risks.length ? <div className="brief-task-list">{brief.risks.map(task => <article className="brief-task-row" key={task.itemKey}><div className="brief-task-main"><div className="brief-task-meta"><span>{task.client.name}</span><span className="brief-tag">{stateLabel(task.intelligence?.agentState)}</span></div><h3>{task.name}</h3><p>{task.intelligence?.currentSummary || 'Open the evidence to review the current issue.'}</p><small>{task.intelligence?.waitingOnName ? `Waiting on ${task.intelligence.waitingOnName}` : 'Current operational risk'}</small></div><div className="brief-task-actions"><TaskDetailsButton taskId={task.id} label="Context" />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}<DoneToday itemKey={task.itemKey} taskId={task.id} fingerprint={task.fingerprint} /></div></article>)}</div> : <div className="brief-empty"><strong>No verified blocker is on today’s watchlist</strong><p>{brief.readiness.ready ? 'New serious risks will appear here.' : 'Coverage is limited; inspect clients directly if needed.'}</p></div>}
+      </section>
+    </div>
 
-    <div className="brief-report-grid"><div className="brief-report-primary"><details className="clean-panel compact-intel-section collapsible-panel" id="risks"><summary>Also monitor<span>{brief.newRisks.length}</span></summary>{brief.newRisks.length ? <div className="brief-task-list">{brief.newRisks.map(task => <BriefTaskRow key={task.id} task={task} />)}</div> : <p className="brief-empty">No newly detected risks since the last review.</p>}</details><details className="clean-panel compact-intel-section collapsible-panel" id="progress"><summary>Recent progress<span>{brief.progress.length}</span></summary>{brief.progress.length ? <div className="brief-task-list">{brief.progress.slice(0, 8).map(task => <BriefTaskRow key={task.id} task={task} progress />)}</div> : <p className="brief-empty">No completed work detected in this review window.</p>}</details></div><aside className="brief-report-aside"><section className="clean-panel brief-guide"><p className="eyebrow">CLIENT EXCEPTIONS</p><h2>{clientExceptions} clients to review</h2><p>Clients with a current decision, risk, or overdue work appear first.</p><a href="/clients">Open clients ↗</a></section><section className="clean-panel brief-guide"><p className="eyebrow">WAITING ON OTHERS</p><h2>{brief.totals.externalDependencies}</h2><p>Current work waiting on teammates, clients, or vendors.</p><a href="/search?q=waiting">Review dependencies ↗</a></section></aside></div>
+    <section className="clean-panel command-exceptions" aria-labelledby="exceptions-title"><div className="panel-heading"><div><p className="eyebrow">DRILL DOWN</p><h2 id="exceptions-title">Clients and teammates with current signals</h2><p>Open a detail view only when today’s evidence gives you a reason.</p></div></div>
+      <div className="exception-groups"><div><div className="exception-heading"><h3>Clients</h3><a href="/clients">All clients →</a></div>
+        {brief.clients.length ? <div className="command-client-grid">{brief.clients.map(client => <a href={`/clients/${client.slug}`} key={client.slug}><strong>{client.name}</strong><span>{client.decisions} decision{client.decisions === 1 ? '' : 's'} · {client.risks} risk{client.risks === 1 ? '' : 's'} · {client.changes} change{client.changes === 1 ? '' : 's'}</span><small>Open current situation →</small></a>)}</div> : <p className="brief-empty">No client exception is available in the current verified scope.</p>}
+      </div><div><div className="exception-heading"><h3>Team</h3><a href="/team">All teammates →</a></div>
+        {brief.team.length ? <div className="command-client-grid">{brief.team.map(person => <a href={`/employees/${person.id}`} key={person.id}><strong>{person.name}</strong><span>{person.decisions} decision{person.decisions === 1 ? '' : 's'} · {person.risks} risk{person.risks === 1 ? '' : 's'} · {person.changes} change{person.changes === 1 ? '' : 's'}</span><small>Open current workload →</small></a>)}</div> : <p className="brief-empty">No teammate exception is available in the current verified scope.</p>}
+      </div></div>
+    </section>
+    <p className="brief-footnote">{remaining ? `${remaining} current item${remaining === 1 ? '' : 's'} remain before today’s review is complete.` : brief.readiness.ready ? 'Today’s verified brief is clear.' : 'Readiness must recover before the brief can be considered complete.'}</p>
   </main>;
 }

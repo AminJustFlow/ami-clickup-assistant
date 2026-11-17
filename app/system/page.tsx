@@ -1,21 +1,25 @@
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../components/app-nav';
+import { operationalReadiness } from '@/lib/operations/readiness';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SystemStatus() {
-  const [syncState, workers, jobs, usage, clients] = await Promise.all([
+  const [syncState, workers, jobs, usage, clients, readiness] = await Promise.all([
     prisma.client.aggregate({ where: { active: true }, _min: { lastSyncedAt: true } }),
     prisma.workerHeartbeat.findMany({ orderBy: { name: 'asc' } }),
     prisma.analysisJob.groupBy({ by: ['status'], _count: true }),
     prisma.aiBudgetDay.findUnique({ where: { day: new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z') } }),
-    prisma.client.count({ where: { active: true } })
+    prisma.client.count({ where: { active: true } }),
+    operationalReadiness()
   ]);
   const lastSync = syncState._min.lastSyncedAt;
   return <main className="ops-shell dashboard-shell" id="main-content">
     <AppNav current="overview" />
     <header className="detail-hero"><p className="eyebrow">OPERATIONS / SYSTEM</p><h1>System status</h1><p>Synchronization, background workers, and estimated AI usage. These diagnostics are separate from Ami's daily decisions.</p></header>
     <div className="system-status-grid">
+      <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">TRUST</p><h2>Command-center readiness</h2></div></div>
+        <div className="system-status-content"><p><strong>{readiness.ready ? 'Ready' : 'Limited'}</strong></p><p>Operational coverage: {readiness.operationalCoveragePercent}% ({readiness.analyzedOperationalTasks}/{readiness.operationalTasks})</p><p>Evidence coverage: {readiness.evidenceCoveragePercent}%</p>{readiness.reasons.length > 0 && <p className="system-error">{readiness.reasons.join(' · ').replaceAll('_', ' ')}</p>}</div></section>
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">CLICKUP</p><h2>Synchronization</h2></div></div>
         <div className="system-status-content"><p><strong>{clients}</strong> active imported folders</p><p>Oldest successful sync: {lastSync ? lastSync.toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : 'Not yet synced'}</p><p className="dashboard-note">An old timestamp may indicate one or more clients have not synchronized recently.</p></div></section>
       <section className="clean-panel"><div className="panel-heading"><div><p className="eyebrow">AUTOMATION</p><h2>Worker health</h2></div></div>

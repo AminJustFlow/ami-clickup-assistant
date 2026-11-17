@@ -30,7 +30,7 @@ services:
   web:
     <<: *app
     command: ["npm", "run", "start"]
-    healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"], interval: 30s, timeout: 5s, retries: 5 }
+    healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health?mode=liveness"], interval: 30s, timeout: 5s, retries: 5 }
     mem_limit: 512m
   sync-worker:
     <<: *app

@@ -7,6 +7,7 @@ import { setAttentionDecision } from './actions';
 import { compareAttentionPriority, dailyBrief } from '@/lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
 import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
+import { briefItemKey, workday } from '@/lib/brief/workday';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const activeFilters = { client: selectedGroup ? client : '', priority, q, view };
 
   const scope = { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } } as const;
-  const [candidates, analyzedCount, importedCount] = await Promise.all([
+  const currentWorkday = workday(now);
+  const [candidates, analyzedCount, importedCount, todayReviews] = await Promise.all([
     prisma.task.findMany({
       where: {
         ...scope,
@@ -85,20 +87,23 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
     }),
     prisma.task.count({ where: { ...scope, intelligence: { isNot: null } } }),
-    prisma.task.count({ where: scope })
+    prisma.task.count({ where: scope }),
+    prisma.briefItemReview.findMany({ where: { day: currentWorkday.day, decision: 'DONE_TODAY' }, select: { itemKey: true } })
   ]);
+  const reviewedToday = new Set(todayReviews.map(review => review.itemKey));
 
   const categorized = candidates.map(task => {
     const intel = task.intelligence!;
     const closed = intel.agentState === 'COMPLETED' || isClosedClickUpStatus(task.clickupStatus);
-    const recorded = task.attentionDisposition && task.attentionDisposition.sourceFingerprint === attentionFingerprint(intel)
-      ? task.attentionDisposition.decision : null;
+    const fingerprint = attentionFingerprint(intel);
+    const recorded = task.attentionDisposition?.decision === 'DISMISSED' && task.attentionDisposition.sourceFingerprint === fingerprint
+      ? 'DISMISSED' : reviewedToday.has(briefItemKey('ACTION', task.id, fingerprint)) ? 'REVIEWED' : null;
     const overdue = !closed && !!task.dueDate && task.dueDate < now;
     const verificationReasons = attentionVerificationReasons(task);
     const urgency = verificationReasons.length ? 'Verify recommendation' : `${intel.priorityLevel ?? 'Normal'} priority`;
     return { ...task, closed, recorded, overdue, urgency, verificationReasons };
   });
-  const active = groupedInsightRepresentatives(categorized, categorized.filter(isOpenAttentionTask), (a, b) => compareAttentionPriority(a, b, now));
+  const active = groupedInsightRepresentatives(categorized, categorized.filter(task => !task.recorded && isOpenAttentionTask(task)), (a, b) => compareAttentionPriority(a, b, now));
   const history = groupedInsightRepresentatives(categorized, categorized.filter(task => task.closed || !!task.recorded), (a, b) => compareAttentionPriority(a, b, now));
   const brief = dailyBrief(active, now);
   const featuredIds = new Set(brief.topReady.map(task => task.id));
@@ -109,7 +114,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const tasks = selected.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const highCount = active.filter(task => task.urgency === 'High priority' || task.overdue).length;
+  const highCount = active.filter(task => ['HIGH', 'CRITICAL'].includes(task.intelligence?.priorityLevel ?? '') || task.overdue).length;
   const overdueCount = active.filter(task => task.overdue).length;
   const verifyCount = active.filter(task => task.verificationReasons.length > 0).length;
   const returnTo = urlFor(activeFilters, currentPage);
@@ -142,12 +147,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         <div><strong>{brief.overdueReady}</strong><span>Past due and ready for review</span></div>
       </div>}
       <div className="attention-progress" aria-label="Review progress">
-        <p><strong>{triagedCount} of {triageTotal}</strong> current recommendations triaged · {reviewedCount} reviewed · {dismissedCount} dismissed · {active.length} remaining</p>
+        <p><strong>{triagedCount} of {triageTotal}</strong> current recommendations handled · {reviewedCount} done for today · {dismissedCount} dismissed · {active.length} remaining</p>
         <div className="attention-progress-track" role="img" aria-label={`${reviewedCount} reviewed, ${dismissedCount} dismissed, ${active.length} remaining out of ${triageTotal} recommendations`}>
           <span className="attention-progress-reviewed" style={{ width: `${triageTotal ? 100 * reviewedCount / triageTotal : 0}%` }} />
           <span className="attention-progress-dismissed" style={{ width: `${triageTotal ? 100 * dismissedCount / triageTotal : 0}%` }} />
         </div>
-        <div className="attention-progress-legend"><span><i className="attention-legend-reviewed" /> Reviewed ({reviewedCount})</span><span><i className="attention-legend-dismissed" /> Dismissed ({dismissedCount})</span><span><i className="attention-legend-remaining" /> Remaining ({active.length})</span></div>
+        <div className="attention-progress-legend"><span><i className="attention-legend-reviewed" /> Done today ({reviewedCount})</span><span><i className="attention-legend-dismissed" /> Dismissed ({dismissedCount})</span><span><i className="attention-legend-remaining" /> Remaining ({active.length})</span></div>
       </div>
       <div className="attention-brief-content">
         <div className="attention-brief-section">
@@ -173,7 +178,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="fingerprint" value={attentionFingerprint(task.intelligence!)} />
                   <input type="hidden" name="returnTo" value="/attention" />
-                  <button type="submit" name="decision" value="REVIEWED" title="Archive this recommendation in Just Flow Intelligence only; ClickUp is unchanged">Reviewed in app</button>
+                  <button type="submit" name="decision" value="REVIEWED" title="Hide for this workday; unresolved work returns tomorrow">Done for today</button>
                   <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this recommendation in Just Flow Intelligence only; ClickUp is unchanged">Dismiss</button>
                 </form>
               </div>
@@ -209,12 +214,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     </section>
     <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
-        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Additional decisions, newest evidence first. Priority labels explain impact without hiding recent work.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>
+        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Done today & dismissed'}</h2><p>{view === 'active' ? 'Additional decisions, newest evidence first. Priority labels explain impact without hiding recent work.' : 'Today’s acknowledged items and fingerprint-specific dismissals.'}</p></div>
         <span className="panel-count">{total}</span>
       </div>
       <nav className="attention-view-tabs" aria-label="Inbox view">
         <Link aria-current={view === 'active' ? 'page' : undefined} href={urlFor({ ...activeFilters, view: 'active' })}>Other open decisions ({active.length - brief.topReady.length})</Link>
-        <Link aria-current={view === 'history' ? 'page' : undefined} href={urlFor({ ...activeFilters, view: 'history' })}>Reviewed & archived ({history.length})</Link>
+        <Link aria-current={view === 'history' ? 'page' : undefined} href={urlFor({ ...activeFilters, view: 'history' })}>Done today & dismissed ({history.length})</Link>
       </nav>
       <form className="attention-filters" method="get" action="/attention">
         <input type="hidden" name="view" value={view} />
@@ -244,7 +249,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
           const intel = task.intelligence!;
           return <article className="attention-row" key={task.id}>
             <div className="attention-row-main">
-              <div className="attention-row-byline"><span>{task.client.name}</span><span className={task.verificationReasons.length ? 'attention-urgency normal' : task.overdue ? 'attention-urgency overdue' : intel.amiAttentionScore >= 70 ? 'attention-urgency high' : 'attention-urgency normal'}>{task.closed ? 'Completed in ClickUp / AI' : task.recorded ? (task.recorded === 'REVIEWED' ? 'Reviewed' : 'Dismissed') : task.urgency}</span></div>
+              <div className="attention-row-byline"><span>{task.client.name}</span><span className={task.verificationReasons.length ? 'attention-urgency normal' : task.overdue ? 'attention-urgency overdue' : intel.amiAttentionScore >= 70 ? 'attention-urgency high' : 'attention-urgency normal'}>{task.closed ? 'Completed in ClickUp / AI' : task.recorded ? (task.recorded === 'REVIEWED' ? 'Done today' : 'Dismissed') : task.urgency}</span></div>
               <h3>{task.name}</h3>
               <p className="attention-row-action">{intel.amiAction || intel.currentSummary || 'Review the task for next steps.'}</p>
               {task.verificationReasons.length === 0 && stringList(intel.priorityReasons).length > 0 && <details className="task-extra"><summary>Why {intel.priorityLevel?.toLowerCase() ?? 'this'} priority?</summary><ul>{stringList(intel.priorityReasons).map(reason => <li key={reason}>{reason}</li>)}</ul></details>}
@@ -271,7 +276,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <input type="hidden" name="taskId" value={task.id} />
                 <input type="hidden" name="fingerprint" value={attentionFingerprint(intel)} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <button type="submit" name="decision" value="REVIEWED" title="Archive this recommendation in Just Flow Intelligence only; ClickUp is unchanged">Reviewed in app</button>
+                <button type="submit" name="decision" value="REVIEWED" title="Hide for this workday; unresolved work returns tomorrow">Done for today</button>
                 <button type="submit" name="decision" value="DISMISSED" className="attention-dismiss" title="Dismiss this AI recommendation; no changes to ClickUp">Dismiss</button>
               </form></details>}
             </div>

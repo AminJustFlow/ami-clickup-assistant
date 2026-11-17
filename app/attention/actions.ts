@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
+import { briefItemKey, workday } from '@/lib/brief/workday';
 
 export async function setAttentionDecision(formData: FormData) {
   const taskId = Number(formData.get('taskId'));
@@ -32,16 +33,26 @@ export async function setAttentionDecision(formData: FormData) {
   }
 
   if (decision === 'REOPEN') {
+    const current = workday();
+    await prisma.briefItemReview.deleteMany({ where: { day: current.day, itemKey: briefItemKey('ACTION', taskId, currentFingerprint) } });
     await prisma.attentionDisposition.deleteMany({ where: { taskId, sourceFingerprint: currentFingerprint } });
     revalidatePath('/attention');
     redirect('/attention');
   }
 
-  await prisma.attentionDisposition.upsert({
-    where: { taskId },
-    create: { taskId, decision, reason, sourceFingerprint: currentFingerprint },
-    update: { decision, reason, sourceFingerprint: currentFingerprint }
-  });
+  if (decision === 'REVIEWED') {
+    const current = workday();
+    const itemKey = briefItemKey('ACTION', taskId, currentFingerprint);
+    await prisma.briefItemReview.upsert({ where: { day_itemKey: { day: current.day, itemKey } },
+      create: { day: current.day, itemKey, taskId, sourceFingerprint: currentFingerprint, decision: 'DONE_TODAY' },
+      update: { reviewedAt: new Date(), sourceFingerprint: currentFingerprint, decision: 'DONE_TODAY' } });
+  } else {
+    await prisma.attentionDisposition.upsert({
+      where: { taskId },
+      create: { taskId, decision: 'DISMISSED', reason, sourceFingerprint: currentFingerprint },
+      update: { decision: 'DISMISSED', reason, sourceFingerprint: currentFingerprint }
+    });
+  }
   revalidatePath('/attention');
   redirect(safeReturn);
 }

@@ -31,7 +31,7 @@ export function isOpenAttentionTask(task: {
 }): boolean {
   const intel = task.intelligence;
   if (!intel?.needsAmi || intel.agentState === 'COMPLETED' || isClosedClickUpStatus(task.clickupStatus)) return false;
-  return task.attentionDisposition?.sourceFingerprint !== attentionFingerprint(intel);
+  return !(task.attentionDisposition?.decision === 'DISMISSED' && task.attentionDisposition.sourceFingerprint === attentionFingerprint(intel));
 }
 
 /** Use outside the dedicated verification inbox so uncertain AI output is never presented as fact. */

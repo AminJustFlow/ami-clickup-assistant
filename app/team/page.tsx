@@ -4,14 +4,14 @@ import { AppNav } from '../components/app-nav';
 
 export const dynamic = 'force-dynamic';
 
-type Sort = 'name' | 'open' | 'overdue' | 'attention' | 'tasks';
+type Sort = 'name' | 'open' | 'overdue' | 'attention' | 'tasks' | 'recent' | 'exceptions';
 type Show = 'all' | 'open' | 'overdue' | 'attention';
 
 export default async function TeamDirectory({ searchParams }: {
   searchParams: Promise<{ q?: string; sort?: string; show?: string }>;
 }) {
-  const { q = '', sort: requestedSort = 'open', show: requestedShow = 'all' } = await searchParams;
-  const sort: Sort = (['name', 'open', 'overdue', 'attention', 'tasks'] as const).includes(requestedSort as Sort) ? requestedSort as Sort : 'open';
+  const { q = '', sort: requestedSort = 'exceptions', show: requestedShow = 'all' } = await searchParams;
+  const sort: Sort = (['name', 'open', 'overdue', 'attention', 'tasks', 'recent', 'exceptions'] as const).includes(requestedSort as Sort) ? requestedSort as Sort : 'exceptions';
   const show: Show = (['all', 'open', 'overdue', 'attention'] as const).includes(requestedShow as Show) ? requestedShow as Show : 'all';
   const now = new Date();
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -22,8 +22,8 @@ export default async function TeamDirectory({ searchParams }: {
       assignments: {
         where: { task: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } } },
         select: { task: { select: {
-          clickupStatus: true, dueDate: true,
-          intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
+          clickupStatus: true, dueDate: true, clickupUpdatedAt: true,
+          intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true, lastMeaningfulChangeAt: true } },
           attentionDisposition: { select: { sourceFingerprint: true, decision: true } }
         } } }
       }
@@ -32,15 +32,18 @@ export default async function TeamDirectory({ searchParams }: {
   });
 
   const summaries = people.map(person => {
-    let open = 0, overdue = 0, dueSoon = 0, needsAmi = 0;
+    let open = 0, overdue = 0, dueSoon = 0, needsAmi = 0, blocked = 0, waiting = 0, latestActivity = 0;
     for (const { task } of person.assignments) {
       if (isClosedClickUpStatus(task.clickupStatus)) continue;
       open++;
       if (task.dueDate && task.dueDate < now) overdue++;
       else if (task.dueDate && task.dueDate <= nextWeek) dueSoon++;
       if (isOpenAttentionTask(task)) needsAmi++;
+      if (['BLOCKED', 'ISSUE'].includes(task.intelligence?.agentState ?? '')) blocked++;
+      if (['WAITING_ON_TEAM', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR'].includes(task.intelligence?.agentState ?? '')) waiting++;
+      latestActivity = Math.max(latestActivity, task.clickupUpdatedAt?.getTime() ?? 0, task.intelligence?.lastMeaningfulChangeAt?.getTime() ?? 0);
     }
-    return { id: person.id, name: person.name, imported: person.assignments.length, open, overdue, dueSoon, needsAmi };
+    return { id: person.id, name: person.name, imported: person.assignments.length, open, overdue, dueSoon, needsAmi, blocked, waiting, latestActivity };
   });
   const search = q.trim().toLowerCase();
   const filtered = summaries.filter(person =>
@@ -48,7 +51,8 @@ export default async function TeamDirectory({ searchParams }: {
     (show === 'all' || (show === 'open' && person.open > 0) ||
       (show === 'overdue' && person.overdue > 0) || (show === 'attention' && person.needsAmi > 0))
   ).sort((a, b) => {
-    const key = sort === 'tasks' ? 'imported' : sort === 'attention' ? 'needsAmi' : sort;
+    if (sort === 'exceptions') return (b.needsAmi * 10 + b.blocked * 5 + b.waiting) - (a.needsAmi * 10 + a.blocked * 5 + a.waiting) || b.latestActivity - a.latestActivity || a.name.localeCompare(b.name);
+    const key = sort === 'tasks' ? 'imported' : sort === 'attention' ? 'needsAmi' : sort === 'recent' ? 'latestActivity' : sort;
     if (key === 'name') return a.name.localeCompare(b.name);
     return b[key] - a[key] || a.name.localeCompare(b.name);
   });
@@ -60,14 +64,14 @@ export default async function TeamDirectory({ searchParams }: {
   return <main className="ops-shell dashboard-shell" id="main-content">
     <AppNav current="team" />
     <header className="detail-hero"><p className="eyebrow">TEAM DIRECTORY</p><h1>Team workload</h1>
-      <p>See current open assignments, deadlines, and decisions by team member.</p></header>
+      <p>Start with teammates who have current handoffs, blockers, or recent meaningful activity—not historical task volume.</p></header>
     <section className="team-workload-metrics" aria-label="Team assignment overview">
       <div className="team-workload-metric"><strong>{people.length.toLocaleString()}</strong><span>Team members</span></div>
       <div className="team-workload-metric"><strong>{totals.open.toLocaleString()}</strong><span>Open assignments</span></div>
       <div className="team-workload-metric"><strong>{totals.overdue.toLocaleString()}</strong><span>Past-due assignments</span></div>
       <div className="team-workload-metric"><strong>{totals.needsAmi.toLocaleString()}</strong><span>Needs Ami decisions</span></div>
     </section>
-    <p className="team-workload-note">Counts are based on imported ClickUp assignments in active JF Corporate clients. Shared tasks count once for each assignee. Past due means an open task with a due date before the current time; these are not verified workload or capacity estimates. AI decisions are unverified.</p>
+    <p className="team-workload-note">Counts are based on imported ClickUp assignments in active JF Corporate clients. Shared tasks count once for each assignee. Past due means an open task with a due date before the current time; these are not verified workload or capacity estimates. Needs Ami counts include only current evidence-verified decisions.</p>
     <section className="clean-panel directory-panel">
       <div className="panel-heading"><div><h2>People</h2><p>Prioritize who needs follow-up, then open their individual task view.</p></div>
         <span className="panel-count">{people.length}</span></div>
@@ -78,7 +82,7 @@ export default async function TeamDirectory({ searchParams }: {
           <option value="overdue">With past-due tasks</option><option value="attention">With Needs Ami</option>
         </select></label>
         <label>Sort by<select name="sort" defaultValue={sort}>
-          <option value="open">Most open assignments</option><option value="overdue">Most past due</option>
+          <option value="exceptions">Current exceptions</option><option value="recent">Most recently active</option><option value="open">Most open assignments</option><option value="overdue">Most past due</option>
           <option value="attention">Most Needs Ami</option><option value="name">Employee name</option>
           <option value="tasks">Most imported assignments</option>
         </select></label>
@@ -91,6 +95,8 @@ export default async function TeamDirectory({ searchParams }: {
           <small>{person.imported.toLocaleString()} imported assignments</small>
           <span className="team-workload-tags">
             <span>{person.open.toLocaleString()} open</span>
+            {person.blocked > 0 && <span className="team-workload-overdue">{person.blocked} blocked/issue</span>}
+            {person.waiting > 0 && <span>{person.waiting} waiting</span>}
             <span className={person.overdue > 0 ? 'team-workload-overdue' : ''}>{person.overdue.toLocaleString()} past due</span>
             <span>{person.dueSoon.toLocaleString()} due in 7 days</span>
             {person.needsAmi > 0 && <span className="team-workload-attention">{person.needsAmi.toLocaleString()} Needs Ami</span>}
