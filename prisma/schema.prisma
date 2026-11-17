@@ -262,6 +262,16 @@ model TaskIntelligence {
   lastMeaningfulChange   String?
   lastMeaningfulChangeAt DateTime?
   confidence             Float?
+  nextActor              String?
+  unresolvedRequest      String?
+  priorityLevel          String?
+  priorityReasons        Json?
+  evidenceReferences     Json?
+  contradictingEvidence  Json?
+  freshnessStatus        String?
+  verificationStatus     String?
+  verificationReasons    Json?
+  classificationVersion  String?
   promptVersion          String?
   sourceFingerprint      String?
   analyzedAt             DateTime?

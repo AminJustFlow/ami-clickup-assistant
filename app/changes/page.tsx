@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { isOpenAttentionTask } from '@/lib/attention/triage';
+import { isVerifiedOpenAttentionTask as isOpenAttentionTask } from '@/lib/attention/triage';
 import { prisma } from '@/lib/db/prisma';
 import { markDigestChecked } from './actions';
 import { AppNav } from '../components/app-nav';

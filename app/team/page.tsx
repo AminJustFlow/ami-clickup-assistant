@@ -1,4 +1,4 @@
-import { isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { isClosedClickUpStatus, isVerifiedOpenAttentionTask as isOpenAttentionTask } from '@/lib/attention/triage';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../components/app-nav';
 
@@ -23,7 +23,7 @@ export default async function TeamDirectory({ searchParams }: {
         where: { task: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } } },
         select: { task: { select: {
           clickupStatus: true, dueDate: true,
-          intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true } },
+          intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
           attentionDisposition: { select: { sourceFingerprint: true, decision: true } }
         } } }
       }

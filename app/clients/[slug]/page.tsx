@@ -1,5 +1,5 @@
 import { isStaleActive } from '@/lib/intelligence/staleness';
-import { isOpenAttentionTask, isClosedClickUpStatus } from '@/lib/attention/triage';
+import { isVerifiedOpenAttentionTask as isOpenAttentionTask, isClosedClickUpStatus } from '@/lib/attention/triage';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../../components/app-nav';

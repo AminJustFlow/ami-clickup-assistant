@@ -74,6 +74,11 @@ async function main() {
           importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore,
           riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange,
           lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence,
+          nextActor: result.nextActor, unresolvedRequest: result.unresolvedRequest,
+          priorityLevel: result.priorityLevel, priorityReasons: result.priorityReasons,
+          evidenceReferences: result.evidenceReferences, contradictingEvidence: result.contradictingEvidence,
+          freshnessStatus: result.freshnessStatus, verificationStatus: result.verificationStatus,
+          verificationReasons: result.verificationReasons, classificationVersion: result.classificationVersion,
           promptVersion: expectedVersion, analyzedAt: new Date(), sourceFingerprint: fingerprint
         });
         analyzed++;

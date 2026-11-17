@@ -22,7 +22,8 @@ function task(id: number, overrides: Partial<BriefTaskInput> = {}): BriefTaskInp
     intelligence: {
       agentState: 'ACTIVE', needsAmi: false, amiAction: null, currentSummary: `Summary ${id}`, waitingOnType: 'NONE', waitingOnName: null,
       importanceScore: 50, amiAttentionScore: 50, riskLevel: 'LOW', lastMeaningfulChange: null,
-      lastMeaningfulChangeAt: new Date('2026-10-28T12:00:00Z'), sourceFingerprint: `fp-${id}`, analyzedAt: new Date('2026-10-28T12:30:00Z')
+      lastMeaningfulChangeAt: new Date('2026-10-28T12:00:00Z'), sourceFingerprint: `fp-${id}`, analyzedAt: new Date('2026-10-28T12:30:00Z'),
+      verificationStatus: 'VERIFIED', classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE'
     }, ...overrides
   };
 }

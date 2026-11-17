@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma';
 import { groupClientFolders, needsClientAttribution } from '@/lib/clients/grouping';
-import { isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { isClosedClickUpStatus, isVerifiedOpenAttentionTask as isOpenAttentionTask } from '@/lib/attention/triage';
 import { AppNav } from '../components/app-nav';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +45,7 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
       where: { ...scope, intelligence: { is: { needsAmi: true } } },
       select: {
         clientId: true, clickupStatus: true,
-        intelligence: { select: { needsAmi: true, agentState: true, sourceFingerprint: true, analyzedAt: true } },
+        intelligence: { select: { needsAmi: true, agentState: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
         attentionDisposition: { select: { decision: true, sourceFingerprint: true } }
       }
     }),

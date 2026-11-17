@@ -51,11 +51,13 @@ const outputRate = Number(process.env.AI_OUTPUT_USD_PER_MILLION);
 const intervalSeconds = Number(process.env.AI_WORKER_INTERVAL_SECONDS || '60');
 const maxInputTokens = Number(process.env.AI_MAX_INPUT_TOKENS_PER_TASK || '20000');
 const maxOutputTokens = Number(process.env.AI_MAX_OUTPUT_TOKENS_PER_TASK || '2000');
+const evidencePilotDays = Number(process.env.AI_EVIDENCE_PILOT_DAYS || '30');
 for (const [name, value] of Object.entries({ dailyBudget, freshBudget, batchBudget, maxJobs, maxRetries, inputRate, outputRate, intervalSeconds, maxInputTokens, maxOutputTokens })) {
   if (!Number.isFinite(value) || value <= 0) throw new Error(name + ' must be a positive number');
 }
 if (batchBudget > dailyBudget) throw new Error('AI_BATCH_BUDGET_USD cannot exceed AI_DAILY_BUDGET_USD');
 if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
+if (!Number.isInteger(evidencePilotDays) || evidencePilotDays < 1 || evidencePilotDays > 365) throw new Error('AI_EVIDENCE_PILOT_DAYS must be an integer from 1 to 365');
 const reservation = Math.ceil(((maxInputTokens * inputRate + maxOutputTokens * outputRate) / 1_000_000) * 1_000_000) / 1_000_000;
 if (reservation > batchBudget) throw new Error('One task reservation exceeds AI_BATCH_BUDGET_USD');
 
@@ -189,13 +191,15 @@ async function refreshQueue() {
     LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
     LEFT JOIN "AnalysisJob" j ON j."taskId" = t.id
     WHERE t.deleted = false
-      AND (i.id IS NULL OR i."analyzedAt" IS NULL OR i."promptVersion" IS DISTINCT FROM ${expectedVersion}
-        OR t."clickupUpdatedAt" > i."analyzedAt")
+      AND (i.id IS NULL OR i."analyzedAt" IS NULL OR t."clickupUpdatedAt" > i."analyzedAt"
+        OR (i."promptVersion" IS DISTINCT FROM ${expectedVersion} AND (
+          t."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+          OR i."needsAmi" = true OR i."riskLevel" IN ('HIGH', 'CRITICAL')
+          OR i."agentState" IN ('BLOCKED', 'ISSUE')
+        )))
       AND (j.id IS NULL OR j.status = 'SUCCEEDED')
     ORDER BY
       CASE WHEN i."analyzedAt" IS NULL THEN 0 ELSE 1 END,
-      COALESCE(i."needsAmi", false) DESC,
-      COALESCE(i."amiAttentionScore", 0) DESC,
       t."clickupUpdatedAt" DESC NULLS LAST, t.id
     LIMIT 500`;
   for (const task of candidates) {
@@ -352,7 +356,7 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     if (result.source !== 'AI') throw new Error('OpenAI analysis did not complete');
     const stillOwned = await prisma.analysisJob.count({ where: { id: job.id, status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } } });
     if (!stillOwned) throw new Error('Worker lost job lease before result could be committed');
-    await saveTaskIntelligence(task.id, { agentState: result.agentState, headline: result.headline, currentSummary: result.currentSummary, needsAmi: result.needsAmi, amiAction: result.amiAction, waitingOnType: result.waitingOnType, waitingOnName: result.waitingOnName, importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore, riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange, lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence, promptVersion: TASK_ANALYZER_PROMPT_VERSION + ':' + model, analyzedAt: new Date(), sourceFingerprint: fingerprint });
+    await saveTaskIntelligence(task.id, { agentState: result.agentState, headline: result.headline, currentSummary: result.currentSummary, needsAmi: result.needsAmi, amiAction: result.amiAction, waitingOnType: result.waitingOnType, waitingOnName: result.waitingOnName, importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore, riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange, lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence, nextActor: result.nextActor, unresolvedRequest: result.unresolvedRequest, priorityLevel: result.priorityLevel, priorityReasons: result.priorityReasons, evidenceReferences: result.evidenceReferences, contradictingEvidence: result.contradictingEvidence, freshnessStatus: result.freshnessStatus, verificationStatus: result.verificationStatus, verificationReasons: result.verificationReasons, classificationVersion: result.classificationVersion, promptVersion: TASK_ANALYZER_PROMPT_VERSION + ':' + model, analyzedAt: new Date(), sourceFingerprint: fingerprint });
     const input = result.usage?.inputTokens ?? 0, output = result.usage?.outputTokens ?? 0;
     const actual = (input * inputRate + output * outputRate) / 1_000_000;
     await completeJob(job.id, { input, output, actual });

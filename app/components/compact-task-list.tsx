@@ -25,6 +25,7 @@ type TaskRow = {
     confidence?: number | null;
     analyzedAt?: Date | null;
     lastMeaningfulChangeAt?: Date | null;
+    verificationStatus?: string | null;
   } | null;
 };
 
@@ -38,7 +39,7 @@ const stateLabels: Record<string, string> = {
 
 export function CompactTaskRow({ task, compact = false }: { task: TaskRow; compact?: boolean }) {
   const intel = task.intelligence;
-  const nextAction = intel?.needsAmi && hasSpecificAmiAction(intel.amiAction) ? intel.amiAction : null;
+  const nextAction = intel?.needsAmi && intel.verificationStatus === 'VERIFIED' && hasSpecificAmiAction(intel.amiAction) ? intel.amiAction : null;
   const summary = intel?.currentSummary;
   const owners = task.assignees.map(a => a.employee.name).join(', ') || 'Unassigned';
   const overdue = Boolean(task.dueDate && task.dueDate.getTime() < Date.now() &&
@@ -60,7 +61,7 @@ export function CompactTaskRow({ task, compact = false }: { task: TaskRow; compa
       </div>
       {nextAction && <div className="client-task-action"><strong>AI suggested next action · verify in ClickUp</strong><p style={compact ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : undefined}>{nextAction}</p></div>}
       {!nextAction && summary && <details className="client-task-summary-expand"><summary><strong>AI summary:</strong> <span className="client-task-summary-preview">{summary}</span><span className="client-task-summary-more">Read full summary</span></summary><p>{summary}</p></details>}
-      {intel?.needsAmi && !nextAction && <p className="client-task-ai-note">Flagged for Ami review; no specific AI action is available. Open details to verify.</p>}
+      {intel?.needsAmi && !nextAction && <p className="client-task-ai-note">Possible Ami action · evidence is not verified. Open details before acting.</p>}
       {!compact && intel?.waitingOnName && <p className="client-task-waiting"><strong>AI identifies dependency:</strong> {intel.waitingOnName}</p>}
       {!compact && intel && <div className="client-task-ai-state"><span className="status-pill">{stateLabels[intel.agentState] ?? intel.agentState}</span><span>AI assessment · not verified task status</span></div>}
       {!compact && !intel && <div className="client-task-ai-state"><span className="status-pill">Not analyzed</span></div>}

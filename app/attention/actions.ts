@@ -9,7 +9,7 @@ export async function setAttentionDecision(formData: FormData) {
   const decision = formData.get('decision');
   const fingerprint = formData.get('fingerprint');
   const submittedReason = formData.get('reason');
-  const allowedReasons = ['ALREADY_HANDLED', 'NOT_RELEVANT', 'INCORRECT_AI', 'OTHER'];
+  const allowedReasons = ['ALREADY_HANDLED', 'NOT_AMI', 'NOT_ACTIONABLE', 'MISUNDERSTOOD', 'DUPLICATE_HIERARCHY', 'STALE_INFORMATION', 'NOT_RELEVANT', 'INCORRECT_AI', 'OTHER'];
   const reason = decision === 'DISMISSED' && typeof submittedReason === 'string' && allowedReasons.includes(submittedReason) ? submittedReason : null;
   const returnTo = formData.get('returnTo');
   const safeReturn = typeof returnTo === 'string' && /^\/attention(?:\?(?!\/)[^#]*)?$/.test(returnTo)

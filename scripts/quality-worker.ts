@@ -39,6 +39,12 @@ export function inspectQuality(task: {
     amiAttentionScore: number;
     importanceScore: number;
     sourceFingerprint: string | null;
+    verificationStatus?: string | null;
+    verificationReasons?: unknown;
+    evidenceReferences?: unknown;
+    freshnessStatus?: string | null;
+    nextActor?: string | null;
+    unresolvedRequest?: string | null;
   };
 }): { stale: boolean; closedAttention: boolean; invalidScores: boolean; needsVerification: boolean } {
   const i = task.intelligence;
@@ -78,7 +84,9 @@ export async function auditOnce(): Promise<QualitySnapshot> {
       select: {
         id: true, clientId: true, dueDate: true, clickupStatus: true, clickupUpdatedAt: true,
         intelligence: { select: { analyzedAt: true, needsAmi: true, confidence: true,
-          amiAction: true, amiAttentionScore: true, importanceScore: true, sourceFingerprint: true } }
+          amiAction: true, amiAttentionScore: true, importanceScore: true, sourceFingerprint: true,
+          verificationStatus: true, verificationReasons: true, evidenceReferences: true,
+          freshnessStatus: true, nextActor: true, unresolvedRequest: true } }
       },
       orderBy: { id: 'asc' }, take: 100,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})

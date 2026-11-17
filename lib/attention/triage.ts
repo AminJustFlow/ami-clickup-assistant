@@ -4,6 +4,12 @@ export type AttentionSnapshot = {
   agentState: string;
   sourceFingerprint: string | null;
   analyzedAt: Date | null;
+  verificationStatus?: string | null;
+  verificationReasons?: unknown;
+  evidenceReferences?: unknown;
+  freshnessStatus?: string | null;
+  nextActor?: string | null;
+  unresolvedRequest?: string | null;
 };
 export type AttentionDispositionSnapshot = {
   sourceFingerprint: string;
@@ -26,6 +32,15 @@ export function isOpenAttentionTask(task: {
   const intel = task.intelligence;
   if (!intel?.needsAmi || intel.agentState === 'COMPLETED' || isClosedClickUpStatus(task.clickupStatus)) return false;
   return task.attentionDisposition?.sourceFingerprint !== attentionFingerprint(intel);
+}
+
+/** Use outside the dedicated verification inbox so uncertain AI output is never presented as fact. */
+export function isVerifiedOpenAttentionTask(task: {
+  clickupStatus: string | null;
+  intelligence: AttentionSnapshot | null;
+  attentionDisposition: AttentionDispositionSnapshot;
+}): boolean {
+  return task.intelligence?.verificationStatus === 'VERIFIED' && isOpenAttentionTask(task);
 }
 
 /**
@@ -66,6 +81,12 @@ export function attentionVerificationReasons(task: {
     confidence: number | null;
     needsAmi: boolean;
     amiAction: string | null;
+    verificationStatus?: string | null;
+    verificationReasons?: unknown;
+    evidenceReferences?: unknown;
+    freshnessStatus?: string | null;
+    nextActor?: string | null;
+    unresolvedRequest?: string | null;
   } | null;
 }): string[] {
   const intel = task.intelligence;
@@ -79,5 +100,13 @@ export function attentionVerificationReasons(task: {
     reasons.push('Low or unknown AI confidence');
   if (intel.needsAmi && !hasSpecificAmiAction(intel.amiAction))
     reasons.push('No specific action for Ami');
-  return reasons;
+  if (intel.needsAmi && intel.verificationStatus !== 'VERIFIED') reasons.push('The recommendation has not passed evidence verification');
+  if (intel.needsAmi && intel.nextActor !== 'AMI') reasons.push('Ami is not clearly identified as the next actor');
+  if (intel.needsAmi && !intel.unresolvedRequest?.trim()) reasons.push('No concrete unresolved request was identified');
+  if (intel.needsAmi && (!Array.isArray(intel.evidenceReferences) || intel.evidenceReferences.length === 0)) reasons.push('No traceable evidence supports the recommendation');
+  if (intel.needsAmi && intel.freshnessStatus !== 'CURRENT') reasons.push('Recommendation freshness is uncertain');
+  if (Array.isArray(intel.verificationReasons)) {
+    for (const reason of intel.verificationReasons) if (typeof reason === 'string' && reason.trim()) reasons.push(reason.trim());
+  }
+  return [...new Set(reasons)];
 }

@@ -98,6 +98,8 @@ export type BriefTaskInput = {
     lastMeaningfulChangeAt: Date | null;
     sourceFingerprint: string | null;
     analyzedAt: Date | null;
+    verificationStatus?: string | null;
+    classificationVersion?: string | null;
   };
 };
 
@@ -119,6 +121,7 @@ export function formatEastern(value: Date): string {
 }
 
 const closed = (status: string | null) => /^(done|complete|completed|closed|cancelled|canceled)$/i.test(status?.trim() ?? '');
+const evidenceVerified = (task: BriefTaskInput) => task.intelligence?.verificationStatus === 'VERIFIED';
 
 export function compareBriefTasks(a: BriefTask, b: BriefTask): number {
   return compareRecentFirst(
@@ -149,7 +152,7 @@ export function buildDailyBrief(input: {
       commentDates: task.comments.flatMap(comment => [comment.clickupCreatedAt, comment.clickupUpdatedAt])
     });
     const overdue = !!task.dueDate && task.dueDate < now && !closed(task.clickupStatus) && intel?.agentState !== 'COMPLETED';
-    const openDecision = isOpenAttentionTask({
+    const openDecision = evidenceVerified(task) && isOpenAttentionTask({
       clickupStatus: task.clickupStatus,
       intelligence: intel ? { needsAmi: intel.needsAmi, agentState: intel.agentState, sourceFingerprint: intel.sourceFingerprint, analyzedAt: intel.analyzedAt } : null,
       attentionDisposition: task.attentionDisposition
@@ -179,7 +182,7 @@ export function buildDailyBrief(input: {
         relatedInsights: group.members.filter(member => member.id !== group.primary.id).map(member => briefById.get(member.id)!)
       };
     });
-  const openDecisions = groupBrief(sourceTasks.filter(task => isOpenAttentionTask({
+  const openDecisions = groupBrief(sourceTasks.filter(task => evidenceVerified(task) && isOpenAttentionTask({
     clickupStatus: task.clickupStatus,
     intelligence: task.intelligence ? { needsAmi: task.intelligence.needsAmi, agentState: task.intelligence.agentState, sourceFingerprint: task.intelligence.sourceFingerprint, analyzedAt: task.intelligence.analyzedAt } : null,
     attentionDisposition: task.attentionDisposition

@@ -41,6 +41,16 @@ type TaskDetails = {
     lastMeaningfulChangeAt: string | null;
     confidence: number | null;
     analyzedAt: string | null;
+    nextActor: string | null;
+    unresolvedRequest: string | null;
+    priorityLevel: string | null;
+    priorityReasons: unknown;
+    evidenceReferences: unknown;
+    contradictingEvidence: unknown;
+    freshnessStatus: string | null;
+    verificationStatus: string | null;
+    verificationReasons: unknown;
+    classificationVersion: string | null;
   } | null;
   assignees: string[];
   comments: { id: number; authorName: string | null; body: string; clickupCreatedAt: string | null }[];
@@ -77,6 +87,10 @@ function stateLabel(state: string | undefined) {
   if (!state) return 'Not analyzed';
   return state.toLowerCase().replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());
 }
+
+type EvidenceReference = { source_type?: string; source_id?: string; author?: string | null; occurred_at?: string | null; excerpt: string };
+const stringList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && !!item.trim()) : [];
+const evidenceList = (value: unknown): EvidenceReference[] => Array.isArray(value) ? value.filter((item): item is EvidenceReference => !!item && typeof item === 'object' && typeof (item as { excerpt?: unknown }).excerpt === 'string') : [];
 
 export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: number; label?: string }) {
   const [open, setOpen] = useState(false);
@@ -160,7 +174,25 @@ export function TaskDetailsButton({ taskId, label = 'View details' }: { taskId: 
               {task.intelligence?.needsAmi && <section className="task-drawer-action">
                 <p className="next-step-label">What Ami needs to do</p>
                 <p>{task.intelligence.amiAction || 'Review this task and decide on the next step.'}</p>
-                <small>AI suggestion only. Verify the latest task details in ClickUp before acting.</small>
+                <small>{task.intelligence.verificationStatus === 'VERIFIED' ? 'Evidence-backed AI recommendation. Confirm in ClickUp before acting.' : 'Unverified AI suggestion. Check the latest task details before acting.'}</small>
+              </section>}
+
+              {task.intelligence?.needsAmi && <section className="task-drawer-section">
+                <h3>Why Ami and why now</h3>
+                <p><strong>Unresolved request:</strong> {task.intelligence.unresolvedRequest || 'Not clearly identified'}</p>
+                <p><strong>Next actor:</strong> {task.intelligence.nextActor || 'Unclear'} · <strong>Priority:</strong> {task.intelligence.priorityLevel || 'Unrated'}</p>
+                {stringList(task.intelligence.priorityReasons).length > 0 && <ul>{stringList(task.intelligence.priorityReasons).map(reason => <li key={reason}>{reason}</li>)}</ul>}
+                {stringList(task.intelligence.verificationReasons).length > 0 && <><h4>Verify before acting</h4><ul>{stringList(task.intelligence.verificationReasons).map(reason => <li key={reason}>{reason}</li>)}</ul></>}
+              </section>}
+
+              {task.intelligence && evidenceList(task.intelligence.evidenceReferences).length > 0 && <section className="task-drawer-section">
+                <h3>Evidence used</h3>
+                {evidenceList(task.intelligence.evidenceReferences).map((evidence, index) => <blockquote key={`${evidence.source_type}-${evidence.source_id}-${index}`}><p>{evidence.excerpt}</p><small>{evidence.author || evidence.source_type || 'Task evidence'}{evidence.occurred_at ? ` · ${formatDate(evidence.occurred_at)}` : ''}</small></blockquote>)}
+              </section>}
+
+              {task.intelligence && evidenceList(task.intelligence.contradictingEvidence).length > 0 && <section className="task-drawer-section">
+                <h3>Evidence that may change this recommendation</h3>
+                {evidenceList(task.intelligence.contradictingEvidence).map((evidence, index) => <blockquote key={`${evidence.source_type}-${evidence.source_id}-${index}`}><p>{evidence.excerpt}</p><small>{evidence.author || evidence.source_type || 'Task evidence'}{evidence.occurred_at ? ` · ${formatDate(evidence.occurred_at)}` : ''}</small></blockquote>)}
               </section>}
 
               {task.intelligence?.waitingOnName && <section className="task-drawer-section"><h3>Identified dependency</h3><p>Waiting on {task.intelligence.waitingOnName}. This is an AI assessment, not a verified ClickUp status.</p></section>}

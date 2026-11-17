@@ -8,7 +8,10 @@ const base = {
   intelligence: {
     analyzedAt, needsAmi: true, confidence: 0.95,
     amiAction: 'Confirm the launch date with the client',
-    amiAttentionScore: 70, importanceScore: 65, sourceFingerprint: 'example'
+    amiAttentionScore: 70, importanceScore: 65, sourceFingerprint: 'example',
+    verificationStatus: 'VERIFIED', verificationReasons: [], nextActor: 'AMI',
+    unresolvedRequest: 'Confirm the launch date with the client', freshnessStatus: 'CURRENT',
+    evidenceReferences: [{ source_type: 'COMMENT', source_id: '1', excerpt: 'Please confirm the launch date.' }]
   }
 };
 assert.deepEqual(inspectQuality(base), {

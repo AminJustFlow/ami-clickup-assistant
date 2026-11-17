@@ -21,7 +21,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       intelligence: { select: {
         agentState: true, needsAmi: true, amiAction: true, currentSummary: true,
         waitingOnName: true, waitingOnType: true, lastMeaningfulChange: true,
-        lastMeaningfulChangeAt: true, confidence: true, analyzedAt: true
+        lastMeaningfulChangeAt: true, confidence: true, analyzedAt: true,
+        nextActor: true, unresolvedRequest: true, priorityLevel: true, priorityReasons: true,
+        evidenceReferences: true, contradictingEvidence: true, freshnessStatus: true,
+        verificationStatus: true, verificationReasons: true, classificationVersion: true
       } },
       assignees: { select: { employee: { select: { name: true } } } },
       comments: {

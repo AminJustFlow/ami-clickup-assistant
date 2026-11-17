@@ -16,6 +16,14 @@ type View = 'active' | 'history';
 type Filters = { client?: string; priority?: string; q?: string; page?: string; view?: string; notice?: string };
 const priorities: Priority[] = ['all', 'overdue', 'high', 'recent', 'verify'];
 const dateLabel = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const stringList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && !!item.trim()) : [];
+const evidenceList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is { author?: string | null; occurred_at?: string | null; excerpt: string } => !!item && typeof item === 'object' && typeof (item as { excerpt?: unknown }).excerpt === 'string') : [];
+const dismissalOptions = [
+  ['ALREADY_HANDLED', 'Already handled'], ['NOT_AMI', 'Ami is not responsible'],
+  ['NOT_ACTIONABLE', 'Not actionable'], ['MISUNDERSTOOD', 'AI misunderstood the conversation'],
+  ['DUPLICATE_HIERARCHY', 'Duplicate parent/subtask'], ['STALE_INFORMATION', 'Stale information'],
+  ['NOT_RELEVANT', 'Not relevant'], ['INCORRECT_AI', 'Other incorrect AI recommendation'], ['OTHER', 'Other']
+] as const;
 
 function urlFor(filters: { client: string; priority: Priority; q: string; view: View }, page = 1) {
   const query = new URLSearchParams();
@@ -69,7 +77,9 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
         attentionDisposition: { select: { decision: true, reason: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {
           amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
-          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true, lastMeaningfulChangeAt: true
+          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true, lastMeaningfulChangeAt: true,
+          nextActor: true, unresolvedRequest: true, priorityLevel: true, priorityReasons: true,
+          evidenceReferences: true, freshnessStatus: true, verificationStatus: true, verificationReasons: true
         } }
       },
       orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
@@ -85,7 +95,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       ? task.attentionDisposition.decision : null;
     const overdue = !closed && !!task.dueDate && task.dueDate < now;
     const verificationReasons = attentionVerificationReasons(task);
-    const urgency = verificationReasons.length ? 'Verify recommendation' : overdue ? 'Overdue' : intel.amiAttentionScore >= 70 ? 'High priority' : 'Normal';
+    const urgency = verificationReasons.length ? 'Verify recommendation' : `${intel.priorityLevel ?? 'Normal'} priority`;
     return { ...task, closed, recorded, overdue, urgency, verificationReasons };
   });
   const active = groupedInsightRepresentatives(categorized, categorized.filter(isOpenAttentionTask), (a, b) => compareAttentionPriority(a, b, now));
@@ -146,10 +156,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
             <p>Review the current ClickUp evidence before deciding. When a recommendation is archived here, the next priority appears.</p>
             {brief.topReady.length ? brief.topReady.map((task, index) => <article className="attention-brief-card" key={task.id}>
               <div className="attention-row-main">
-                <div className="attention-row-byline"><span className="attention-brief-index">{index + 1}</span><span>{task.client.name}</span>{task.overdue && <span className="attention-urgency overdue">Overdue</span>}</div>
+                <div className="attention-row-byline"><span className="attention-brief-index">{index + 1}</span><span>{task.client.name}</span><span className="attention-urgency high">{task.intelligence?.priorityLevel ?? 'Current'} priority</span></div>
                 <p className="attention-action-label">Recommended next action</p>
                 <p className="attention-row-action attention-featured-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
                 <h3 className="attention-featured-task-title">Task: {task.name}</h3>
+                {stringList(task.intelligence?.priorityReasons).length > 0 && <details className="task-extra"><summary>Why this priority?</summary><ul>{stringList(task.intelligence?.priorityReasons).map(reason => <li key={reason}>{reason}</li>)}</ul></details>}
+                {evidenceList(task.intelligence?.evidenceReferences).slice(0, 1).map((evidence, evidenceIndex) => <p className="dashboard-note" key={evidenceIndex}><strong>Based on:</strong> {evidence.excerpt}{evidence.author ? ` — ${evidence.author}` : ''}{evidence.occurred_at ? `, ${dateLabel(new Date(evidence.occurred_at))}` : ''}</p>)}
                 {!!task.insightGroupMembers?.length && <details className="task-extra"><summary>{task.insightGroupMembers.length} related subtask decision{task.insightGroupMembers.length === 1 ? '' : 's'}</summary><ul>{task.insightGroupMembers.map(member => <li key={member.id}><strong>{member.name}</strong> — {member.intelligence?.amiAction || member.intelligence?.currentSummary || 'Review task evidence.'} <TaskDetailsButton taskId={member.id} label="Evidence" /></li>)}</ul></details>}
                 <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
               </div>
@@ -157,7 +169,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <div className="attention-primary-review"><TaskDetailsButton taskId={task.id} label="Review evidence" /></div>
                 {task.clickupUrl && <a className="task-action" href={task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}
                 <form action={setAttentionDecision} className="attention-decision-form">
-                  <details className="attention-reason"><summary>Add dismissal reason (optional)</summary><label>Reason<select name="reason" defaultValue=""><option value="">No reason</option><option value="ALREADY_HANDLED">Already handled</option><option value="NOT_RELEVANT">Not relevant</option><option value="INCORRECT_AI">Incorrect AI recommendation</option><option value="OTHER">Other</option></select></label></details>
+                  <details className="attention-reason"><summary>Add dismissal reason (optional)</summary><label>Reason<select name="reason" defaultValue=""><option value="">No reason</option>{dismissalOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></details>
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="fingerprint" value={attentionFingerprint(task.intelligence!)} />
                   <input type="hidden" name="returnTo" value="/attention" />
@@ -197,7 +209,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     </section>
     <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
-        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Additional decisions not featured above. Past-due items first.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>
+        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Reviewed & archived'}</h2><p>{view === 'active' ? 'Additional decisions, newest evidence first. Priority labels explain impact without hiding recent work.' : 'Completed tasks and decisions you have reviewed or dismissed.'}</p></div>
         <span className="panel-count">{total}</span>
       </div>
       <nav className="attention-view-tabs" aria-label="Inbox view">
@@ -216,7 +228,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
           <select name="priority" defaultValue={priority}>
             <option value="all">All priorities</option>
             <option value="overdue">Past due date</option>
-            <option value="high">Attention score 70+</option>
+            <option value="high">High business impact</option>
             <option value="recent">Updated in last 7 days</option>
             <option value="verify">Needs verification</option>
           </select>
@@ -235,6 +247,8 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
               <div className="attention-row-byline"><span>{task.client.name}</span><span className={task.verificationReasons.length ? 'attention-urgency normal' : task.overdue ? 'attention-urgency overdue' : intel.amiAttentionScore >= 70 ? 'attention-urgency high' : 'attention-urgency normal'}>{task.closed ? 'Completed in ClickUp / AI' : task.recorded ? (task.recorded === 'REVIEWED' ? 'Reviewed' : 'Dismissed') : task.urgency}</span></div>
               <h3>{task.name}</h3>
               <p className="attention-row-action">{intel.amiAction || intel.currentSummary || 'Review the task for next steps.'}</p>
+              {task.verificationReasons.length === 0 && stringList(intel.priorityReasons).length > 0 && <details className="task-extra"><summary>Why {intel.priorityLevel?.toLowerCase() ?? 'this'} priority?</summary><ul>{stringList(intel.priorityReasons).map(reason => <li key={reason}>{reason}</li>)}</ul></details>}
+              {task.verificationReasons.length === 0 && evidenceList(intel.evidenceReferences).slice(0, 1).map((evidence, evidenceIndex) => <p className="dashboard-note" key={evidenceIndex}><strong>Based on:</strong> {evidence.excerpt}{evidence.author ? ` — ${evidence.author}` : ''}</p>)}
               {!!task.insightGroupMembers?.length && <details className="task-extra"><summary>{task.insightGroupMembers.length} related subtask decision{task.insightGroupMembers.length === 1 ? '' : 's'}</summary><ul>{task.insightGroupMembers.map(member => <li key={member.id}><strong>{member.name}</strong> — {member.intelligence?.amiAction || member.intelligence?.currentSummary || 'Review task evidence.'} <TaskDetailsButton taskId={member.id} label="Evidence" /></li>)}</ul></details>}
               {task.verificationReasons.length > 0 && <p className="attention-notice" role="note"><strong>Verify before acting:</strong> {task.verificationReasons.join('; ')}. Check the latest ClickUp comments and task status.</p>}
               <div className="attention-meta">

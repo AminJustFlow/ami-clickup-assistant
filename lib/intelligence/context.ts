@@ -201,7 +201,7 @@ export function contextText(context: TaskContext): string {
     ...context.extraEvidence,
     'CHRONOLOGICAL COMMENTS:',
     ...context.comments.map(comment =>
-      '[' + (comment.createdAt?.toISOString() ?? 'unknown time') + '] ' + (comment.authorName ?? 'Unknown') + ': ' + comment.body
+      '[COMMENT #' + comment.id + ' | ' + (comment.createdAt?.toISOString() ?? 'unknown time') + '] ' + (comment.authorName ?? 'Unknown') + ': ' + comment.body
     )
   ].filter(Boolean).join('\n');
 }

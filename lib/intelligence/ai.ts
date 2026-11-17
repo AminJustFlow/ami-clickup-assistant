@@ -6,7 +6,6 @@ import { relatedEvidenceText, type RelatedEvidence } from './related';
 import { analyzeWithRules, type RuleIntelligence } from './engine';
 import { TASK_ANALYZER_PROMPT_VERSION, TASK_ANALYZER_SYSTEM } from './prompt';
 import { taskIntelligenceSchema, type TaskIntelligenceOutput } from './schema';
-import { scoreRules } from './rules';
 
 export const DEFAULT_INTELLIGENCE_MODEL = 'gpt-6-luna';
 
@@ -15,6 +14,16 @@ export type HybridIntelligence = RuleIntelligence & {
   model: string | null;
   promptVersion: string;
   usage?: { inputTokens: number; outputTokens: number };
+  nextActor?: string | null;
+  unresolvedRequest?: string | null;
+  priorityLevel?: string | null;
+  priorityReasons?: string[];
+  evidenceReferences?: TaskIntelligenceOutput['evidence_references'];
+  contradictingEvidence?: TaskIntelligenceOutput['contradicting_evidence'];
+  freshnessStatus?: string | null;
+  verificationStatus?: string | null;
+  verificationReasons?: string[];
+  classificationVersion?: string | null;
 };
 
 function isAmiAuthor(name: string | null): boolean {
@@ -42,20 +51,37 @@ function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: s
   return name;
 }
 
-function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date, teamNames: string[]): HybridIntelligence {
+function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date, teamNames: string[], related: RelatedEvidence[]): HybridIntelligence {
   let agentState = ai.agent_state as AgentState;
   let needsAmi = ai.needs_ami;
   let amiAction = ai.ami_action;
   let waitingOnType = ai.waiting_on_type as WaitingOnType;
   let waitingOnName = ai.waiting_on_name;
+  const verificationReasons = [...ai.verification_reasons];
+  const commentsById = new Map(context.comments.map(comment => [String(comment.id), comment]));
+  const allowedTaskFields = new Set(['status', 'due_date', 'description', 'priority', 'assignees', 'title', 'list']);
+  const relatedTaskIds = new Set(related.map(item => item.context.clickupTaskId));
+  const validReference = (reference: TaskIntelligenceOutput['evidence_references'][number]) => {
+    if (reference.source_type === 'COMMENT') return commentsById.has(reference.source_id);
+    if (reference.source_type === 'TASK_FIELD') return allowedTaskFields.has(reference.source_id);
+    return reference.source_type === 'RELATED_TASK' && relatedTaskIds.has(reference.source_id);
+  };
+  const evidenceReferences = ai.evidence_references.filter(validReference);
+  const contradictingEvidence = ai.contradicting_evidence.filter(validReference);
+  if (evidenceReferences.length !== ai.evidence_references.length || contradictingEvidence.length !== ai.contradicting_evidence.length)
+    verificationReasons.push('AI cited evidence that is not present in the supplied task context');
 
   // Ami can have a pending decision even while the overall deliverable waits on
   // another teammate. Do not collapse two independent dependencies into one.
   // The model must resolve whether the request was answered using chronology.
   if (needsAmi && !amiAction?.trim()) {
-    needsAmi = false;
-    amiAction = null;
+    verificationReasons.push('No specific action for Ami');
   }
+  if (needsAmi && ai.next_actor !== 'AMI') verificationReasons.push('The evidence does not clearly make Ami the next actor');
+  if (needsAmi && !ai.unresolved_request?.trim()) verificationReasons.push('No concrete unresolved request was identified');
+  if (needsAmi && evidenceReferences.length === 0) verificationReasons.push('No valid evidence supports the recommendation');
+  if (needsAmi && ai.freshness_status !== 'CURRENT') verificationReasons.push('The recommendation may not reflect the current task state');
+  if (needsAmi && ai.confidence < 0.8) verificationReasons.push('AI confidence is below the action-inbox threshold');
   if (needsAmi && agentState === 'WAITING_ON_AMI') {
     waitingOnType = 'AMI';
     waitingOnName = 'Ami';
@@ -73,14 +99,8 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
   }
   waitingOnName = normalizeWaitingName(context, waitingOnType, waitingOnName, teamNames);
 
-  const blocked = ['BLOCKED', 'ISSUE', 'WAITING_ON_VENDOR', 'WAITING_ON_CLIENT'].includes(agentState);
-  const scores = scoreRules({
-    priority: context.priority,
-    dueDate: context.dueDate,
-    needsAmi,
-    blocked,
-    lastMeaningfulActivity: rules.lastMeaningfulChangeAt
-  }, now);
+  const verificationStatus = verificationReasons.length || ai.verification_status === 'VERIFY' ? 'VERIFY' : 'VERIFIED';
+  const priorityScore = needsAmi ? ai.priority_score : 0;
 
   return {
     meaningfulChange: ai.meaningful_change,
@@ -91,13 +111,23 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
     amiAction,
     waitingOnType,
     waitingOnName,
-    importanceScore: Math.max(ai.importance, scores.importance),
-    amiAttentionScore: scores.amiAttention,
+    importanceScore: ai.importance,
+    amiAttentionScore: priorityScore,
     riskLevel: ai.risk as RiskLevel,
     lastMeaningfulChange: ai.last_meaningful_change || rules.lastMeaningfulChange,
     lastMeaningfulChangeAt: rules.lastMeaningfulChangeAt,
     confidence: ai.confidence,
     evidence: rules.evidence,
+    nextActor: ai.next_actor,
+    unresolvedRequest: ai.unresolved_request,
+    priorityLevel: ai.priority_level,
+    priorityReasons: ai.priority_reasons,
+    evidenceReferences,
+    contradictingEvidence,
+    freshnessStatus: ai.freshness_status,
+    verificationStatus,
+    verificationReasons: [...new Set(verificationReasons)],
+    classificationVersion: TASK_ANALYZER_PROMPT_VERSION,
     source: 'AI',
     model,
     promptVersion: TASK_ANALYZER_PROMPT_VERSION
@@ -134,7 +164,7 @@ ${relatedEvidenceText(options.related ?? []) || 'No strongly related tasks ident
 
     if (!response.output_parsed) throw new Error('OpenAI returned no parsed intelligence output.');
     return {
-      ...aiToHybrid(context, response.output_parsed, rules, model, now, options.teamNames ?? []),
+      ...aiToHybrid(context, response.output_parsed, rules, model, now, options.teamNames ?? [], options.related ?? []),
       usage: { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 }
     };
   } catch (error) {

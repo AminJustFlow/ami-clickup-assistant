@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { clientHealthStatus, compareClientHealth, dueWithinDays } from '../lib/clients/health';
 import { compareAttentionPriority, dailyBrief } from '../lib/attention/daily-brief';
-import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask } from '../lib/attention/triage';
+import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask, isVerifiedOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
 import { compareRecentFirst, latestActivityTime } from '../lib/tasks/recency';
@@ -22,12 +22,16 @@ assert.equal(dueWithinDays(new Date('2026-10-12T12:00:00Z'), healthClock), false
 assert.equal(dueWithinDays(null, healthClock), false);
 
 const analyzedAt = new Date('2026-10-10T12:00:00Z');
-const intel = { needsAmi: true, agentState: 'WAITING_ON_AMI', sourceFingerprint: 'fp-1', analyzedAt };
+const intel = { needsAmi: true, agentState: 'WAITING_ON_AMI', sourceFingerprint: 'fp-1', analyzedAt,
+  verificationStatus: 'VERIFIED', verificationReasons: [], nextActor: 'AMI', unresolvedRequest: 'Confirm launch date',
+  evidenceReferences: [{ source_type: 'COMMENT', source_id: '1', excerpt: 'Ami, please confirm launch date.' }], freshnessStatus: 'CURRENT' };
 assert.equal(attentionFingerprint(intel), 'fp-1');
 assert.equal(attentionFingerprint({ sourceFingerprint: null, analyzedAt }), 'analyzed:2026-10-10T12:00:00.000Z');
 assert.equal(isClosedClickUpStatus(' Complete '), true);
 assert.equal(isClosedClickUpStatus('in progress'), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: null }), true);
+assert.equal(isVerifiedOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: null }), true);
+assert.equal(isVerifiedOpenAttentionTask({ clickupStatus: 'open', intelligence: { ...intel, verificationStatus: null }, attentionDisposition: null }), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'closed', intelligence: intel, attentionDisposition: null }), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: intel, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DONE' } }), false);
 assert.equal(isOpenAttentionTask({ clickupStatus: 'open', intelligence: { ...intel, sourceFingerprint: 'fp-2' }, attentionDisposition: { sourceFingerprint: 'fp-1', decision: 'DONE' } }), true);

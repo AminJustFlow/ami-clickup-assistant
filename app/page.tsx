@@ -28,7 +28,7 @@ export default async function Home() {
     prisma.task.findMany({ where: { client: { active: true, space: { name: 'JF Corporate' } } }, select: {
       id: true, clickupTaskId: true, name: true, clientId: true, clickupUrl: true, clickupStatus: true, dueDate: true, clickupUpdatedAt: true, deleted: true,
       attentionDisposition: { select: { sourceFingerprint: true, decision: true } },
-      intelligence: { select: { agentState: true, needsAmi: true, amiAction: true, currentSummary: true, waitingOnType: true, waitingOnName: true, importanceScore: true, amiAttentionScore: true, riskLevel: true, lastMeaningfulChange: true, lastMeaningfulChangeAt: true, sourceFingerprint: true, analyzedAt: true } }
+      intelligence: { select: { agentState: true, needsAmi: true, amiAction: true, currentSummary: true, waitingOnType: true, waitingOnName: true, importanceScore: true, amiAttentionScore: true, riskLevel: true, lastMeaningfulChange: true, lastMeaningfulChangeAt: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true, classificationVersion: true } }
     } }),
     prisma.intelligenceChange.findMany({ where: { detectedAt: { gte: since }, task: { client: { active: true, space: { name: 'JF Corporate' } } } }, select: { taskId: true, nextState: true, nextNeedsAmi: true, detectedAt: true } }),
     prisma.$queryRaw<Array<{ id: number; parentId: string | null }>>(Prisma.sql`
