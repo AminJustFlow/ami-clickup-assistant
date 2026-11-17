@@ -48,7 +48,7 @@ export default async function Home() {
     <section className={`command-readiness ${brief.readiness.ready ? 'ready' : 'limited'}`} aria-label="Data readiness">
       <div><strong>{brief.readiness.ready ? 'Current and ready' : 'Coverage is limited'}</strong><span>{brief.readiness.ready ? 'ClickUp sync and operational analysis are current.' : 'Use the verified items below, but do not treat an empty section as proof that nothing needs attention.'}</span></div>
       <dl><div><dt>Current-work coverage</dt><dd>{brief.readiness.operationalCoveragePercent}%</dd></div><div><dt>Operational tasks</dt><dd>{brief.readiness.analyzedOperationalTasks}/{brief.readiness.operationalTasks}</dd></div><div><dt>Oldest client sync</dt><dd>{dateTime(brief.readiness.oldestSyncAt)}</dd></div></dl>
-      <small className="command-scope-note">Current work means open JF Corporate work updated in the last 30 days, due from 7 days ago through the next 14 days, or carrying a current evidence-verified decision, blocker, dependency, or high-risk signal.</small>
+      <small className="command-scope-note">Current work means open JF Corporate work with a recent human comment or observed task change, newly created work from the last 30 days, an Ami-assigned deadline from 7 days ago through the next 14 days, or a current evidence-verified decision, blocker, dependency, or high-risk signal.</small>
       {!brief.readiness.ready && <details><summary>Why coverage is limited</summary><ul>{brief.readiness.reasons.map(reason => <li key={reason}>{readinessReasons[reason] ?? reason.replaceAll('_', ' ')}</li>)}</ul><a href="/system">Open system status →</a></details>}
     </section>
 

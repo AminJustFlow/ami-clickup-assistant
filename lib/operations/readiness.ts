@@ -7,6 +7,7 @@ const CLOSED = ['done', 'complete', 'completed', 'closed', 'cancelled', 'cancele
 export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
   const configuredDays = Number(process.env.AI_EVIDENCE_PILOT_DAYS || '30');
   const recentDays = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
+  const amiEmployeeName = (process.env.AMI_EMPLOYEE_NAME || "Ami D'Amelio").trim();
   const recent = new Date(now.getTime() - recentDays * 86_400_000);
   const relevantDeadlineStart = new Date(now.getTime() - 7 * 86_400_000);
   const relevantDeadlineEnd = new Date(now.getTime() + 14 * 86_400_000);
@@ -16,8 +17,19 @@ export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
     AND: [
       { OR: [{ clickupStatus: null }, { NOT: { clickupStatus: { in: CLOSED, mode: 'insensitive' } } }] },
       { OR: [
-        { clickupUpdatedAt: { gte: recent } },
-        { dueDate: { gte: relevantDeadlineStart, lte: relevantDeadlineEnd } },
+        { clickupCreatedAt: { gte: recent } },
+        { comments: { some: { OR: [{ clickupCreatedAt: { gte: recent } }, { clickupUpdatedAt: { gte: recent } }] } } },
+        { events: { some: {
+          occurredAt: { gte: recent },
+          eventType: { in: ['OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE'] }
+        } } },
+        { AND: [
+          { dueDate: { gte: relevantDeadlineStart, lte: relevantDeadlineEnd } },
+          { OR: [
+            { list: { type: 'AMI' } },
+            { assignees: { some: { employee: { name: { equals: amiEmployeeName, mode: 'insensitive' } } } } }
+          ] }
+        ] },
         { intelligence: { is: {
           classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE', verificationStatus: 'VERIFIED', freshnessStatus: 'CURRENT',
           OR: [
