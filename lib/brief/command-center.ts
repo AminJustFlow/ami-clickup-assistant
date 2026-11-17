@@ -2,10 +2,14 @@ import { prisma } from '@/lib/db/prisma';
 import { isClosedClickUpStatus, attentionFingerprint } from '@/lib/attention/triage';
 import { compareRecentFirst } from '@/lib/tasks/recency';
 import { operationalReadiness, operationalScopeWhere } from '@/lib/operations/readiness';
+import { AMI_EMPLOYEE_NAME } from '@/lib/operations/identity';
+import { clickupParentId } from '@/lib/tasks/hierarchy';
 import { briefItemKey, workday } from './workday';
+import type { Prisma } from '@prisma/client';
 
 const taskSelect = {
-  id: true, name: true, clickupStatus: true, clickupUpdatedAt: true, dueDate: true, clickupUrl: true,
+  id: true, clickupTaskId: true, name: true, clickupStatus: true, clickupCreatedAt: true, clickupUpdatedAt: true, dueDate: true, clickupUrl: true,
+  deleted: true,
   clientId: true, rawPayload: true,
   client: { select: { name: true, slug: true } },
   assignees: { select: { employee: { select: { id: true, name: true } } } },
@@ -36,7 +40,28 @@ function activeAction(task: CommandTask): boolean {
 
 export async function loadCommandCenter(now = new Date()) {
   const current = workday(now);
-  const [readiness, actionRows, updates, riskRows, reviews, brief] = await Promise.all([
+  const recentEventTypes = ['OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE'];
+  const fallbackSelect = {
+    ...taskSelect,
+    comments: {
+      where: { OR: [{ clickupCreatedAt: { gte: current.previousStart } }, { clickupUpdatedAt: { gte: current.previousStart } }] },
+      orderBy: [{ clickupCreatedAt: 'desc' }, { id: 'desc' }], take: 1,
+      select: { authorName: true, body: true, clickupCreatedAt: true, clickupUpdatedAt: true }
+    },
+    events: {
+      where: { occurredAt: { gte: current.previousStart }, eventType: { in: recentEventTypes } },
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: 1,
+      select: { eventType: true, occurredAt: true }
+    }
+  } satisfies Prisma.TaskSelect;
+  const openCurrentWhere: Prisma.TaskWhereInput = {
+    deleted: false,
+    client: { active: true, space: { name: 'JF Corporate' } },
+    AND: [{ OR: [{ clickupStatus: null }, { NOT: { clickupStatus: { in: ['done', 'complete', 'completed', 'closed', 'cancelled', 'canceled'], mode: 'insensitive' } } }] }]
+  };
+  const deadlineStart = new Date(now.getTime() - 2 * 86_400_000);
+  const deadlineEnd = new Date(now.getTime() + 7 * 86_400_000);
+  const [readiness, actionRows, updates, riskRows, reviews, brief, deadlineRows, activityRows] = await Promise.all([
     operationalReadiness(now),
     loadActionCandidates(now),
     prisma.operationalUpdate.findMany({
@@ -55,7 +80,22 @@ export async function loadCommandCenter(now = new Date()) {
       select: taskSelect, orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }], take: 40
     }),
     prisma.briefItemReview.findMany({ where: { day: current.day }, select: { itemKey: true } }),
-    prisma.workdayBrief.findUnique({ where: { day: current.day } })
+    prisma.workdayBrief.findUnique({ where: { day: current.day } }),
+    prisma.task.findMany({
+      where: { AND: [openCurrentWhere, { dueDate: { gte: deadlineStart, lte: deadlineEnd } }, { OR: [
+        { list: { type: 'AMI' } },
+        { assignees: { some: { employee: { name: { equals: AMI_EMPLOYEE_NAME, mode: 'insensitive' } } } } }
+      ] }] },
+      select: fallbackSelect, orderBy: [{ dueDate: 'asc' }, { clickupUpdatedAt: 'desc' }], take: 30
+    }),
+    prisma.task.findMany({
+      where: { AND: [openCurrentWhere, { OR: [
+        { clickupCreatedAt: { gte: current.previousStart } },
+        { comments: { some: { OR: [{ clickupCreatedAt: { gte: current.previousStart } }, { clickupUpdatedAt: { gte: current.previousStart } }] } } },
+        { events: { some: { occurredAt: { gte: current.previousStart }, eventType: { in: recentEventTypes } } } }
+      ] }] },
+      select: fallbackSelect, orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }], take: 40
+    })
   ]);
   const reviewed = new Set(reviews.map(item => item.itemKey));
   const actions = actionRows.filter(activeAction).sort(compareRecentFirst).map(task => {
@@ -72,6 +112,54 @@ export async function loadCommandCenter(now = new Date()) {
     const fingerprint = task.intelligence?.sourceFingerprint ?? null;
     return { ...task, itemKey: briefItemKey('RISK', task.id, fingerprint), fingerprint };
   }).filter(item => !reviewed.has(item.itemKey));
+
+  const representedTaskIds = new Set([...actionIds, ...changeItems.map(item => item.taskId), ...risks.map(item => item.id)]);
+  const deadlineIds = new Set(deadlineRows.map(task => task.id));
+  const fallbackRows = [...new Map([...activityRows, ...deadlineRows].map(task => [task.id, task])).values()];
+  const eventLabels: Record<string, string> = {
+    OBSERVED_STATUS_CHANGE: 'Status changed', OBSERVED_DESCRIPTION_CHANGE: 'Task details changed',
+    OBSERVED_DUEDATE_CHANGE: 'Deadline changed', OBSERVED_ASSIGNEES_CHANGE: 'Assignment changed'
+  };
+  const checks = fallbackRows.filter(task => !representedTaskIds.has(task.id)).map(task => {
+    const comment = task.comments[0];
+    const event = task.events[0];
+    const commentAt = Math.max(comment?.clickupCreatedAt?.getTime() ?? 0, comment?.clickupUpdatedAt?.getTime() ?? 0);
+    const eventAt = event?.occurredAt?.getTime() ?? 0;
+    const createdAt = task.clickupCreatedAt?.getTime() ?? 0;
+    const dueAt = task.dueDate?.getTime() ?? 0;
+    const deadline = deadlineIds.has(task.id) && dueAt > 0;
+    let label = 'New ClickUp task';
+    let summary = 'Created in ClickUp since the prior workday.';
+    let sourceAt = createdAt;
+    let priority = 3;
+    if (deadline) {
+      const assignees = task.assignees.map(item => item.employee.name).join(', ') || 'Ami';
+      label = dueAt < now.getTime() ? 'Recently overdue' : dueAt <= now.getTime() + 2 * 86_400_000 ? 'Due within 2 days' : 'Upcoming Ami deadline';
+      summary = `Assigned to ${assignees}. This is a ClickUp deadline, not an AI-classified decision.`;
+      sourceAt = dueAt;
+      priority = dueAt >= now.getTime() && dueAt <= now.getTime() + 2 * 86_400_000 ? 0 : dueAt < now.getTime() ? 1 : 3;
+    } else if (commentAt >= eventAt && commentAt >= createdAt && comment) {
+      label = 'Recent human comment';
+      const body = comment.body.replace(/\s+/g, ' ').trim();
+      summary = `${comment.authorName || 'A ClickUp user'}: ${body.slice(0, 180)}${body.length > 180 ? '…' : ''}`;
+      sourceAt = commentAt;
+      priority = 2;
+    } else if (eventAt >= createdAt && event) {
+      label = eventLabels[event.eventType] ?? 'Observed ClickUp change';
+      summary = 'ClickUp changed since the prior workday. Open the source details before deciding whether action is needed.';
+      sourceAt = eventAt;
+      priority = 2;
+    }
+    const fingerprint = `${deadline ? 'due' : 'source'}-${new Date(sourceAt || now.getTime()).toISOString()}`;
+    return { ...task, label, summary, sourceAt, priority, fingerprint, itemKey: briefItemKey('CHECK', task.id, fingerprint) };
+  }).filter(item => !reviewed.has(item.itemKey)).sort((a, b) =>
+    a.priority - b.priority || (a.priority === 2 ? b.sourceAt - a.sourceAt : a.sourceAt - b.sourceAt) || a.id - b.id);
+  const groupedChecks = new Map<string, typeof checks[number]>();
+  for (const check of checks) {
+    const groupKey = `${check.clientId}:${clickupParentId(check.rawPayload) ?? check.clickupTaskId}`;
+    if (!groupedChecks.has(groupKey)) groupedChecks.set(groupKey, check);
+  }
+  const visibleChecks = [...groupedChecks.values()];
 
   const signals = [...visibleActions.map(task => ({ task, clientId: task.clientId, client: task.client, type: 'decision' })),
     ...changeItems.map(update => ({ task: update.task, clientId: update.task.clientId, client: update.task.client, type: 'change' })),
@@ -106,6 +194,7 @@ export async function loadCommandCenter(now = new Date()) {
     actions: visibleActions.slice(0, 3), actionTotal: visibleActions.length,
     changes: changeItems.slice(0, 5), changeTotal: changeItems.length,
     risks: risks.slice(0, 3), riskTotal: risks.length,
+    checks: visibleChecks.slice(0, 3), checkTotal: visibleChecks.length,
     clients: clients.slice(0, 3), team: team.slice(0, 3), reviewedToday: reviews.length
   };
 }

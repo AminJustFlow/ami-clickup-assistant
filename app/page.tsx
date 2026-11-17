@@ -35,7 +35,7 @@ function DoneToday({ itemKey, taskId, fingerprint }: { itemKey: string; taskId: 
 
 export default async function Home() {
   const brief = await loadCommandCenter();
-  const remaining = brief.actionTotal + brief.changeTotal + brief.riskTotal;
+  const remaining = (brief.actionTotal || brief.checkTotal) + brief.changeTotal + brief.riskTotal;
   return <main className="ops-shell dashboard-shell brief-shell command-center" id="main-content">
     <AppNav current="overview" />
     <header className="brief-hero"><div>
@@ -53,7 +53,7 @@ export default async function Home() {
     </section>
 
     <section className="clean-panel brief-section command-primary" aria-labelledby="start-title">
-      <div className="panel-heading"><div><p className="eyebrow">1 · START HERE</p><h2 id="start-title">{brief.actions.length ? `Your next ${brief.actions.length} decision${brief.actions.length === 1 ? '' : 's'}` : 'No verified action is ready'}</h2><p>Only current, evidence-backed requests where you are the next actor appear here.</p></div><a href="/attention">Open My Decisions →</a></div>
+      <div className="panel-heading"><div><p className="eyebrow">1 · START HERE</p><h2 id="start-title">{brief.actions.length ? `Your next ${brief.actions.length} decision${brief.actions.length === 1 ? '' : 's'}` : brief.checks.length ? `Your next ${brief.checks.length} practical check${brief.checks.length === 1 ? '' : 's'}` : 'No current check is available'}</h2><p>{brief.actions.length ? 'Only current, evidence-backed requests where you are the next actor appear here.' : brief.checks.length ? 'Source facts to check while AI verification catches up. These are not AI-classified decisions.' : 'No verified decision or current source fact is available yet.'}</p></div><a href="/attention">Open My Decisions →</a></div>
       {brief.actions.length ? <div className="brief-task-list">{brief.actions.map(task => {
         const intel = task.intelligence!;
         const reasons = Array.isArray(intel.priorityReasons) ? intel.priorityReasons.filter((reason): reason is string => typeof reason === 'string') : [];
@@ -62,8 +62,12 @@ export default async function Home() {
           <h3>{intel.amiAction || task.name}</h3><p><strong>Task:</strong> {task.name}</p>
           {reasons[0] && <small><strong>Why now:</strong> {reasons[0]}</small>}
         </div><div className="brief-task-actions"><TaskDetailsButton taskId={task.id} label="Evidence" />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">Open ClickUp ↗</a>}<DoneToday itemKey={task.itemKey} taskId={task.id} fingerprint={task.fingerprint} /></div></article>;
-      })}</div> : <div className="brief-empty"><strong>{brief.readiness.ready ? 'No verified action is waiting on Ami' : 'No verified action is visible in the current analyzed scope'}</strong><p>{brief.readiness.ready ? 'New unresolved requests will appear here automatically.' : 'Analysis coverage must recover before this can be treated as a complete inbox.'}</p></div>}
+      })}</div> : brief.checks.length ? <div className="brief-task-list">{brief.checks.map(check => <article className="brief-task-row command-action source-fact-check" key={check.itemKey}><div className="brief-task-main">
+        <div className="brief-task-meta"><span>{check.client.name}</span><span className="brief-tag source-fact-tag">{check.label}</span>{check.dueDate && <span>Due {dateTime(check.dueDate)}</span>}<span>Not AI-classified</span></div>
+        <h3>{check.name}</h3><p>{check.summary}</p>
+      </div><div className="brief-task-actions"><TaskDetailsButton taskId={check.id} label="Source details" />{check.clickupUrl && <a href={check.clickupUrl} target="_blank" rel="noopener noreferrer">Open ClickUp ↗</a>}<DoneToday itemKey={check.itemKey} taskId={check.id} fingerprint={check.fingerprint} /></div></article>)}</div> : <div className="brief-empty"><strong>{brief.readiness.ready ? 'No verified action is waiting on Ami' : 'No current source fact is available'}</strong><p>{brief.readiness.ready ? 'New unresolved requests will appear here automatically.' : 'The sync and analysis workers must capture new activity before Today can recommend a useful check.'}</p></div>}
       {brief.actionTotal > brief.actions.length && <p className="brief-footnote">{brief.actionTotal - brief.actions.length} more verified decision{brief.actionTotal - brief.actions.length === 1 ? '' : 's'} available in My Decisions.</p>}
+      {!brief.actions.length && brief.checkTotal > brief.checks.length && <p className="brief-footnote">{brief.checkTotal - brief.checks.length} more current source check{brief.checkTotal - brief.checks.length === 1 ? '' : 's'} hidden to keep Today focused.</p>}
     </section>
 
     <div className="command-grid">
