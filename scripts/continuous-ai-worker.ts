@@ -188,18 +188,34 @@ async function refreshQueue() {
   const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
   const candidates = await prisma.$queryRaw<Array<{ id: number }>>`
     SELECT t.id FROM "Task" t
+    JOIN "Client" c ON c.id = t."clientId"
+    JOIN "Space" s ON s."clickupSpaceId" = c."clickupSpaceId"
+    JOIN "ClickUpList" l ON l.id = t."listId"
     LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
     LEFT JOIN "AnalysisJob" j ON j."taskId" = t.id
-    WHERE t.deleted = false
+    WHERE t.deleted = false AND c.active = true AND s.name = 'JF Corporate'
+      AND (t."clickupStatus" IS NULL OR LOWER(TRIM(t."clickupStatus")) NOT IN
+        ('done', 'complete', 'completed', 'closed', 'cancelled', 'canceled'))
+      AND (
+        t."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+        OR t."dueDate" BETWEEN NOW() - INTERVAL '7 days' AND NOW() + INTERVAL '14 days'
+        OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
+          AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT'
+          AND (i."needsAmi" = true OR i."riskLevel" IN ('HIGH', 'CRITICAL')
+            OR i."agentState" IN ('BLOCKED', 'ISSUE', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'WAITING_ON_TEAM')))
+      )
       AND (i.id IS NULL OR i."analyzedAt" IS NULL OR t."clickupUpdatedAt" > i."analyzedAt"
-        OR (i."promptVersion" IS DISTINCT FROM ${expectedVersion} AND (
-          t."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
-          OR i."needsAmi" = true OR i."riskLevel" IN ('HIGH', 'CRITICAL')
-          OR i."agentState" IN ('BLOCKED', 'ISSUE')
-        )))
+        OR i."promptVersion" IS DISTINCT FROM ${expectedVersion})
       AND (j.id IS NULL OR j.status = 'SUCCEEDED')
     ORDER BY
-      CASE WHEN i."analyzedAt" IS NULL THEN 0 ELSE 1 END,
+      CASE
+        WHEN i."needsAmi" = true THEN 0
+        WHEN i."agentState" IN ('BLOCKED', 'ISSUE') OR i."riskLevel" IN ('HIGH', 'CRITICAL') THEN 1
+        WHEN l.type = 'AMI' THEN 2
+        WHEN t."clickupUpdatedAt" >= NOW() - INTERVAL '24 hours' THEN 3
+        WHEN i."promptVersion" IS DISTINCT FROM ${expectedVersion} THEN 4
+        ELSE 5
+      END,
       t."clickupUpdatedAt" DESC NULLS LAST, t.id
     LIMIT 500`;
   for (const task of candidates) {
@@ -221,7 +237,7 @@ async function refreshQueue() {
           SELECT 1 FROM "TaskEvent" e WHERE e."taskId" = t.id
           AND e."occurredAt" > i."analyzedAt"
           AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
-          AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
+          AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE')
         ))
       )`;
   return teamNames;
@@ -242,15 +258,37 @@ export async function leaseJob(client = prisma) {
             SELECT 1 FROM "TaskEvent" e
             WHERE e."taskId" = t.id AND e."occurredAt" > i."analyzedAt"
               AND e."occurredAt" >= NOW() - INTERVAL '24 hours'
-              AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE')
+              AND e."eventType" IN ('OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE')
           ))
         ) AND j."recoveryCount" = 0) AS "freshEligible"
       FROM "AnalysisJob" j
       JOIN "Task" t ON t.id = j."taskId"
+      JOIN "Client" c ON c.id = t."clientId"
+      JOIN "Space" s ON s."clickupSpaceId" = c."clickupSpaceId"
+      JOIN "ClickUpList" l ON l.id = t."listId"
       LEFT JOIN "TaskIntelligence" i ON i."taskId" = t.id
       WHERE j.status = 'PENDING' AND j."nextAttemptAt" <= NOW() AND j.attempts < ${maxRetries}
-        AND t.deleted = false
-      ORDER BY "freshEligible" DESC, j."nextAttemptAt", j.id
+        AND t.deleted = false AND c.active = true AND s.name = 'JF Corporate'
+        AND (t."clickupStatus" IS NULL OR LOWER(TRIM(t."clickupStatus")) NOT IN
+          ('done', 'complete', 'completed', 'closed', 'cancelled', 'canceled'))
+        AND (
+          t."clickupUpdatedAt" >= NOW() - (${evidencePilotDays} * INTERVAL '1 day')
+          OR t."dueDate" BETWEEN NOW() - INTERVAL '7 days' AND NOW() + INTERVAL '14 days'
+          OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
+            AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT'
+            AND (i."needsAmi" = true OR i."riskLevel" IN ('HIGH', 'CRITICAL')
+              OR i."agentState" IN ('BLOCKED', 'ISSUE', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'WAITING_ON_TEAM')))
+        )
+      ORDER BY "freshEligible" DESC,
+        CASE
+          WHEN i."needsAmi" = true THEN 0
+          WHEN i."agentState" IN ('BLOCKED', 'ISSUE') OR i."riskLevel" IN ('HIGH', 'CRITICAL') THEN 1
+          WHEN l.type = 'AMI' THEN 2
+          WHEN t."clickupUpdatedAt" >= NOW() - INTERVAL '24 hours' THEN 3
+          WHEN i."promptVersion" IS DISTINCT FROM ${TASK_ANALYZER_PROMPT_VERSION + ':' + model} THEN 4
+          ELSE 5
+        END,
+        t."clickupUpdatedAt" DESC NULLS LAST, j."nextAttemptAt", j.id
       FOR UPDATE OF j SKIP LOCKED LIMIT 1`;
     const job = rows[0]; if (!job) return null;
     await tx.aiBudgetDay.upsert({ where: { day: budgetDay }, create: { day: budgetDay }, update: {} });

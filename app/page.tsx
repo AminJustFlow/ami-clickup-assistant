@@ -9,6 +9,20 @@ const dateTime = (date: Date | null) => date ? date.toLocaleString('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
 }) : 'Unavailable';
 const stateLabel = (value: string | null | undefined) => value ? value.replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase()) : 'Current issue';
+const readinessReasons: Record<string, string> = {
+  ai_worker_heartbeat_missing: 'The AI analysis worker has not reported in yet.',
+  ai_worker_failed: 'The AI analysis worker reported a failure.',
+  ai_worker_heartbeat_stale: 'The AI analysis worker has stopped reporting.',
+  ai_stale_leases: 'One or more interrupted AI jobs still need recovery.',
+  ai_queue_stale: 'Current-work analysis jobs have waited too long.',
+  sync_worker_heartbeat_missing: 'The ClickUp sync worker has not reported in yet.',
+  sync_worker_failed: 'The ClickUp sync worker reported a failure.',
+  sync_worker_heartbeat_stale: 'The ClickUp sync worker has stopped reporting.',
+  client_sync_missing: 'One or more current client folders have never synchronized.',
+  client_sync_stale: 'One or more current client folders need a newer ClickUp sync.',
+  operational_analysis_coverage_low: 'Too little current work has passed evidence analysis.',
+  unverified_action_candidates_present: 'Potential Ami decisions still need evidence verification.'
+};
 
 function DoneToday({ itemKey, taskId, fingerprint }: { itemKey: string; taskId: number; fingerprint: string | null }) {
   return <form action={markBriefItemDone}>
@@ -34,7 +48,8 @@ export default async function Home() {
     <section className={`command-readiness ${brief.readiness.ready ? 'ready' : 'limited'}`} aria-label="Data readiness">
       <div><strong>{brief.readiness.ready ? 'Current and ready' : 'Coverage is limited'}</strong><span>{brief.readiness.ready ? 'ClickUp sync and operational analysis are current.' : 'Use the verified items below, but do not treat an empty section as proof that nothing needs attention.'}</span></div>
       <dl><div><dt>Current-work coverage</dt><dd>{brief.readiness.operationalCoveragePercent}%</dd></div><div><dt>Operational tasks</dt><dd>{brief.readiness.analyzedOperationalTasks}/{brief.readiness.operationalTasks}</dd></div><div><dt>Oldest client sync</dt><dd>{dateTime(brief.readiness.oldestSyncAt)}</dd></div></dl>
-      {!brief.readiness.ready && <details><summary>Why coverage is limited</summary><ul>{brief.readiness.reasons.map(reason => <li key={reason}>{reason.replaceAll('_', ' ')}</li>)}</ul><a href="/system">Open system status →</a></details>}
+      <small className="command-scope-note">Current work means open JF Corporate work updated in the last 30 days, due from 7 days ago through the next 14 days, or carrying a current evidence-verified decision, blocker, dependency, or high-risk signal.</small>
+      {!brief.readiness.ready && <details><summary>Why coverage is limited</summary><ul>{brief.readiness.reasons.map(reason => <li key={reason}>{readinessReasons[reason] ?? reason.replaceAll('_', ' ')}</li>)}</ul><a href="/system">Open system status →</a></details>}
     </section>
 
     <section className="clean-panel brief-section command-primary" aria-labelledby="start-title">

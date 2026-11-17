@@ -5,8 +5,11 @@ import { assessAiReadiness } from '@/lib/intelligence/worker-state';
 const CLOSED = ['done', 'complete', 'completed', 'closed', 'cancelled', 'canceled'];
 
 export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
-  const recent = new Date(now.getTime() - 90 * 86_400_000);
-  const relevantDeadline = new Date(now.getTime() - 7 * 86_400_000);
+  const configuredDays = Number(process.env.AI_EVIDENCE_PILOT_DAYS || '30');
+  const recentDays = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
+  const recent = new Date(now.getTime() - recentDays * 86_400_000);
+  const relevantDeadlineStart = new Date(now.getTime() - 7 * 86_400_000);
+  const relevantDeadlineEnd = new Date(now.getTime() + 14 * 86_400_000);
   return {
     deleted: false,
     client: { active: true, space: { name: 'JF Corporate' } },
@@ -14,9 +17,15 @@ export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
       { OR: [{ clickupStatus: null }, { NOT: { clickupStatus: { in: CLOSED, mode: 'insensitive' } } }] },
       { OR: [
         { clickupUpdatedAt: { gte: recent } },
-        { dueDate: { gte: relevantDeadline } },
-        { intelligence: { is: { needsAmi: true } } },
-        { intelligence: { is: { agentState: { in: ['BLOCKED', 'ISSUE', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'WAITING_ON_TEAM'] } } } }
+        { dueDate: { gte: relevantDeadlineStart, lte: relevantDeadlineEnd } },
+        { intelligence: { is: {
+          classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE', verificationStatus: 'VERIFIED', freshnessStatus: 'CURRENT',
+          OR: [
+            { needsAmi: true },
+            { riskLevel: { in: ['HIGH', 'CRITICAL'] } },
+            { agentState: { in: ['BLOCKED', 'ISSUE', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'WAITING_ON_TEAM'] } }
+          ]
+        } } }
       ] }
     ]
   };
@@ -32,7 +41,7 @@ export async function operationalReadiness(now = new Date()) {
     prisma.workerHeartbeat.findUnique({ where: { name: 'ai-worker' }, select: { status: true, lastSeenAt: true, lastSuccessAt: true } }),
     prisma.workerHeartbeat.findUnique({ where: { name: 'clickup-sync' }, select: { status: true, lastSeenAt: true, lastSuccessAt: true } }),
     prisma.analysisJob.count({ where: { status: 'LEASED', leaseExpiresAt: { lt: now } } }),
-    prisma.analysisJob.findFirst({ where: { status: 'PENDING', nextAttemptAt: { lte: now } }, orderBy: { nextAttemptAt: 'asc' }, select: { nextAttemptAt: true } }),
+    prisma.analysisJob.findFirst({ where: { status: 'PENDING', nextAttemptAt: { lte: now }, task: { is: scope } }, orderBy: { nextAttemptAt: 'asc' }, select: { nextAttemptAt: true } }),
     prisma.task.count({ where: scope }),
     prisma.task.count({ where: { AND: [scope, { intelligence: { is: { classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE' } } }] } }),
     prisma.task.count({ where: { AND: [scope, { intelligence: { is: { needsAmi: true, OR: [{ verificationStatus: null }, { NOT: { verificationStatus: 'VERIFIED' } }] } } }] } })

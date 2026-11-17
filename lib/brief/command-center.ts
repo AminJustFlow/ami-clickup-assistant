@@ -18,9 +18,9 @@ const taskSelect = {
   } }
 } as const;
 
-async function loadActionCandidates() {
+async function loadActionCandidates(now: Date) {
   return prisma.task.findMany({
-    where: { deleted: false, intelligence: { is: { needsAmi: true, verificationStatus: 'VERIFIED', classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE' } } },
+    where: { AND: [operationalScopeWhere(now), { intelligence: { is: { needsAmi: true, verificationStatus: 'VERIFIED', classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE' } } }] },
     select: taskSelect, orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }], take: 60
   });
 }
@@ -38,7 +38,7 @@ export async function loadCommandCenter(now = new Date()) {
   const current = workday(now);
   const [readiness, actionRows, updates, riskRows, reviews, brief] = await Promise.all([
     operationalReadiness(now),
-    loadActionCandidates(),
+    loadActionCandidates(now),
     prisma.operationalUpdate.findMany({
       where: { verified: true, OR: [
         { evidenceAt: { gte: current.previousStart } },
