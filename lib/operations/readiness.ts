@@ -1,13 +1,13 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { assessAiReadiness } from '@/lib/intelligence/worker-state';
+import { AMI_EMPLOYEE_NAME } from './identity';
 
 const CLOSED = ['done', 'complete', 'completed', 'closed', 'cancelled', 'canceled'];
 
 export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
   const configuredDays = Number(process.env.AI_EVIDENCE_PILOT_DAYS || '30');
   const recentDays = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
-  const amiEmployeeName = (process.env.AMI_EMPLOYEE_NAME || "Ami D'Amelio").trim();
   const recent = new Date(now.getTime() - recentDays * 86_400_000);
   const relevantDeadlineStart = new Date(now.getTime() - 7 * 86_400_000);
   const relevantDeadlineEnd = new Date(now.getTime() + 14 * 86_400_000);
@@ -27,7 +27,7 @@ export function operationalScopeWhere(now = new Date()): Prisma.TaskWhereInput {
           { dueDate: { gte: relevantDeadlineStart, lte: relevantDeadlineEnd } },
           { OR: [
             { list: { type: 'AMI' } },
-            { assignees: { some: { employee: { name: { equals: amiEmployeeName, mode: 'insensitive' } } } } }
+            { assignees: { some: { employee: { name: { equals: AMI_EMPLOYEE_NAME, mode: 'insensitive' } } } } }
           ] }
         ] },
         { intelligence: { is: {

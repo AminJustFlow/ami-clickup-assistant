@@ -49,8 +49,13 @@ const space = await db.space.create({ data: { clickupSpaceId: 'test-space', work
 const client = await db.client.create({ data: { name: 'Test Client', slug: 'test-client', clickupFolderId: 'test-folder', clickupSpaceId: space.clickupSpaceId } });
 const list = await db.clickUpList.create({ data: { clickupListId: 'test-list', clientId: client.id, name: 'Test List' } });
 const makeJob = async (suffix: string, data: Omit<Prisma.AnalysisJobUncheckedCreateInput, 'taskId'> = {}) => {
-  const task = await db.task.create({ data: { clickupTaskId: 'test-task-' + suffix, clientId: client.id, listId: list.id, name: 'Task ' + suffix, rawPayload: {} } });
-  return db.analysisJob.create({ data: { taskId: task.id, ...data } });
+  // Leaseable fixtures must represent current ClickUp work. Database insertion
+  // time alone intentionally no longer makes an imported historical task fresh.
+  const task = await db.task.create({ data: {
+    clickupTaskId: 'test-task-' + suffix, clientId: client.id, listId: list.id,
+    name: 'Task ' + suffix, clickupCreatedAt: new Date(), rawPayload: {}
+  } });
+  return db.analysisJob.create({ data: { taskId: task.id, nextAttemptAt: new Date('2000-01-01T00:00:00.000Z'), ...data } });
 };
 
 const expiredDay = new Date('2026-10-12T00:00:00.000Z');

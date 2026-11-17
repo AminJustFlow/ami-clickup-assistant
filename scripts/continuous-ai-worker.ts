@@ -10,6 +10,7 @@ import { saveTaskIntelligence } from '../lib/intelligence/change-history';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
 import { groupClientFolders } from '../lib/clients/grouping';
 import { aiRequestIdempotencyKey, expiredLeaseOutcome, nextUtcBudgetDay, utcBudgetDay } from '../lib/intelligence/worker-state';
+import { AMI_EMPLOYEE_NAME } from '../lib/operations/identity';
 import type { Prisma } from '@prisma/client';
 import { pathToFileURL } from 'node:url';
 
@@ -52,14 +53,12 @@ const intervalSeconds = Number(process.env.AI_WORKER_INTERVAL_SECONDS || '60');
 const maxInputTokens = Number(process.env.AI_MAX_INPUT_TOKENS_PER_TASK || '20000');
 const maxOutputTokens = Number(process.env.AI_MAX_OUTPUT_TOKENS_PER_TASK || '2000');
 const evidencePilotDays = Number(process.env.AI_EVIDENCE_PILOT_DAYS || '30');
-const amiEmployeeName = (process.env.AMI_EMPLOYEE_NAME || "Ami D'Amelio").trim();
 for (const [name, value] of Object.entries({ dailyBudget, freshBudget, batchBudget, maxJobs, maxRetries, inputRate, outputRate, intervalSeconds, maxInputTokens, maxOutputTokens })) {
   if (!Number.isFinite(value) || value <= 0) throw new Error(name + ' must be a positive number');
 }
 if (batchBudget > dailyBudget) throw new Error('AI_BATCH_BUDGET_USD cannot exceed AI_DAILY_BUDGET_USD');
 if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
 if (!Number.isInteger(evidencePilotDays) || evidencePilotDays < 1 || evidencePilotDays > 365) throw new Error('AI_EVIDENCE_PILOT_DAYS must be an integer from 1 to 365');
-if (!amiEmployeeName) throw new Error('AMI_EMPLOYEE_NAME must not be empty');
 const reservation = Math.ceil(((maxInputTokens * inputRate + maxOutputTokens * outputRate) / 1_000_000) * 1_000_000) / 1_000_000;
 if (reservation > batchBudget) throw new Error('One task reservation exceeds AI_BATCH_BUDGET_USD');
 
@@ -209,7 +208,7 @@ async function refreshQueue() {
         OR (t."dueDate" BETWEEN NOW() - INTERVAL '7 days' AND NOW() + INTERVAL '14 days'
           AND (l.type = 'AMI' OR EXISTS (
             SELECT 1 FROM "TaskAssignee" ta JOIN "Employee" ae ON ae.id = ta."employeeId"
-            WHERE ta."taskId" = t.id AND LOWER(ae.name) = LOWER(${amiEmployeeName})
+            WHERE ta."taskId" = t.id AND LOWER(ae.name) = LOWER(${AMI_EMPLOYEE_NAME})
           )))
         OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
           AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT'
@@ -294,7 +293,7 @@ export async function leaseJob(client = prisma) {
           OR (t."dueDate" BETWEEN NOW() - INTERVAL '7 days' AND NOW() + INTERVAL '14 days'
             AND (l.type = 'AMI' OR EXISTS (
               SELECT 1 FROM "TaskAssignee" ta JOIN "Employee" ae ON ae.id = ta."employeeId"
-              WHERE ta."taskId" = t.id AND LOWER(ae.name) = LOWER(${amiEmployeeName})
+              WHERE ta."taskId" = t.id AND LOWER(ae.name) = LOWER(${AMI_EMPLOYEE_NAME})
             )))
           OR (i."classificationVersion" = 'TASK_ANALYZER_V14_EVIDENCE'
             AND i."verificationStatus" = 'VERIFIED' AND i."freshnessStatus" = 'CURRENT'
