@@ -25,6 +25,11 @@ const base = (name: string, body: string): TaskContext => ({
 
 const cases: Case[] = [
   {
+    name: 'A tentative fix awaiting testing remains unverified',
+    context: base('Homepage fix', 'I think this might be fixed, but we still need to test.'),
+    expected: { state: 'NEEDS_REVIEW', needsAmi: false, waitingOnType: 'NONE' }
+  },
+  {
     name: 'Negated completion is not a completed task',
     context: base('Website launch', 'The website is not done yet. We are still working on it.'),
     expected: { state: 'ACTIVE', needsAmi: false, waitingOnType: 'NONE' }

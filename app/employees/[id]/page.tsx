@@ -1,3 +1,4 @@
+import { coverageDescription } from '@/lib/intelligence/coverage';
 import { isStaleActive } from '@/lib/intelligence/staleness';
 import { isVerifiedOpenAttentionTask as isOpenAttentionTask, isClosedClickUpStatus } from '@/lib/attention/triage';
 import { notFound } from 'next/navigation';
@@ -26,9 +27,9 @@ export default async function EmployeePage({ params, searchParams }: {
   // Directory-aligned counts include all imported assignments, even those not AI-analyzed.
   const assignmentFacts = await prisma.task.findMany({
     where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, assignees: { some: { employeeId } } },
-    select: { id: true, clickupTaskId: true, rawPayload: true, clientId: true, clickupStatus: true, dueDate: true,
+    select: { clickupUpdatedAt: true, comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } }, id: true, clickupTaskId: true, rawPayload: true, clientId: true, clickupStatus: true, dueDate: true,
       client: { select: { name: true } },
-      intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
+      intelligence: { select: { classificationVersion: true, freshnessStatus: true, agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
       attentionDisposition: { select: { sourceFingerprint: true, decision: true } }
     }
   });
@@ -50,7 +51,7 @@ export default async function EmployeePage({ params, searchParams }: {
     .filter(client => client.open > 0)
     .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
   const tasks = await prisma.task.findMany({
-    where: { deleted: false, intelligence: { isNot: null }, assignees: { some: { employeeId } } },
+    where: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } }, intelligence: { isNot: null }, assignees: { some: { employeeId } } },
     include: {
       client: true, intelligence: true, attentionDisposition: true, list: true,
       comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
@@ -78,7 +79,7 @@ export default async function EmployeePage({ params, searchParams }: {
   const filtered = tasks.filter(matches);
   const grouped = (items: typeof tasks) => groupedInsightRepresentatives(tasks, items, compareRecentFirst);
   const needsAmi = grouped(filtered.filter(isOpenAttentionTask));
-  const isClosed = (t: (typeof tasks)[number]) => isClosedClickUpStatus(t.clickupStatus);
+  const isClosed = (t: (typeof tasks)[number]) => t.intelligence?.agentState === 'COMPLETED' || isClosedClickUpStatus(t.clickupStatus);
   const waiting = grouped(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
     t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
   const active = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) && !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');
@@ -109,7 +110,7 @@ export default async function EmployeePage({ params, searchParams }: {
       <div><strong>{attentionFacts.length.toLocaleString()}</strong><span>Needs Ami · AI</span></div>
     </div>
     <p className="team-workload-note">Of {pastDueFacts.length} past-due assignments, {recentOverdue} became overdue within the last 30 days and {olderBacklog.length} have due dates more than 30 days ago. Older deadlines may reflect historical backlog; verify in ClickUp before treating them as urgent.</p>
-    <p className="team-workload-note">These totals use all imported assignments in active JF Corporate clients, including tasks without AI analysis. A task is open unless its ClickUp status is closed. Past-due dates may include historical backlog; counts do not measure hours or capacity. Needs Ami is an AI assessment, not necessarily work assigned to this employee.</p>
+    <p className="team-workload-note">{coverageDescription(assignmentFacts)} These totals use all imported assignments in active JF Corporate clients, including tasks without AI analysis. A task is open unless its ClickUp status is closed. Past-due dates may include historical backlog; counts do not measure hours or capacity. Needs Ami is an AI assessment, not necessarily work assigned to this employee.</p>
     <section className="clean-panel entity-current-situation"><div className="panel-heading"><div><p className="eyebrow">SINCE LAST REVIEW</p><h2>{operationalUpdates.length ? `${operationalUpdates.length} meaningful development${operationalUpdates.length === 1 ? '' : 's'}` : 'No verified development recorded'}</h2><p>{checkpoint ? `Since ${checkpoint.reviewedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.` : 'Showing the last 7 days.'} Assignment counts are not performance or capacity judgments.</p></div></div>
       {operationalUpdates.length ? <div className="entity-update-list">{operationalUpdates.map(update => <article key={update.id}><span>{update.kind.replaceAll('_', ' ').toLowerCase()}</span><div><strong>{update.task.client.name} · {update.task.name}</strong><p>{update.summary}</p></div></article>)}</div> : <p className="brief-empty">Meaningful progress, blockers, handoffs, and completions will appear here after verified analysis.</p>}
     </section>

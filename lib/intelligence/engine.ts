@@ -72,7 +72,11 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
     const text = clean(comment.body);
     let meaningful = false;
 
-    if (isConfirmedCompletion(text)) {
+    if (completion.test(text) && /\b(?:still need(?:s)? to|pending|awaiting)\s+(?:test(?:ing)?|verif(?:y|ication))\b/i.test(text)) {
+      state = 'NEEDS_REVIEW';
+      evidence.push({ kind: 'review', commentId: comment.id, text });
+      meaningful = true;
+    } else if (isConfirmedCompletion(text)) {
       state = 'COMPLETED';
       waitingOnType = 'NONE';
       waitingOnName = null;

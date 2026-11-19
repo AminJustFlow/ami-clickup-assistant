@@ -1,3 +1,4 @@
+import { coverageDescription } from '@/lib/intelligence/coverage';
 import { isStaleActive } from '@/lib/intelligence/staleness';
 import { isVerifiedOpenAttentionTask as isOpenAttentionTask, isClosedClickUpStatus } from '@/lib/attention/triage';
 import { notFound } from 'next/navigation';

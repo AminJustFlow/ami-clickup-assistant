@@ -12,11 +12,12 @@ async function allComments(taskId: string): Promise<Record<string, any>[]> {
   const seen = new Set<string>();
   for (;;) {
     const response = await getTaskComments(taskId, cursor);
-    const page = response.comments ?? [];
+    if (!Array.isArray(response.comments)) throw new Error('Missing ClickUp comment page');
+    const page = response.comments;
     result.push(...page);
     if (page.length < COMMENT_PAGE_SIZE) return result;
     const last = page.at(-1);
-    if (!last?.id || !last?.date) return result;
+    if (!last?.id || !last?.date) throw new Error('Incomplete ClickUp pagination cursor');
     const key = String(last.id) + ':' + String(last.date);
     if (seen.has(key)) throw new Error('Repeated ClickUp comment pagination cursor');
     seen.add(key);
@@ -24,13 +25,21 @@ async function allComments(taskId: string): Promise<Record<string, any>[]> {
   }
 }
 
-async function importComments(taskId: number, clickupId: string) {
-  const parents = await allComments(clickupId);
-  for (const parent of parents) {
+async function fetchConversation(clickupId: string) {
+  const comments = [];
+  for (const parent of await allComments(clickupId)) {
     const replies = await getCommentReplies(String(parent.id));
-    for (const raw of [parent, ...(replies.comments ?? [])]) {
+    if (!Array.isArray(replies.comments)) throw new Error('Missing ClickUp reply page');
+    comments.push(parent, ...replies.comments);
+  }
+  if (comments.some(raw => raw.id == null)) throw new Error('Missing ClickUp comment ID');
+  return comments;
+}
+
+async function importComments(tx: Prisma.TransactionClient, taskId: number, comments: Record<string, any>[]) {
+  for (const raw of comments) {
       const user = raw.user && typeof raw.user === 'object' ? raw.user : {};
-      await prisma.comment.upsert({
+      await tx.comment.upsert({
         where: { clickupCommentId: String(raw.id) },
         create: {
           clickupCommentId: String(raw.id), taskId,
@@ -50,8 +59,8 @@ async function importComments(taskId: number, clickupId: string) {
           rawPayload: raw as Prisma.InputJsonValue
         }
       });
-    }
   }
+  await tx.comment.deleteMany({ where: { taskId, clickupCommentId: { notIn: comments.map(raw => String(raw.id)) } } });
 }
 
 export async function importTask(raw: Record<string, any>, clientId: number, listId: number): Promise<number> {
@@ -75,22 +84,25 @@ export async function importTask(raw: Record<string, any>, clientId: number, lis
     deleted: false,
     rawPayload: taskRaw as Prisma.InputJsonValue
   };
-  const task = await prisma.task.upsert({
-    where: { clickupTaskId: clickupId },
-    create: { clickupTaskId: clickupId, ...data },
-    update: data
-  });
-  await prisma.taskAssignee.deleteMany({ where: { taskId: task.id } });
-  for (const person of taskRaw.assignees ?? []) {
-    const employee = await prisma.employee.upsert({
-      where: { clickupUserId: String(person.id) },
-      create: { clickupUserId: String(person.id), name: person.username || person.email || String(person.id), email: person.email ?? null },
-      update: { name: person.username || person.email || String(person.id), email: person.email ?? null, active: true }
+  const comments = await fetchConversation(clickupId);
+  return prisma.$transaction(async tx => {
+    const task = await tx.task.upsert({
+      where: { clickupTaskId: clickupId },
+      create: { clickupTaskId: clickupId, ...data },
+      update: data
     });
-    await prisma.taskAssignee.create({ data: { taskId: task.id, employeeId: employee.id } });
-  }
-  await importComments(task.id, clickupId);
-  return task.id;
+    await tx.taskAssignee.deleteMany({ where: { taskId: task.id } });
+    for (const person of taskRaw.assignees ?? []) {
+      const employee = await tx.employee.upsert({
+        where: { clickupUserId: String(person.id) },
+        create: { clickupUserId: String(person.id), name: person.username || person.email || String(person.id), email: person.email ?? null },
+        update: { name: person.username || person.email || String(person.id), email: person.email ?? null, active: true }
+      });
+      await tx.taskAssignee.create({ data: { taskId: task.id, employeeId: employee.id } });
+    }
+    await importComments(tx, task.id, comments);
+    return task.id;
+  }, { timeout: 60_000 });
 }
 
 export type RefreshResult = {
@@ -149,7 +161,8 @@ export async function refreshClient(clientSlug: string): Promise<RefreshResult> 
   for (const [clickupListId, localListId] of listIds) {
     for (let page = 0; ; page++) {
       const response = await getTasks(clickupListId, page);
-      const raws = response.tasks ?? [];
+      if (!Array.isArray(response.tasks)) throw new Error('Missing ClickUp task page');
+      const raws = response.tasks;
       stats.scanned += raws.length;
       const known = await prisma.task.findMany({
         where: { clickupTaskId: { in: raws.map(t => String(t.id)) } },

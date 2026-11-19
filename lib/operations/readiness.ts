@@ -1,3 +1,4 @@
+import { intelligenceCoverage } from '../intelligence/coverage';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { assessAiReadiness } from '@/lib/intelligence/worker-state';
@@ -54,21 +55,26 @@ export async function operationalReadiness(now = new Date()) {
   const heartbeatMaxAgeMs = Number(process.env.AI_HEALTH_HEARTBEAT_MAX_SECONDS || '300') * 1000;
   const queueMaxAgeMs = Number(process.env.AI_HEALTH_QUEUE_MAX_HOURS || '24') * 3_600_000;
   const scope = operationalScopeWhere(now);
-  const [clients, aiHeartbeat, syncHeartbeat, staleLeaseCount, oldestEligible, operational, analyzed, unverifiedActions] = await Promise.all([
-    prisma.client.aggregate({ where: { active: true, space: { name: 'JF Corporate' } }, _min: { lastSyncedAt: true }, _count: true }),
+  const [clients, aiHeartbeat, syncHeartbeat, staleLeaseCount, oldestEligible, tasks, unverifiedActions] = await Promise.all([
+    prisma.client.aggregate({ where: { active: true, space: { name: 'JF Corporate' } }, _min: { lastSyncedAt: true }, _count: { _all: true, lastSyncedAt: true } }),
     prisma.workerHeartbeat.findUnique({ where: { name: 'ai-worker' }, select: { status: true, lastSeenAt: true, lastSuccessAt: true } }),
     prisma.workerHeartbeat.findUnique({ where: { name: 'clickup-sync' }, select: { status: true, lastSeenAt: true, lastSuccessAt: true } }),
     prisma.analysisJob.count({ where: { status: 'LEASED', leaseExpiresAt: { lt: now } } }),
     prisma.analysisJob.findFirst({ where: { status: 'PENDING', nextAttemptAt: { lte: now }, task: { is: scope } }, orderBy: { nextAttemptAt: 'asc' }, select: { nextAttemptAt: true } }),
-    prisma.task.count({ where: scope }),
-    prisma.task.count({ where: { AND: [scope, { intelligence: { is: { classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE' } } }] } }),
+    prisma.task.findMany({ where: scope, select: {
+      clickupUpdatedAt: true,
+      comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+      intelligence: { select: { analyzedAt: true, classificationVersion: true, freshnessStatus: true, verificationStatus: true } }
+    } }),
     prisma.task.count({ where: { AND: [scope, { intelligence: { is: { needsAmi: true, OR: [{ verificationStatus: null }, { NOT: { verificationStatus: 'VERIFIED' } }] } } }] } })
   ]);
+  const operational = tasks.length;
+  const analyzed = intelligenceCoverage(tasks).current;
   const ai = assessAiReadiness({ now, heartbeat: aiHeartbeat, staleLeaseCount, oldestEligibleAt: oldestEligible?.nextAttemptAt ?? null, heartbeatMaxAgeMs, queueMaxAgeMs });
-  const oldestSyncAt = clients._min.lastSyncedAt;
+  const oldestSyncAt = clients._count.lastSyncedAt === clients._count._all ? clients._min.lastSyncedAt : null;
   const syncHeartbeatCurrent = !!syncHeartbeat && now.getTime() - syncHeartbeat.lastSeenAt.getTime() <= syncMaxAgeMs;
-  const syncReady = clients._count > 0 && !!oldestSyncAt && now.getTime() - oldestSyncAt.getTime() <= syncMaxAgeMs && syncHeartbeatCurrent && syncHeartbeat.status !== 'FAILED';
-  const coveragePercent = operational ? Math.round(100 * analyzed / operational) : 100;
+  const syncReady = clients._count._all > 0 && !!oldestSyncAt && now.getTime() - oldestSyncAt.getTime() <= syncMaxAgeMs && syncHeartbeatCurrent && syncHeartbeat.status !== 'FAILED';
+  const coveragePercent = operational ? Math.round(100 * analyzed / operational) : 0;
   const reasons = [
     ...ai.reasons,
     !syncHeartbeat ? 'sync_worker_heartbeat_missing' : null,
@@ -83,7 +89,7 @@ export async function operationalReadiness(now = new Date()) {
     syncReady, aiReady: ai.ready, reasons, oldestSyncAt,
     operationalTasks: operational, analyzedOperationalTasks: analyzed,
     operationalCoveragePercent: coveragePercent,
-    evidenceCoveragePercent: operational ? Math.max(0, Math.round(100 * (analyzed - Math.min(analyzed, unverifiedActions)) / operational)) : 100,
+    evidenceCoveragePercent: operational ? Math.max(0, Math.round(100 * (analyzed - Math.min(analyzed, unverifiedActions)) / operational)) : 0,
     unverifiedActions
   };
 }
