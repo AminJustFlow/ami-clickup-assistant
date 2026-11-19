@@ -5,7 +5,7 @@ import { contextText, type TaskContext } from './context';
 import { relatedEvidenceText, type RelatedEvidence } from './related';
 import { analyzeWithRules, type RuleIntelligence } from './engine';
 import { TASK_ANALYZER_PROMPT_VERSION, TASK_ANALYZER_SYSTEM } from './prompt';
-import { taskFieldIds, taskIntelligenceSchema, type TaskIntelligenceOutput } from './schema';
+import { taskFieldIds, analyzerResponseSchema, taskAssessment, type TaskIntelligenceOutput } from './schema';
 
 export const DEFAULT_INTELLIGENCE_MODEL = 'gpt-6-luna';
 
@@ -162,12 +162,12 @@ ${contextText(context)}
 
 Related task evidence (independent scope; do not assume shared completion):
 ${relatedEvidenceText(options.related ?? []) || 'No strongly related tasks identified.'}`,
-      text: { format: zodTextFormat(taskIntelligenceSchema, 'task_intelligence') }
+      text: { format: zodTextFormat(analyzerResponseSchema, 'task_intelligence') }
     }, options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : undefined);
 
     if (!response.output_parsed) throw new Error('OpenAI returned no parsed intelligence output.');
     return {
-      ...aiToHybrid(context, response.output_parsed, rules, model, now, options.teamNames ?? [], options.related ?? []),
+      ...aiToHybrid(context, taskAssessment(response.output_parsed), rules, model, now, options.teamNames ?? [], options.related ?? []),
       usage: { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 }
     };
   } catch (error) {

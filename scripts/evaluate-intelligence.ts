@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { aiToHybrid } from '../lib/intelligence/ai';
-import { taskIntelligenceSchema, type TaskIntelligenceOutput } from '../lib/intelligence/schema';
+import { analyzerResponseSchema, taskAssessment, taskIntelligenceSchema, type TaskIntelligenceOutput } from '../lib/intelligence/schema';
 import { analyzeWithRules } from '../lib/intelligence/engine';
 import type { TaskContext } from '../lib/intelligence/context';
 
@@ -192,3 +192,13 @@ assert.equal(taskIntelligenceSchema.safeParse({ ...decision, evidence_references
   reference, { ...reference, source_type: 'TASK_FIELD', source_id: 'progress' }
 ] }).success, false);
 console.log('Scoped review and citation schema regressions passed');
+
+for (const disposition of ['PENDING', 'ANSWERED', 'RETURNED_FOR_EDITS', 'UNCERTAIN'] as const) {
+  const assessed = taskAssessment(analyzerResponseSchema.parse({ ...decision, agent_state: 'ACTIVE', waiting_on_type: 'TEAM',
+    decision_on_deliverable: { ...decision, deliverable: 'Park video draft', disposition } }));
+  const result = interpret(assessed);
+  assert.equal(result.agentState, 'ACTIVE');
+  assert.equal(result.needsAmi, disposition === 'PENDING' || disposition === 'UNCERTAIN');
+  if (disposition === 'PENDING') assert.equal(result.verificationStatus, 'VERIFIED');
+  if (disposition === 'UNCERTAIN') assert.equal(result.verificationStatus, 'VERIFY');
+}
