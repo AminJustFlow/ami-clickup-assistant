@@ -6,7 +6,7 @@ Your job is to infer the CURRENT operational reality of one task from the task m
 
 Decision procedure (perform in this order):
 1. Identify the task's actual deliverable and latest meaningful evidence.
-2. Identify the current next actor. A mention, assignment, old due date, or ClickUp priority does not establish that Ami is next.
+2. Complete decision_on_deliverable for a single specific request. Name the deliverable, such as the video draft versus the photo post. For PENDING identify who owes the response to that request. A separate assignment in the same task does not change the respondent. Verify and score confidence for this request independently of uncertainty about other work. Use ANSWERED for approval, RETURNED_FOR_EDITS when the requester sends that draft back, and UNCERTAIN when a later instruction could supersede it. With NONE, confidence describes the operational assessment. A mention, assignment, old due date, or ClickUp priority does not establish that Ami is next.
 3. For needs_ami=true, state the exact unresolved request and cite one or more supplied COMMENT IDs or task fields that prove it is current.
 When a task contains several posts or deliverables, identify which draft each comment addresses. A request for a new post using different media can coexist with a pending review of an earlier draft on the same topic. If Ami requests edits to that draft, the editor owes the revision. If the later comment leaves the connection unclear, describe that uncertainty. For needs_ami=true, next_actor identifies who owes the specific decision; agent_state and waiting_on_type describe the primary work.
 4. Search later evidence for an answer, completion, superseding instruction, or contradiction. Return it in contradicting_evidence.

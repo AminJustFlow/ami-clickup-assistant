@@ -34,3 +34,28 @@ export const taskIntelligenceSchema = z.object({
   last_meaningful_change: z.string()
 });
 export type TaskIntelligenceOutput = z.infer<typeof taskIntelligenceSchema>;
+
+
+const decisionFields = {
+  needs_ami: true, ami_action: true, next_actor: true, unresolved_request: true,
+  verification_status: true, verification_reasons: true, confidence: true
+} as const;
+
+// Separate the actor for a particular request from the state of the whole task.
+export const analyzerResponseSchema = taskIntelligenceSchema.omit(decisionFields).extend({
+  decision_on_deliverable: taskIntelligenceSchema.pick(decisionFields).extend({
+    deliverable: z.string().nullable(),
+    disposition: z.enum(['PENDING', 'ANSWERED', 'RETURNED_FOR_EDITS', 'UNCERTAIN', 'NONE'])
+  })
+});
+
+export function taskAssessment(response: z.infer<typeof analyzerResponseSchema>): TaskIntelligenceOutput {
+  const { decision_on_deliverable, ...task } = response;
+  const { disposition, deliverable, ...decision } = decision_on_deliverable;
+  if (['ANSWERED', 'RETURNED_FOR_EDITS', 'NONE'].includes(disposition)) {
+    return { ...task, ...decision, needs_ami: false, ami_action: null, unresolved_request: null,
+      next_actor: decision.next_actor === 'AMI' ? 'UNCLEAR' : decision.next_actor };
+  }
+  if (disposition === 'UNCERTAIN' || !deliverable?.trim()) decision.verification_status = 'VERIFY';
+  return { ...task, ...decision };
+}

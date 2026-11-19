@@ -20,7 +20,8 @@ const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
 const originalVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
 const priorDecisionVersion = originalVersion + ':decision-verification-2';
-const verifiedVersion = originalVersion + ':scoped-review-3';
+const scopedVersion = originalVersion + ':scoped-review-3';
+const verifiedVersion = originalVersion + ':deliverable-decision-4';
 const standardDailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
 // One-time, estimated $30 regular-budget supplement for the backlog.
 // Only active 2026-10-15 through 2026-10-21 UTC; unused funds expire.
@@ -227,8 +228,8 @@ async function refreshQueue() {
       AND (i.id IS NULL OR i."analyzedAt" IS NULL OR t."clickupUpdatedAt" > i."analyzedAt"
         OR EXISTS (SELECT 1 FROM "Comment" newer WHERE newer."taskId" = t.id
           AND (newer."clickupCreatedAt" > i."analyzedAt" OR newer."clickupUpdatedAt" > i."analyzedAt"))
-        OR i."promptVersion" IS NULL OR i."promptVersion" NOT IN (${originalVersion}, ${priorDecisionVersion}, ${verifiedVersion})
-        OR (i."promptVersion" IN (${originalVersion}, ${priorDecisionVersion}) AND i."needsAmi" AND i."verificationStatus" = 'VERIFY'))
+        OR i."promptVersion" IS NULL OR i."promptVersion" NOT IN (${originalVersion}, ${priorDecisionVersion}, ${scopedVersion}, ${verifiedVersion})
+        OR (i."promptVersion" IN (${originalVersion}, ${priorDecisionVersion}, ${scopedVersion}) AND i."needsAmi" AND i."verificationStatus" = 'VERIFY'))
       AND (j.id IS NULL OR j.status = 'SUCCEEDED')
     ORDER BY
       CASE
@@ -236,7 +237,7 @@ async function refreshQueue() {
         WHEN i."agentState" IN ('BLOCKED', 'ISSUE') OR i."riskLevel" IN ('HIGH', 'CRITICAL') THEN 1
         WHEN l.type = 'AMI' THEN 2
         WHEN t."clickupUpdatedAt" >= NOW() - INTERVAL '24 hours' THEN 3
-        WHEN i."promptVersion" NOT IN (${originalVersion}, ${priorDecisionVersion}, ${verifiedVersion}) THEN 4
+        WHEN i."promptVersion" NOT IN (${originalVersion}, ${priorDecisionVersion}, ${scopedVersion}, ${verifiedVersion}) THEN 4
         ELSE 5
       END,
       t."clickupUpdatedAt" DESC NULLS LAST, t.id
@@ -324,7 +325,7 @@ export async function leaseJob(client = prisma) {
           WHEN i."agentState" IN ('BLOCKED', 'ISSUE') OR i."riskLevel" IN ('HIGH', 'CRITICAL') THEN 1
           WHEN l.type = 'AMI' THEN 2
           WHEN t."clickupUpdatedAt" >= NOW() - INTERVAL '24 hours' THEN 3
-          WHEN i."promptVersion" NOT IN (${originalVersion}, ${priorDecisionVersion}, ${verifiedVersion}) THEN 4
+          WHEN i."promptVersion" NOT IN (${originalVersion}, ${priorDecisionVersion}, ${scopedVersion}, ${verifiedVersion}) THEN 4
           ELSE 5
         END,
         t."clickupUpdatedAt" DESC NULLS LAST, j."nextAttemptAt", j.id
@@ -422,7 +423,7 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     // If a prior worker saved the exact result and died before finalizing the job,
     // finalize without paying for duplicate analysis.
     if (task.intelligence?.sourceFingerprint === fingerprint && (task.intelligence.promptVersion === verifiedVersion ||
-      ((task.intelligence.promptVersion === originalVersion || task.intelligence.promptVersion === priorDecisionVersion) && !(task.intelligence.needsAmi && task.intelligence.verificationStatus === 'VERIFY')))) {
+      ((task.intelligence.promptVersion === originalVersion || task.intelligence.promptVersion === priorDecisionVersion || task.intelligence.promptVersion === scopedVersion) && !(task.intelligence.needsAmi && task.intelligence.verificationStatus === 'VERIFY')))) {
       // The provider may have completed before the previous worker crashed.
       // With no persisted token counts, convert the full reservation to actual
       // spend so the hard cap remains conservative rather than recording $0.
