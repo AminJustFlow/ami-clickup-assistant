@@ -18,6 +18,8 @@ if (!process.env.DATABASE_URL) loadEnvConfig(process.cwd());
 const once = process.argv.includes('--once');
 const workerId = randomUUID();
 const model = process.env.OPENAI_INTELLIGENCE_MODEL || 'gpt-5.6-luna';
+const originalVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
+const verifiedVersion = originalVersion + ':decision-verification-2';
 const standardDailyBudget = Number(process.env.AI_DAILY_BUDGET_USD);
 // One-time, estimated $30 regular-budget supplement for the backlog.
 // Only active 2026-10-15 through 2026-10-21 UTC; unused funds expire.
@@ -186,7 +188,7 @@ async function refreshQueue() {
   const teamNames = (await prisma.employee.findMany({ select: { name: true } })).map(x => x.name);
   // Bounded discovery keeps the worker viable on a 2 GB host. The definitive
   // fingerprint is calculated with full client-group context after leasing.
-  const expectedVersion = TASK_ANALYZER_PROMPT_VERSION + ':' + model;
+
   const candidates = await prisma.$queryRaw<Array<{ id: number }>>`
     SELECT t.id FROM "Task" t
     JOIN "Client" c ON c.id = t."clientId"
@@ -222,7 +224,10 @@ async function refreshQueue() {
             OR i."agentState" IN ('BLOCKED', 'ISSUE', 'WAITING_ON_CLIENT', 'WAITING_ON_VENDOR', 'WAITING_ON_TEAM')))
       )
       AND (i.id IS NULL OR i."analyzedAt" IS NULL OR t."clickupUpdatedAt" > i."analyzedAt"
-        OR i."promptVersion" IS DISTINCT FROM ${expectedVersion})
+        OR EXISTS (SELECT 1 FROM "Comment" newer WHERE newer."taskId" = t.id
+          AND (newer."clickupCreatedAt" > i."analyzedAt" OR newer."clickupUpdatedAt" > i."analyzedAt"))
+        OR i."promptVersion" IS NULL OR i."promptVersion" NOT IN (${originalVersion}, ${verifiedVersion})
+        OR (i."promptVersion" = ${originalVersion} AND i."needsAmi" AND i."verificationStatus" = 'VERIFY'))
       AND (j.id IS NULL OR j.status = 'SUCCEEDED')
     ORDER BY
       CASE
@@ -230,7 +235,7 @@ async function refreshQueue() {
         WHEN i."agentState" IN ('BLOCKED', 'ISSUE') OR i."riskLevel" IN ('HIGH', 'CRITICAL') THEN 1
         WHEN l.type = 'AMI' THEN 2
         WHEN t."clickupUpdatedAt" >= NOW() - INTERVAL '24 hours' THEN 3
-        WHEN i."promptVersion" IS DISTINCT FROM ${expectedVersion} THEN 4
+        WHEN i."promptVersion" NOT IN (${originalVersion}, ${verifiedVersion}) THEN 4
         ELSE 5
       END,
       t."clickupUpdatedAt" DESC NULLS LAST, t.id
@@ -318,7 +323,7 @@ export async function leaseJob(client = prisma) {
           WHEN i."agentState" IN ('BLOCKED', 'ISSUE') OR i."riskLevel" IN ('HIGH', 'CRITICAL') THEN 1
           WHEN l.type = 'AMI' THEN 2
           WHEN t."clickupUpdatedAt" >= NOW() - INTERVAL '24 hours' THEN 3
-          WHEN i."promptVersion" IS DISTINCT FROM ${TASK_ANALYZER_PROMPT_VERSION + ':' + model} THEN 4
+          WHEN i."promptVersion" NOT IN (${originalVersion}, ${verifiedVersion}) THEN 4
           ELSE 5
         END,
         t."clickupUpdatedAt" DESC NULLS LAST, j."nextAttemptAt", j.id
@@ -415,7 +420,8 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
   try {
     // If a prior worker saved the exact result and died before finalizing the job,
     // finalize without paying for duplicate analysis.
-    if (task.intelligence?.sourceFingerprint === fingerprint && task.intelligence.promptVersion === TASK_ANALYZER_PROMPT_VERSION + ':' + model) {
+    if (task.intelligence?.sourceFingerprint === fingerprint && (task.intelligence.promptVersion === verifiedVersion ||
+      (task.intelligence.promptVersion === originalVersion && !(task.intelligence.needsAmi && task.intelligence.verificationStatus === 'VERIFY')))) {
       // The provider may have completed before the previous worker crashed.
       // With no persisted token counts, convert the full reservation to actual
       // spend so the hard cap remains conservative rather than recording $0.
@@ -427,7 +433,7 @@ async function processJob(job: { id: number; taskId: number }, teamNames: string
     if (result.source !== 'AI') throw new Error('OpenAI analysis did not complete');
     const stillOwned = await prisma.analysisJob.count({ where: { id: job.id, status: 'LEASED', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } } });
     if (!stillOwned) throw new Error('Worker lost job lease before result could be committed');
-    await saveTaskIntelligence(task.id, { agentState: result.agentState, headline: result.headline, currentSummary: result.currentSummary, needsAmi: result.needsAmi, amiAction: result.amiAction, waitingOnType: result.waitingOnType, waitingOnName: result.waitingOnName, importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore, riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange, lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence, nextActor: result.nextActor, unresolvedRequest: result.unresolvedRequest, priorityLevel: result.priorityLevel, priorityReasons: result.priorityReasons, evidenceReferences: result.evidenceReferences, contradictingEvidence: result.contradictingEvidence, freshnessStatus: result.freshnessStatus, verificationStatus: result.verificationStatus, verificationReasons: result.verificationReasons, classificationVersion: result.classificationVersion, promptVersion: TASK_ANALYZER_PROMPT_VERSION + ':' + model, analyzedAt: new Date(), sourceFingerprint: fingerprint });
+    await saveTaskIntelligence(task.id, { agentState: result.agentState, headline: result.headline, currentSummary: result.currentSummary, needsAmi: result.needsAmi, amiAction: result.amiAction, waitingOnType: result.waitingOnType, waitingOnName: result.waitingOnName, importanceScore: result.importanceScore, amiAttentionScore: result.amiAttentionScore, riskLevel: result.riskLevel, lastMeaningfulChange: result.lastMeaningfulChange, lastMeaningfulChangeAt: result.lastMeaningfulChangeAt, confidence: result.confidence, nextActor: result.nextActor, unresolvedRequest: result.unresolvedRequest, priorityLevel: result.priorityLevel, priorityReasons: result.priorityReasons, evidenceReferences: result.evidenceReferences, contradictingEvidence: result.contradictingEvidence, freshnessStatus: result.freshnessStatus, verificationStatus: result.verificationStatus, verificationReasons: result.verificationReasons, classificationVersion: result.classificationVersion, promptVersion: verifiedVersion, analyzedAt: new Date(), sourceFingerprint: fingerprint });
     const input = result.usage?.inputTokens ?? 0, output = result.usage?.outputTokens ?? 0;
     const actual = (input * inputRate + output * outputRate) / 1_000_000;
     await completeJob(job.id, { input, output, actual });

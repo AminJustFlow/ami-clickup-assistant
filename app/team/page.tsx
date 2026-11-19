@@ -22,6 +22,7 @@ export default async function TeamDirectory({ searchParams }: {
       assignments: {
         where: { task: { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } } },
         select: { task: { select: {
+          comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
           clickupStatus: true, dueDate: true, clickupUpdatedAt: true,
           intelligence: { select: { agentState: true, needsAmi: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true, lastMeaningfulChangeAt: true } },
           attentionDisposition: { select: { sourceFingerprint: true, decision: true } }

@@ -44,8 +44,9 @@ export default async function ClientsDirectory({ searchParams }: { searchParams:
     prisma.task.findMany({
       where: { ...scope, intelligence: { is: { needsAmi: true } } },
       select: {
-        clientId: true, clickupStatus: true,
-        intelligence: { select: { needsAmi: true, agentState: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
+        comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+          clientId: true, clickupStatus: true,
+        clickupUpdatedAt: true, intelligence: { select: { needsAmi: true, agentState: true, sourceFingerprint: true, analyzedAt: true, verificationStatus: true } },
         attentionDisposition: { select: { decision: true, sourceFingerprint: true } }
       }
     }),

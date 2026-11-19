@@ -74,7 +74,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
       select: {
         id: true, clickupTaskId: true, rawPayload: true, name: true, dueDate: true, clickupUpdatedAt: true, clickupUrl: true, clickupStatus: true,
         client: { select: { name: true } },
-        comments: { orderBy: { clickupUpdatedAt: 'desc' }, take: 1, select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
+        comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
         events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { occurredAt: true } },
         attentionDisposition: { select: { decision: true, reason: true, sourceFingerprint: true, updatedAt: true } },
         intelligence: { select: {

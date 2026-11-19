@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 
 const taskSelect = {
   id: true, clickupTaskId: true, name: true, clickupStatus: true, clickupCreatedAt: true, clickupUpdatedAt: true, dueDate: true, clickupUrl: true,
+  comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
   deleted: true,
   clientId: true, rawPayload: true,
   client: { select: { name: true, slug: true } },
