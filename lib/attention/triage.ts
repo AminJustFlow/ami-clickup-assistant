@@ -34,13 +34,24 @@ export function isOpenAttentionTask(task: {
   return !(task.attentionDisposition?.decision === 'DISMISSED' && task.attentionDisposition.sourceFingerprint === attentionFingerprint(intel));
 }
 
+type SourceActivity = {
+  clickupUpdatedAt?: Date | null;
+  comments?: { clickupCreatedAt: Date | null; clickupUpdatedAt: Date | null }[];
+};
+
+export function changedSinceAnalysis(task: SourceActivity, analyzedAt: Date): boolean {
+  const newer = (date?: Date | null) => !!date && date > analyzedAt;
+  return newer(task.clickupUpdatedAt) || !!task.comments?.some(c => newer(c.clickupCreatedAt) || newer(c.clickupUpdatedAt));
+}
+
 /** Use outside the dedicated verification inbox so uncertain AI output is never presented as fact. */
-export function isVerifiedOpenAttentionTask(task: {
+export function isVerifiedOpenAttentionTask(task: SourceActivity & {
   clickupStatus: string | null;
   intelligence: AttentionSnapshot | null;
   attentionDisposition: AttentionDispositionSnapshot;
 }): boolean {
-  return task.intelligence?.verificationStatus === 'VERIFIED' && isOpenAttentionTask(task);
+  return task.intelligence?.verificationStatus === 'VERIFIED' && !!task.intelligence.analyzedAt &&
+    !changedSinceAnalysis(task, task.intelligence.analyzedAt) && isOpenAttentionTask(task);
 }
 
 /**
@@ -74,7 +85,7 @@ export function hasSpecificAmiAction(action: string | null): boolean {
 }
 
 /** Reasons to verify an AI recommendation before treating it as a current decision. */
-export function attentionVerificationReasons(task: {
+export function attentionVerificationReasons(task: SourceActivity & {
   clickupUpdatedAt: Date | null;
   intelligence: {
     analyzedAt: Date | null;
@@ -92,9 +103,8 @@ export function attentionVerificationReasons(task: {
   const intel = task.intelligence;
   if (!intel) return ['No AI analysis'];
   const reasons: string[] = [];
-  // Allow minor timestamp drift between ClickUp ingestion and analysis persistence.
   if (!intel.analyzedAt) reasons.push('Analysis timestamp unavailable');
-  else if (task.clickupUpdatedAt && task.clickupUpdatedAt.getTime() > intel.analyzedAt.getTime() + 120_000)
+  else if (changedSinceAnalysis(task, intel.analyzedAt))
     reasons.push('ClickUp changed after the AI analysis');
   if (intel.confidence == null || !Number.isFinite(intel.confidence) || intel.confidence < 0.75 || intel.confidence > 1)
     reasons.push('Low or unknown AI confidence');

@@ -139,3 +139,9 @@ assert.deepEqual(intelligenceCoverage([
   { ...covered, comments: [{ clickupCreatedAt: new Date(0), clickupUpdatedAt: new Date(1001) }] },
   { ...covered, intelligence: { ...sourceAssessment, verificationStatus: 'VERIFY' } }
 ]), { current: 2, stale: 1, unanalyzed: 1, verification: 1 });
+
+const answered = { clickupUpdatedAt: analyzedAt, clickupStatus: 'open', attentionDisposition: null,
+  intelligence: { ...intel, confidence: 0.94, amiAction: 'Review the draft post' },
+  comments: [{ clickupCreatedAt: new Date(analyzedAt.getTime() + 1), clickupUpdatedAt: null }] };
+assert.equal(isVerifiedOpenAttentionTask(answered), false);
+assert.ok(attentionVerificationReasons(answered).includes('ClickUp changed after the AI analysis'));

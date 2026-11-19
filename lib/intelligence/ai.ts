@@ -51,13 +51,13 @@ function normalizeWaitingName(context: TaskContext, type: WaitingOnType, name: s
   return name;
 }
 
-function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date, teamNames: string[], related: RelatedEvidence[]): HybridIntelligence {
+export function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: RuleIntelligence, model: string, now: Date, teamNames: string[], related: RelatedEvidence[]): HybridIntelligence {
   let agentState = ai.agent_state as AgentState;
   let needsAmi = ai.needs_ami;
   let amiAction = ai.ami_action;
   let waitingOnType = ai.waiting_on_type as WaitingOnType;
   let waitingOnName = ai.waiting_on_name;
-  const verificationReasons = [...ai.verification_reasons];
+  const verificationReasons = ai.verification_status === 'VERIFY' ? [...ai.verification_reasons] : [];
   const commentsById = new Map(context.comments.map(comment => [String(comment.id), comment]));
   const allowedTaskFields = new Set(['status', 'due_date', 'description', 'priority', 'assignees', 'title', 'list']);
   const relatedTaskIds = new Set(related.map(item => item.context.clickupTaskId));
@@ -68,8 +68,11 @@ function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rules: Rul
   };
   const evidenceReferences = ai.evidence_references.filter(validReference);
   const contradictingEvidence = ai.contradicting_evidence.filter(validReference);
-  if (evidenceReferences.length !== ai.evidence_references.length || contradictingEvidence.length !== ai.contradicting_evidence.length)
-    verificationReasons.push('AI cited evidence that is not present in the supplied task context');
+  for (const reference of [...ai.evidence_references, ...ai.contradicting_evidence]) {
+    if (!validReference(reference)) {
+      verificationReasons.push(`Unrecognized evidence reference: ${reference.source_type} ${reference.source_id}`);
+    }
+  }
 
   // Ami can have a pending decision even while the overall deliverable waits on
   // another teammate. Do not collapse two independent dependencies into one.

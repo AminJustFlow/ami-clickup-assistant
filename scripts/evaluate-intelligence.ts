@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict';
+import { aiToHybrid } from '../lib/intelligence/ai';
+import type { TaskIntelligenceOutput } from '../lib/intelligence/schema';
 import { analyzeWithRules } from '../lib/intelligence/engine';
 import type { TaskContext } from '../lib/intelligence/context';
 
@@ -151,3 +154,25 @@ for (const test of cases) {
 
 console.log(`\n${passed}/${cases.length} evaluation cases passed.`);
 if (passed !== cases.length) process.exitCode = 1;
+
+const review = base('Review post', 'Ami, the post is ready for your review.');
+const reference = { source_type: 'COMMENT', source_id: '1', excerpt: review.comments[0].body,
+  author: 'Amin', occurred_at: review.comments[0].createdAt!.toISOString() } as const;
+const decision: TaskIntelligenceOutput = {
+  meaningful_change: true, agent_state: 'WAITING_ON_AMI', headline: 'Post ready for review',
+  current_summary: 'The draft awaits review.', needs_ami: true, ami_action: 'Review the draft post',
+  next_actor: 'AMI', unresolved_request: 'Review the draft post', evidence_references: [reference],
+  contradicting_evidence: [], freshness_status: 'CURRENT', verification_status: 'VERIFIED',
+  verification_reasons: ['The latest direct comment asks Ami for review.'], waiting_on_type: 'AMI',
+  waiting_on_name: 'Ami', risk: 'LOW', importance: 30, priority_level: 'MEDIUM',
+  priority_score: 40, priority_reasons: [], confidence: 0.95, last_meaningful_change: 'Draft ready'
+};
+const interpret = (change: Partial<TaskIntelligenceOutput>) =>
+  aiToHybrid(review, { ...decision, ...change }, analyzeWithRules(review), 'fixture', new Date(), [], []);
+assert.equal(interpret({}).verificationStatus, 'VERIFIED');
+assert.deepEqual(interpret({}).verificationReasons, []);
+assert.equal(interpret({ verification_status: 'VERIFY' }).verificationStatus, 'VERIFY');
+const invalid = interpret({ contradicting_evidence: [{ ...reference, source_id: '999' }] });
+assert.equal(invalid.verificationStatus, 'VERIFY');
+assert.ok(invalid.verificationReasons?.some(reason => reason.includes('999')));
+console.log('Decision verification regressions passed');
