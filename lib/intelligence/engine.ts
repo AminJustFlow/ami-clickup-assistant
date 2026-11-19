@@ -131,6 +131,16 @@ export function analyzeWithRules(context: TaskContext, now = new Date()): RuleIn
     const hasAmiRequest = mentionsAmi && requestLanguage.test(text);
     const normalizedAuthor = comment.authorName?.toLowerCase().replace(/’/g, "'").trim() ?? '';
     const authoredByAmi = normalizedAuthor === "ami d'amelio" || normalizedAuthor === 'ami';
+    // Only clear a review on an explicit revision of the named deliverable.
+    const revision = authoredByAmi && text.match(/\b(?:revise|edit|update) (?:the |that )?([^.!?\n]{3,80}?) before (?:I|we) (?:can )?(?:review|approve)\b/i);
+    if (revision && needsAmi && amiAction?.toLowerCase().includes(revision[1].toLowerCase())) {
+      ({ needsAmi, amiAction } = clearAmi());
+      state = 'ACTIVE';
+      waitingOnType = 'NONE';
+      waitingOnName = null;
+      evidence.push({ kind: 'review', commentId: comment.id, text });
+      meaningful = true;
+    }
     if (hasAmiRequest && !authoredByAmi) {
       needsAmi = true;
       state = 'WAITING_ON_AMI';

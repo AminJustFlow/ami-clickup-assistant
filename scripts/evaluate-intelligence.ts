@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { aiToHybrid } from '../lib/intelligence/ai';
-import type { TaskIntelligenceOutput } from '../lib/intelligence/schema';
+import { taskIntelligenceSchema, type TaskIntelligenceOutput } from '../lib/intelligence/schema';
 import { analyzeWithRules } from '../lib/intelligence/engine';
 import type { TaskContext } from '../lib/intelligence/context';
 
@@ -176,3 +176,19 @@ const invalid = interpret({ contradicting_evidence: [{ ...reference, source_id: 
 assert.equal(invalid.verificationStatus, 'VERIFY');
 assert.ok(invalid.verificationReasons?.some(reason => reason.includes('999')));
 console.log('Decision verification regressions passed');
+
+const scopedReview = base('Social posts', '@Ami the park video draft is ready for your review.');
+for (const [reply, pending] of [
+  ['Please work on an Open House post and a new park photo post for next week.', true],
+  ['Please revise the park video draft before I review it.', false],
+  ['Please revise the Open House draft before I review it.', true]
+] as const) {
+  const result = analyzeWithRules({ ...scopedReview, comments: [...scopedReview.comments,
+    { id: 2, authorName: 'Ami', createdAt: new Date('2026-10-08'), body: reply }] });
+  assert.equal(result.needsAmi, pending, reply);
+}
+assert.ok(taskIntelligenceSchema.safeParse(decision).success);
+assert.equal(taskIntelligenceSchema.safeParse({ ...decision, evidence_references: [
+  reference, { ...reference, source_type: 'TASK_FIELD', source_id: 'progress' }
+] }).success, false);
+console.log('Scoped review and citation schema regressions passed');

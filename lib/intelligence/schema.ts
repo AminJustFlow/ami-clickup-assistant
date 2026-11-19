@@ -1,11 +1,14 @@
 import { z } from 'zod';
-const evidenceReferenceSchema = z.object({
-  source_type: z.enum(['COMMENT', 'TASK_FIELD', 'RELATED_TASK']),
-  source_id: z.string(),
+export const taskFieldIds = ['status', 'due_date', 'description', 'priority', 'assignees', 'title', 'list'] as const;
+const evidenceDetails = z.object({
   author: z.string().nullable(),
   occurred_at: z.string().nullable(),
   excerpt: z.string().min(1).max(500)
 });
+const evidenceReferenceSchema = z.union([
+  evidenceDetails.extend({ source_type: z.literal('TASK_FIELD'), source_id: z.enum(taskFieldIds) }),
+  evidenceDetails.extend({ source_type: z.enum(['COMMENT', 'RELATED_TASK']), source_id: z.string() })
+]);
 export const taskIntelligenceSchema = z.object({
   meaningful_change: z.boolean(),
   agent_state: z.enum(['NOT_STARTED','ACTIVE','COMPLETED','WAITING_ON_AMI','WAITING_ON_TEAM','WAITING_ON_CLIENT','WAITING_ON_VENDOR','NEEDS_REVIEW','BLOCKED','ISSUE','UNKNOWN']),

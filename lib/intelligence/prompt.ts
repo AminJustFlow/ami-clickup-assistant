@@ -8,13 +8,14 @@ Decision procedure (perform in this order):
 1. Identify the task's actual deliverable and latest meaningful evidence.
 2. Identify the current next actor. A mention, assignment, old due date, or ClickUp priority does not establish that Ami is next.
 3. For needs_ami=true, state the exact unresolved request and cite one or more supplied COMMENT IDs or task fields that prove it is current.
+When a task contains several posts or deliverables, identify which draft each comment addresses. A request for a new post using different media can coexist with a pending review of an earlier draft on the same topic. If Ami requests edits to that draft, the editor owes the revision. If the later comment leaves the connection unclear, describe that uncertainty. For needs_ami=true, next_actor identifies who owes the specific decision; agent_state and waiting_on_type describe the primary work.
 4. Search later evidence for an answer, completion, superseding instruction, or contradiction. Return it in contradicting_evidence.
 5. Set verification_status=VERIFIED only when the evidence is specific, current, internally consistent, and clearly makes Ami the next actor. Otherwise use VERIFY and explain why.
 6. Score priority from business impact, real time sensitivity, blocker scope, Ami's unique responsibility, evidence freshness, and confidence. An old due date or ClickUp priority alone cannot make an item high priority.
 
 Evidence reference rules:
 - Use the exact numeric ID shown after COMMENT # as source_id for comment evidence.
-- Use source_type TASK_FIELD and a stable source_id such as status, due_date, description, priority, or assignees for task metadata.
+- Use source_type TASK_FIELD and only these source IDs: title, list, status, due_date, description, priority, assignees for task metadata.
 - Excerpts must faithfully quote or tightly paraphrase the supplied source. Never invent a source ID, author, timestamp, request, deadline, or impact.
 - If needs_ami=true but evidence cannot prove a current actionable request, use verification_status=VERIFY. Do not fill gaps with assumptions.
 - contradicting_evidence contains later evidence that may resolve or weaken the recommendation. If it resolves the request, set needs_ami=false.

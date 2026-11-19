@@ -5,7 +5,7 @@ import { contextText, type TaskContext } from './context';
 import { relatedEvidenceText, type RelatedEvidence } from './related';
 import { analyzeWithRules, type RuleIntelligence } from './engine';
 import { TASK_ANALYZER_PROMPT_VERSION, TASK_ANALYZER_SYSTEM } from './prompt';
-import { taskIntelligenceSchema, type TaskIntelligenceOutput } from './schema';
+import { taskFieldIds, taskIntelligenceSchema, type TaskIntelligenceOutput } from './schema';
 
 export const DEFAULT_INTELLIGENCE_MODEL = 'gpt-6-luna';
 
@@ -59,7 +59,7 @@ export function aiToHybrid(context: TaskContext, ai: TaskIntelligenceOutput, rul
   let waitingOnName = ai.waiting_on_name;
   const verificationReasons = ai.verification_status === 'VERIFY' ? [...ai.verification_reasons] : [];
   const commentsById = new Map(context.comments.map(comment => [String(comment.id), comment]));
-  const allowedTaskFields = new Set(['status', 'due_date', 'description', 'priority', 'assignees', 'title', 'list']);
+  const allowedTaskFields = new Set<string>(taskFieldIds);
   const relatedTaskIds = new Set(related.map(item => item.context.clickupTaskId));
   const validReference = (reference: TaskIntelligenceOutput['evidence_references'][number]) => {
     if (reference.source_type === 'COMMENT') return commentsById.has(reference.source_id);
