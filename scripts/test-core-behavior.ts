@@ -1,3 +1,5 @@
+import { intelligenceCoverage } from '../lib/intelligence/coverage';
+import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
 import assert from 'node:assert/strict';
 import { clientHealthStatus, compareClientHealth, dueWithinDays } from '../lib/clients/health';
 import { compareAttentionPriority, dailyBrief } from '../lib/attention/daily-brief';
@@ -126,3 +128,14 @@ assert.equal(latest?.toISOString(), '2026-10-11T00:00:00.000Z');
 assert.match(humanActivityLabel({ state: 'ACTIVE', taskUpdatedAt: null, commentDates: [] }, new Date('2026-10-12T00:00:00Z')), /No recorded comments/);
 
 console.log('Core behavior tests passed: attention lifecycle, closed statuses, observed changes, and human-activity chronology.');
+
+const sourceAssessment = {
+  analyzedAt: new Date(1000), classificationVersion: TASK_ANALYZER_PROMPT_VERSION,
+  freshnessStatus: 'CURRENT', verificationStatus: 'VERIFIED'
+};
+const covered = { clickupUpdatedAt: new Date(0), intelligence: sourceAssessment, comments: [] };
+assert.deepEqual(intelligenceCoverage([
+  covered, { ...covered, intelligence: null },
+  { ...covered, comments: [{ clickupCreatedAt: new Date(0), clickupUpdatedAt: new Date(1001) }] },
+  { ...covered, intelligence: { ...sourceAssessment, verificationStatus: 'VERIFY' } }
+]), { current: 2, stale: 1, unanalyzed: 1, verification: 1 });

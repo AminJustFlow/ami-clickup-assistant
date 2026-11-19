@@ -37,16 +37,20 @@ function activeAction(task: CommandTask): boolean {
 
 export async function loadCommandCenter(now = new Date()) {
   const current = workday(now);
+  const checkpoint = await prisma.workdayBrief.findFirst({
+    where: { completedAt: { not: null, lte: now } }, orderBy: { completedAt: 'desc' }, select: { completedAt: true }
+  });
+  const since = checkpoint?.completedAt ?? current.previousStart;
   const recentEventTypes = ['OBSERVED_STATUS_CHANGE', 'OBSERVED_DESCRIPTION_CHANGE', 'OBSERVED_DUEDATE_CHANGE', 'OBSERVED_ASSIGNEES_CHANGE'];
   const fallbackSelect = {
     ...taskSelect,
     comments: {
-      where: { OR: [{ clickupCreatedAt: { gte: current.previousStart } }, { clickupUpdatedAt: { gte: current.previousStart } }] },
+      where: { OR: [{ clickupCreatedAt: { gte: since } }, { clickupUpdatedAt: { gte: since } }] },
       orderBy: [{ clickupCreatedAt: 'desc' }, { id: 'desc' }], take: 1,
       select: { authorName: true, body: true, clickupCreatedAt: true, clickupUpdatedAt: true }
     },
     events: {
-      where: { occurredAt: { gte: current.previousStart }, eventType: { in: recentEventTypes } },
+      where: { occurredAt: { gte: since }, eventType: { in: recentEventTypes } },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: 1,
       select: { eventType: true, occurredAt: true }
     }
@@ -65,8 +69,8 @@ export async function loadCommandCenter(now = new Date()) {
     loadActionCandidates(now),
     prisma.operationalUpdate.findMany({
       where: { verified: true, OR: [
-        { evidenceAt: { gte: current.previousStart } },
-        { evidenceAt: null, createdAt: { gte: current.previousStart } }
+        { evidenceAt: { gte: since } },
+        { evidenceAt: null, createdAt: { gte: since } }
       ], task: { deleted: false } },
       include: { task: { select: taskSelect } },
       orderBy: [{ evidenceAt: 'desc' }, { createdAt: 'desc' }], take: 60
@@ -93,11 +97,11 @@ export async function loadCommandCenter(now = new Date()) {
     }),
     prisma.task.findMany({
       where: { AND: [openCurrentWhere, { OR: [
-        { clickupCreatedAt: { gte: current.previousStart } },
-        { comments: { some: { OR: [{ clickupCreatedAt: { gte: current.previousStart } }, { clickupUpdatedAt: { gte: current.previousStart } }] } } },
+        { clickupCreatedAt: { gte: since } },
+        { comments: { some: { OR: [{ clickupCreatedAt: { gte: since } }, { clickupUpdatedAt: { gte: since } }] } } },
         { AND: [
-          { clickupUpdatedAt: { gte: current.previousStart } },
-          { events: { some: { occurredAt: { gte: current.previousStart }, eventType: { in: recentEventTypes } } } }
+          { clickupUpdatedAt: { gte: since } },
+          { events: { some: { occurredAt: { gte: since }, eventType: { in: recentEventTypes } } } }
         ] }
       ] }] },
       select: fallbackSelect, orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }], take: 40
@@ -200,7 +204,7 @@ export async function loadCommandCenter(now = new Date()) {
     (b.decisions * 10 + b.risks * 5 + b.changes) - (a.decisions * 10 + a.risks * 5 + a.changes) || a.name.localeCompare(b.name));
 
   return {
-    current, readiness, completedAt: brief?.completedAt ?? null,
+    current, since, readiness, completedAt: brief?.completedAt ?? null,
     actions: visibleActions.slice(0, 3), actionTotal: visibleActions.length,
     changes: changeItems.slice(0, 5), changeTotal: changeItems.length,
     risks: risks.slice(0, 3), riskTotal: risks.length,

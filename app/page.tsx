@@ -42,7 +42,7 @@ export default async function Home() {
       <p className="eyebrow">AMI'S WORKDAY · {brief.current.key}</p>
       <h1>Start here before ClickUp</h1>
       <p>See what needs you, what changed, and where to look next—without sorting through every notification.</p>
-      <div className="brief-window"><span>Updates since {dateTime(brief.current.previousStart)} ET</span><span>{brief.reviewedToday} item{brief.reviewedToday === 1 ? '' : 's'} reviewed today</span></div>
+      <div className="brief-window"><span>Updates since {dateTime(brief.since)} ET</span><span>{brief.reviewedToday} item{brief.reviewedToday === 1 ? '' : 's'} reviewed today</span></div>
     </div><form action={markBriefReviewed}><button className="digest-button brief-reviewed-button" type="submit">{brief.completedAt ? 'Brief completed · update time' : 'Finish daily brief'}</button></form></header>
 
     <section className={`command-readiness ${brief.readiness.ready ? 'ready' : 'limited'}`} aria-label="Data readiness">
