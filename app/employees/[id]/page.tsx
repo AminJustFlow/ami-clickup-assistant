@@ -78,7 +78,7 @@ export default async function EmployeePage({ params, searchParams }: {
   const filtered = tasks.filter(matches);
   const grouped = (items: typeof tasks) => groupedInsightRepresentatives(tasks, items, compareRecentFirst);
   const needsAmi = grouped(filtered.filter(isOpenAttentionTask));
-  const isClosed = (t: (typeof tasks)[number]) => isClosedClickUpStatus(t.clickupStatus);
+  const isClosed = (t: (typeof tasks)[number]) => t.intelligence?.agentState === 'COMPLETED' || isClosedClickUpStatus(t.clickupStatus);
   const waiting = grouped(filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) &&
     t.intelligence && t.intelligence.waitingOnType !== 'NONE' && t.intelligence.waitingOnType !== 'AMI'));
   const active = filtered.filter(t => !isOpenAttentionTask(t) && !isClosed(t) && !waiting.includes(t) && t.intelligence?.agentState === 'ACTIVE');

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { isClosedClickUpStatus, attentionFingerprint } from '@/lib/attention/triage';
+import { isClosedClickUpStatus, attentionVerificationReasons, isOpenAttentionTask } from '@/lib/attention/triage';
 import { compareRecentFirst } from '@/lib/tasks/recency';
 import { operationalReadiness, operationalScopeWhere } from '@/lib/operations/readiness';
 import { AMI_EMPLOYEE_NAME } from '@/lib/operations/identity';
@@ -18,24 +18,21 @@ const taskSelect = {
     agentState: true, needsAmi: true, amiAction: true, currentSummary: true, riskLevel: true,
     waitingOnName: true, waitingOnType: true, priorityLevel: true, priorityReasons: true,
     lastMeaningfulChangeAt: true, sourceFingerprint: true, analyzedAt: true,
-    verificationStatus: true, evidenceReferences: true, classificationVersion: true, confidence: true
+    freshnessStatus: true, nextActor: true, unresolvedRequest: true, verificationReasons: true, verificationStatus: true, evidenceReferences: true, classificationVersion: true, confidence: true
   } }
 } as const;
 
 async function loadActionCandidates(now: Date) {
   return prisma.task.findMany({
     where: { AND: [operationalScopeWhere(now), { intelligence: { is: { needsAmi: true, verificationStatus: 'VERIFIED', classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE' } } }] },
-    select: taskSelect, orderBy: [{ clickupUpdatedAt: 'desc' }, { id: 'asc' }], take: 60
+    select: taskSelect, orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
   });
 }
 
 type CommandTask = Awaited<ReturnType<typeof loadActionCandidates>>[number];
 
 function activeAction(task: CommandTask): boolean {
-  const intel = task.intelligence;
-  if (!intel || isClosedClickUpStatus(task.clickupStatus) || intel.agentState === 'COMPLETED') return false;
-  const disposition = task.attentionDisposition;
-  return !(disposition?.decision === 'DISMISSED' && disposition.sourceFingerprint === attentionFingerprint(intel));
+  return isOpenAttentionTask(task) && attentionVerificationReasons(task).length === 0;
 }
 
 export async function loadCommandCenter(now = new Date()) {
@@ -107,7 +104,7 @@ export async function loadCommandCenter(now = new Date()) {
     })
   ]);
   const reviewed = new Set(reviews.map(item => item.itemKey));
-  const actions = actionRows.filter(activeAction).sort(compareRecentFirst).map(task => {
+  const actions = actionRows.filter(activeAction).map(task => {
     const fingerprint = task.intelligence?.sourceFingerprint ?? null;
     return { ...task, itemKey: briefItemKey('ACTION', task.id, fingerprint), fingerprint };
   });
