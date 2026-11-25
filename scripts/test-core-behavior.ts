@@ -1,4 +1,5 @@
 import { conversationCitation, groupConversationUpdates } from '../lib/intelligence/conversation';
+import { latestDeliverableEvidence } from '../lib/intelligence/deliverable-evidence';
 import { handoffEvidence, handoffSummary } from '../lib/intelligence/handoff';
 import { hasNewProgress } from '../lib/intelligence/progress';
 import { intelligenceCoverage } from '../lib/intelligence/coverage';
@@ -207,3 +208,14 @@ const conversations = groupConversationUpdates([
   { ...original, conversationCitation: null }, { ...original, conversationCitation: null }
 ]);
 assert.deepEqual(conversations.map(group => group.items.length), [3, 1, 1, 1, 1, 1, 1]);
+
+const taskComment = { id: 42, body: 'The reel has been updated.', authorName: 'Stefani',
+  clickupCreatedAt: new Date('2026-11-25T21:10:00Z'), clickupUpdatedAt: null };
+const later = new Date('2026-11-25T21:20:00Z');
+const comments = [taskComment, { ...taskComment, id: 43, body: 'Task Comment preview 123', clickupCreatedAt: later },
+  { ...taskComment, id: 44, body: 'Please stand by.', clickupCreatedAt: later }];
+assert.equal(latestDeliverableEvidence({ comments, events: [] }, 44)?.text, taskComment.body);
+const transition = { occurredAt: later, beforeValue: { value: 'To Do' }, afterValue: { value: 'In Progress' } };
+assert.equal(latestDeliverableEvidence({ comments, events: [transition] }, 44)?.source, 'ClickUp sync');
+assert.match(latestDeliverableEvidence({ comments: [{ ...taskComment, clickupUpdatedAt: later }], events: [] }, 44)!.source, /edited comment/);
+assert.equal(latestDeliverableEvidence({ comments: [{ ...taskComment, clickupCreatedAt: null }], events: [] }, 44), null);

@@ -1,4 +1,5 @@
 import { groupConversationUpdates } from '@/lib/intelligence/conversation';
+import { latestDeliverableEvidence } from '@/lib/intelligence/deliverable-evidence';
 import { changedSinceAnalysis, isClosedClickUpStatus } from '@/lib/attention/triage';
 import { prisma } from '@/lib/db/prisma';
 import { AppNav } from '../components/app-nav';
@@ -31,6 +32,20 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
     })
   ]);
   const groups = groupConversationUpdates(updates);
+  const groupedTaskIds = [...new Set(groups.filter(group => group.items.length > 1)
+    .flatMap(group => group.items.map(item => item.taskId)))];
+  const sources = groupedTaskIds.length ? await prisma.task.findMany({
+    where: { id: { in: groupedTaskIds } },
+    select: {
+      id: true,
+      comments: { orderBy: { id: 'asc' }, select: {
+        id: true, authorName: true, body: true, clickupCreatedAt: true, clickupUpdatedAt: true
+      } },
+      events: { where: { eventType: 'OBSERVED_STATUS_CHANGE' },
+        select: { occurredAt: true, beforeValue: true, afterValue: true } }
+    }
+  }) : [];
+  const sourcesByTask = new Map(sources.map(task => [task.id, task]));
   function approvalStatus(task: typeof updates[number]['task']) {
     if (isClosedClickUpStatus(task.clickupStatus)) return 'Closed in ClickUp';
     const intel = task.intelligence;
@@ -54,9 +69,14 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
           <div className="brief-task-meta"><span>{update.task.client.name}</span><span className="brief-tag">{label(update.kind)}</span><span>{dateTime(new Date(citation.at))}</span></div>
           <h3>One update across {items.length} deliverables</h3>
           <p>{citation.author && <strong>{citation.author}: </strong>}{citation.excerpt}</p>
-          {items.map(member => <article className="brief-task-row" key={member.id}><div className="brief-task-main">
+          {items.map(member => {
+            const source = sourcesByTask.get(member.taskId);
+            const evidence = source && latestDeliverableEvidence(source, citation.commentId);
+            return <article className="brief-task-row" key={member.id}><div className="brief-task-main">
             <h4>{member.task.name}</h4><p>{approvalStatus(member.task)}</p>
-          </div><div className="brief-task-actions"><TaskDetailsButton taskId={member.taskId} label="Context" />{member.task.clickupUrl && <a href={member.task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}</div></article>)}
+            {evidence && <div className="dashboard-note"><small>{dateTime(evidence.at)} ET · {evidence.source}</small><p>{evidence.text}</p></div>}
+          </div><div className="brief-task-actions"><TaskDetailsButton taskId={member.taskId} label="Context" />{member.task.clickupUrl && <a href={member.task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}</div></article>;
+          })}
         </section>;
         return <article className="brief-task-row" key={update.id}><div className="brief-task-main"><div className="brief-task-meta"><span>{update.task.client.name}</span><span className="brief-tag">{label(update.kind)}</span><span>{dateTime(update.evidenceAt ?? update.createdAt)}</span></div><h3>{update.task.name}</h3><p>{update.summary}</p>{update.impact && update.impact !== update.summary && <small>{update.impact}</small>}</div><div className="brief-task-actions"><TaskDetailsButton taskId={update.taskId} label="Context" />{update.task.clickupUrl && <a href={update.task.clickupUrl} target="_blank" rel="noopener noreferrer">ClickUp ↗</a>}</div></article>; })}</div> : <div className="brief-empty"><strong>No verified developments in this window</strong><p>This is not a raw activity log. New items appear only after evidence-backed analysis identifies a material operational change.</p></div>}
     </section>
