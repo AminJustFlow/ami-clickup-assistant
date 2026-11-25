@@ -80,7 +80,7 @@ async function main() {
           freshnessStatus: result.freshnessStatus, verificationStatus: result.verificationStatus,
           verificationReasons: result.verificationReasons, classificationVersion: result.classificationVersion,
           promptVersion: expectedVersion, analyzedAt: new Date(), sourceFingerprint: fingerprint
-        }, result.meaningfulChange, result.handoff);
+        }, result.meaningfulChange, result.handoff, result.conversation);
         analyzed++;
         console.log('  [AI] ' + task.name + ' · ' + result.agentState + (result.needsAmi ? ' · NEEDS AMI' : ''));
       } catch (error) {

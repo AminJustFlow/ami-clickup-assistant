@@ -32,7 +32,7 @@ export function findRelatedTasks(task: TaskContext, all: TaskContext[], limit = 
 export function relatedEvidenceText(related: RelatedEvidence[]): string {
   if (!related.length) return '';
   return related.map(({context:c,reason}) => {
-    const comments = c.comments.slice(-8).map(x => `[${x.createdAt?.toISOString() ?? 'unknown'}] ${x.authorName ?? 'Unknown'}: ${x.body.slice(0,1400)}`).join('\n');
+    const comments = c.comments.slice(-8).map(x => `[COMMENT #${x.id} | ${x.createdAt?.toISOString() ?? 'unknown'}] ${x.authorName ?? 'Unknown'}: ${x.body.slice(0,1400)}`).join('\n');
     return `Related task ID: ${c.clickupTaskId}\nReason: ${reason}\nTitle: ${c.name}\nList: ${c.listName}\nStatus: ${c.status ?? 'unknown'}\nLast updated: ${c.updatedAt?.toISOString() ?? 'unknown'}\nDescription: ${(c.description ?? '').slice(0,1800)}\nRecent comments:\n${comments || 'none'}`;
   }).join('\n\n');
 }

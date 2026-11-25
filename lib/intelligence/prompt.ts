@@ -73,6 +73,7 @@ Core rules:
 - Keep headline concise and operational.
 - current_summary should explain the present state, not retell the whole history.
 - ami_action should be a concise concrete action Ami should take, or null.
+- Set conversation_instruction only when the latest meaningful change is directly established by an instruction in a specific COMMENT on this task or a supplied related task. Copy the full sentence containing that instruction verbatim and cite its COMMENT number. Use null for ambiguous, background, or older comments. If a later question changes this deliverable, cite that new question.
 - Set dependency_change_comment only when a comment on this task explicitly establishes a new handoff or clears a previous dependency. Cite its COMMENT number and quote the exact sentence identifying who took over, what was requested, or what cleared the wait. Use null for status snapshots, assignments alone, unchanged waits, ambiguous comments, and related-task evidence.
 - last_meaningful_change should state the latest comment/event that materially changed operational state.
 - importance is business/operational importance from 0-100 and is separate from whether Ami needs to act.

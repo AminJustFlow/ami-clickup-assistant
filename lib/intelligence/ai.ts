@@ -1,3 +1,4 @@
+import { conversationCitation, type ConversationCitation } from './conversation';
 import { handoffEvidence, type HandoffEvidence } from './handoff';
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
@@ -14,6 +15,7 @@ export type HybridIntelligence = RuleIntelligence & {
   source: 'AI' | 'RULES_FALLBACK';
   model: string | null;
   handoff?: HandoffEvidence;
+  conversation?: ConversationCitation;
   promptVersion: string;
   usage?: { inputTokens: number; outputTokens: number };
   nextActor?: string | null;
@@ -170,6 +172,7 @@ ${relatedEvidenceText(options.related ?? []) || 'No strongly related tasks ident
     if (!response.output_parsed) throw new Error('OpenAI returned no parsed intelligence output.');
     return {
       ...aiToHybrid(context, taskAssessment(response.output_parsed), rules, model, now, options.teamNames ?? [], options.related ?? []),
+      conversation: conversationCitation([...context.comments, ...(options.related ?? []).flatMap(item => item.context.comments.slice(-8))], response.output_parsed.conversation_instruction),
       handoff: handoffEvidence(context.comments, response.output_parsed.dependency_change_comment),
       usage: { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 }
     };

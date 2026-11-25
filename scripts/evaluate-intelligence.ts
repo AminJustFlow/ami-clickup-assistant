@@ -194,7 +194,7 @@ assert.equal(taskIntelligenceSchema.safeParse({ ...decision, evidence_references
 console.log('Scoped review and citation schema regressions passed');
 
 for (const disposition of ['PENDING', 'ANSWERED', 'RETURNED_FOR_EDITS', 'UNCERTAIN'] as const) {
-  const assessed = taskAssessment(analyzerResponseSchema.parse({ ...decision, dependency_change_comment: null, agent_state: 'ACTIVE', waiting_on_type: 'TEAM',
+  const assessed = taskAssessment(analyzerResponseSchema.parse({ ...decision, dependency_change_comment: null, conversation_instruction: null, agent_state: 'ACTIVE', waiting_on_type: 'TEAM',
     decision_on_deliverable: { ...decision, deliverable: 'Park video draft', disposition } }));
   const result = interpret(assessed);
   assert.equal(result.agentState, 'ACTIVE');

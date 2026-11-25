@@ -1,3 +1,4 @@
+import { conversationCitation, groupConversationUpdates } from '../lib/intelligence/conversation';
 import { handoffEvidence, handoffSummary } from '../lib/intelligence/handoff';
 import { hasNewProgress } from '../lib/intelligence/progress';
 import { intelligenceCoverage } from '../lib/intelligence/coverage';
@@ -192,3 +193,17 @@ const waiting = { ...recentRequest, dueDate: null,
 };
 assert.ok(decisionPriority(waiting, clock).tier < decisionPriority({ ...recentRequest, dueDate: null }, clock).tier);
 assert.equal(decisionPriority({ ...waiting, comments: recentRequest.comments }, clock).evidenceAt, 0);
+
+const sharedSource = conversationCitation([handoffComment], { comment_id: handoffComment.id, excerpt: handoffComment.body });
+assert.ok(sharedSource);
+assert.equal(conversationCitation([handoffComment], { comment_id: 999, excerpt: handoffComment.body }), undefined);
+assert.equal(conversationCitation([handoffComment], { comment_id: handoffComment.id, excerpt: 'Different request' }), undefined);
+const original = { taskId: 1, task: { clientId: 1 }, kind: 'DECISION_REQUESTED', conversationCitation: sharedSource };
+const followup = { ...sharedSource, commentId: sharedSource.commentId + 1 };
+const conversations = groupConversationUpdates([
+  original, { ...original, taskId: 2 }, { ...original, taskId: 3 }, { ...original, taskId: 2, conversationCitation: followup },
+  { ...original, taskId: 4, conversationCitation: { ...sharedSource, excerpt: 'A separate instruction.' } },
+  { ...original, task: { clientId: 2 } }, { ...original, kind: 'DECISION_RESOLVED' },
+  { ...original, conversationCitation: null }, { ...original, conversationCitation: null }
+]);
+assert.deepEqual(conversations.map(group => group.items.length), [3, 1, 1, 1, 1, 1, 1]);

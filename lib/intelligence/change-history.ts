@@ -1,7 +1,8 @@
+import type { ConversationCitation } from './conversation';
 import { dependencyChanged, handoffSummary, type HandoffEvidence } from './handoff';
 import { hasNewProgress } from './progress';
 import { prisma } from '../db/prisma';
-import type { AgentState, WaitingOnType, Prisma } from '@prisma/client';
+import { Prisma, type AgentState, type WaitingOnType } from '@prisma/client';
 
 type IntelligenceUpdate = {
   agentState: AgentState;
@@ -38,7 +39,7 @@ function updateKind(
  * Serializable isolation and P2034 retries prevent racing analyzers from
  * recording transitions against stale state.
  */
-export async function saveTaskIntelligence(taskId: number, next: IntelligenceRecord & IntelligenceUpdate, meaningfulChange: boolean, handoff?: HandoffEvidence) {
+export async function saveTaskIntelligence(taskId: number, next: IntelligenceRecord & IntelligenceUpdate, meaningfulChange: boolean, handoff?: HandoffEvidence, conversation?: ConversationCitation) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await prisma.$transaction(async tx => {
@@ -85,12 +86,14 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
             create: {
               taskId, sourceFingerprint: fingerprint, kind, summary,
               impact: next.amiAction?.trim() || next.currentSummary?.trim() || null,
+              conversationCitation: conversation ?? Prisma.DbNull,
               evidenceAt,
               verified: next.verificationStatus === 'VERIFIED'
             },
             update: {
               kind, summary,
               impact: next.amiAction?.trim() || next.currentSummary?.trim() || null,
+              conversationCitation: conversation ?? Prisma.DbNull,
               evidenceAt,
               verified: next.verificationStatus === 'VERIFIED'
             }
