@@ -1,3 +1,4 @@
+import { handoffEvidence, handoffSummary } from '../lib/intelligence/handoff';
 import { hasNewProgress } from '../lib/intelligence/progress';
 import { intelligenceCoverage } from '../lib/intelligence/coverage';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
@@ -155,3 +156,18 @@ assert.equal(hasNewProgress(true, milestone, null, 'Flyer proof delivered to cli
 assert.equal(hasNewProgress(false, milestone, null, 'Task reviewed'), false);
 assert.equal(hasNewProgress(true, milestone, milestone, 'Flyer proof delivered to client'), false);
 assert.equal(hasNewProgress(true, null, null, 'Task remains To Do'), false);
+
+const handoffComment = { id: 17, body: 'Stefani, please revise the reel.', authorName: 'Ami', createdAt: milestone };
+const proof = handoffEvidence([handoffComment], { comment_id: 17, excerpt: handoffComment.body });
+const firstOwner = { waitingOnType: 'TEAM', waitingOnName: 'Dominic' } as const;
+const nextOwner = { waitingOnType: 'TEAM', waitingOnName: 'Stefani' } as const;
+const baseline = new Date(milestone.getTime() - 1000);
+assert.equal(handoffEvidence([handoffComment], { comment_id: 18, excerpt: handoffComment.body }), undefined);
+assert.equal(handoffEvidence([handoffComment], { comment_id: 17, excerpt: 'Ready for publication' }), undefined);
+assert.equal(handoffSummary(firstOwner, nextOwner, baseline, proof), 'Handoff from Dominic to Stefani. Ami: "Stefani, please revise the reel."');
+assert.equal(handoffSummary(firstOwner, nextOwner, milestone, proof), null);
+assert.equal(handoffSummary(firstOwner, nextOwner, baseline), null);
+assert.equal(handoffSummary(nextOwner, nextOwner, baseline, proof), null);
+assert.equal(handoffSummary({ waitingOnType: 'NONE' }, nextOwner, baseline, proof)?.startsWith('Now waiting on Stefani.'), true);
+const cleared = handoffEvidence([{ ...handoffComment, body: 'I approved the reel.' }], { comment_id: 17, excerpt: 'I approved the reel.' });
+assert.equal(handoffSummary(nextOwner, { waitingOnType: 'NONE' }, baseline, cleared)?.startsWith('No longer waiting on Stefani.'), true);

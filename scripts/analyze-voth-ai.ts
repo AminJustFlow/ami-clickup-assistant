@@ -71,7 +71,7 @@ async function main(): Promise<void> {
         verificationReasons: result.verificationReasons, classificationVersion: result.classificationVersion,
         promptVersion: `${result.promptVersion}:${result.model ?? 'rules'}`, analyzedAt: new Date(),
         sourceFingerprint: result.source === 'AI' ? fingerprint : null
-    }, result.meaningfulChange);
+    }, result.meaningfulChange, result.handoff);
 
     console.log(`[${result.source}] ${task.name}`);
     console.log(`  ClickUp: ${task.clickupStatus ?? 'unknown'} | AI confidence: ${result.confidence.toFixed(2)}`);

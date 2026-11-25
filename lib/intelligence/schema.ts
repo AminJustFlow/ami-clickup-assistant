@@ -43,6 +43,7 @@ const decisionFields = {
 
 // Separate the actor for a particular request from the state of the whole task.
 export const analyzerResponseSchema = taskIntelligenceSchema.omit(decisionFields).extend({
+  dependency_change_comment: z.object({ comment_id: z.number().int(), excerpt: z.string().min(1).max(400) }).nullable(),
   decision_on_deliverable: taskIntelligenceSchema.pick(decisionFields).extend({
     deliverable: z.string().nullable(),
     disposition: z.enum(['PENDING', 'ANSWERED', 'RETURNED_FOR_EDITS', 'UNCERTAIN', 'NONE'])
@@ -50,7 +51,7 @@ export const analyzerResponseSchema = taskIntelligenceSchema.omit(decisionFields
 });
 
 export function taskAssessment(response: z.infer<typeof analyzerResponseSchema>): TaskIntelligenceOutput {
-  const { decision_on_deliverable, ...task } = response;
+  const { decision_on_deliverable, dependency_change_comment, ...task } = response;
   const { disposition, deliverable, ...decision } = decision_on_deliverable;
   if (['ANSWERED', 'RETURNED_FOR_EDITS', 'NONE'].includes(disposition)) {
     return { ...task, ...decision, needs_ami: false, ami_action: null, unresolved_request: null,

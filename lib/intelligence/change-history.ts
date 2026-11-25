@@ -1,3 +1,4 @@
+import { dependencyChanged, handoffSummary, type HandoffEvidence } from './handoff';
 import { hasNewProgress } from './progress';
 import { prisma } from '../db/prisma';
 import type { AgentState, WaitingOnType, Prisma } from '@prisma/client';
@@ -6,6 +7,7 @@ type IntelligenceUpdate = {
   agentState: AgentState;
   needsAmi: boolean;
   waitingOnType: WaitingOnType;
+  waitingOnName?: string | null;
   currentSummary: string | null;
   amiAction: string | null;
 };
@@ -26,7 +28,7 @@ function updateKind(
   if (observedEventType === 'OBSERVED_DUEDATE_CHANGE') return 'DEADLINE_CHANGED';
   if (observedEventType === 'OBSERVED_ASSIGNEES_CHANGE') return 'OWNERSHIP_CHANGED';
   if (observedEventType === 'OBSERVED_STATUS_CHANGE') return 'STATUS_CHANGED';
-  if (prior && prior.waitingOnType !== next.waitingOnType) return 'DEPENDENCY_CHANGED';
+  if (prior && dependencyChanged(prior, next)) return 'DEPENDENCY_CHANGED';
   return 'PROGRESS';
 }
 
@@ -36,7 +38,7 @@ function updateKind(
  * Serializable isolation and P2034 retries prevent racing analyzers from
  * recording transitions against stale state.
  */
-export async function saveTaskIntelligence(taskId: number, next: IntelligenceRecord & IntelligenceUpdate, meaningfulChange: boolean) {
+export async function saveTaskIntelligence(taskId: number, next: IntelligenceRecord & IntelligenceUpdate, meaningfulChange: boolean, handoff?: HandoffEvidence) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await prisma.$transaction(async tx => {
@@ -44,7 +46,7 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
         const changed = prior && (
           prior.agentState !== next.agentState ||
           prior.needsAmi !== next.needsAmi ||
-          prior.waitingOnType !== next.waitingOnType
+          dependencyChanged(prior, next)
         );
 
         await tx.taskIntelligence.upsert({
@@ -54,11 +56,11 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
         });
 
         const fingerprint = typeof next.sourceFingerprint === 'string' ? next.sourceFingerprint : null;
-        const summary = typeof next.lastMeaningfulChange === 'string' && next.lastMeaningfulChange.trim()
+        const analysisSummary = typeof next.lastMeaningfulChange === 'string' && next.lastMeaningfulChange.trim()
           ? next.lastMeaningfulChange.trim()
           : next.currentSummary?.trim() || null;
         const newEvidence = fingerprint && prior?.sourceFingerprint !== fingerprint;
-        if (newEvidence && summary) {
+        if (newEvidence && analysisSummary) {
           const observed = prior?.analyzedAt ? await tx.taskEvent.findFirst({
             where: {
               taskId,
@@ -69,6 +71,12 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
             select: { eventType: true }
           }) : null;
           const kind = updateKind(prior, next, observed?.eventType);
+          const summary = kind === 'DEPENDENCY_CHANGED'
+            ? prior && meaningfulChange && next.freshnessStatus === 'CURRENT' && handoffSummary(prior, next, prior.analyzedAt, handoff)
+            : analysisSummary;
+          if (!summary) return { changed: Boolean(changed) };
+          const evidenceAt = kind === 'DEPENDENCY_CHANGED' ? handoff!.at
+            : next.lastMeaningfulChangeAt instanceof Date ? next.lastMeaningfulChangeAt : null;
           if (kind === 'PROGRESS' && !hasNewProgress(meaningfulChange, next.lastMeaningfulChangeAt, prior?.lastMeaningfulChangeAt, next.lastMeaningfulChange)) {
             return { changed: Boolean(changed) };
           }
@@ -77,13 +85,13 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
             create: {
               taskId, sourceFingerprint: fingerprint, kind, summary,
               impact: next.amiAction?.trim() || next.currentSummary?.trim() || null,
-              evidenceAt: next.lastMeaningfulChangeAt instanceof Date ? next.lastMeaningfulChangeAt : null,
+              evidenceAt,
               verified: next.verificationStatus === 'VERIFIED'
             },
             update: {
               kind, summary,
               impact: next.amiAction?.trim() || next.currentSummary?.trim() || null,
-              evidenceAt: next.lastMeaningfulChangeAt instanceof Date ? next.lastMeaningfulChangeAt : null,
+              evidenceAt,
               verified: next.verificationStatus === 'VERIFIED'
             }
           });
