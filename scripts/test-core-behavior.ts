@@ -4,7 +4,7 @@ import { intelligenceCoverage } from '../lib/intelligence/coverage';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
 import assert from 'node:assert/strict';
 import { clientHealthStatus, compareClientHealth, dueWithinDays } from '../lib/clients/health';
-import { compareAttentionPriority, dailyBrief } from '../lib/attention/daily-brief';
+import { compareAttentionPriority, dailyBrief, decisionPriority } from '../lib/attention/daily-brief';
 import { attentionFingerprint, attentionVerificationReasons, hasSpecificAmiAction, isClosedClickUpStatus, isOpenAttentionTask, isVerifiedOpenAttentionTask } from '../lib/attention/triage';
 import { observedChanges, snapshotFromRaw } from '../lib/intelligence/activity-events';
 import { lastHumanComment, humanActivityLabel } from '../lib/intelligence/staleness';
@@ -84,7 +84,7 @@ const brief = dailyBrief([
   { id: 4, overdue: false, verificationReasons: [], intelligence: { amiAttentionScore: 80 } }
 ]);
 assert.deepEqual({ open: brief.open, ready: brief.ready, verify: brief.verify, overdueReady: brief.overdueReady }, { open: 4, ready: 3, verify: 1, overdueReady: 1 });
-assert.deepEqual(brief.topReady.map(item => item.id), [2, 3, 4]);
+assert.deepEqual(brief.topReady.map(item => item.id), [4, 2, 3]);
 assert.deepEqual(brief.topToVerify.map(item => item.id), [1]);
 assert.deepEqual(dailyBrief([]).topReady, []);
 
@@ -101,7 +101,7 @@ const ranked = dailyBrief([
   item(4, '2026-10-12T10:00:00Z', 5, true),
   item(5, '2026-10-13T13:00:00Z', 100, false, ['Low confidence'])
 ], clock);
-assert.deepEqual(ranked.topReady.map(task => task.id), [1, 2, 3]);
+assert.deepEqual(ranked.topReady.map(task => task.id), [3, 2, 1]);
 assert.deepEqual(ranked.topToVerify.map(task => task.id), [5]);
 assert.equal(compareAttentionPriority(item(1, null, 70), item(2, null, 60), clock) < 0, true);
 assert.equal(compareAttentionPriority(item(1, null, 70), item(2, null, 70), clock) < 0, true);
@@ -171,3 +171,24 @@ assert.equal(handoffSummary(nextOwner, nextOwner, baseline, proof), null);
 assert.equal(handoffSummary({ waitingOnType: 'NONE' }, nextOwner, baseline, proof)?.startsWith('Now waiting on Stefani.'), true);
 const cleared = handoffEvidence([{ ...handoffComment, body: 'I approved the reel.' }], { comment_id: 17, excerpt: 'I approved the reel.' });
 assert.equal(handoffSummary(nextOwner, { waitingOnType: 'NONE' }, baseline, cleared)?.startsWith('No longer waiting on Stefani.'), true);
+
+const recentRequest = {
+  ...item(8, '2026-10-04T12:00:00Z', 20, true),
+  comments: [{ id: 6, authorName: 'Rayanne', body: 'Please approve the flyer proof.', clickupCreatedAt: clock }],
+  intelligence: { amiAttentionScore: 20, unresolvedRequest: 'Approve the flyer proof.', evidenceReferences: [
+    { source_type: 'COMMENT', source_id: '6', excerpt: 'Please approve the flyer proof.' }
+  ] }
+};
+const oldDeadline = item(9, '2026-10-01T12:00:00Z', 99, true);
+const openDecision = item(10, null, 50);
+assert.deepEqual(dailyBrief([oldDeadline, openDecision, recentRequest], clock).orderedReady.map(t => t.id), [8, 10, 9]);
+assert.match(decisionPriority(recentRequest, clock).reason, /Rayanne on Oct 13: Please approve the flyer proof/);
+assert.equal(decisionPriority({ ...recentRequest, comments: [] }, clock).tier, decisionPriority(oldDeadline, clock).tier);
+
+const blockedRequest = 'We are waiting for approval before we can print.';
+const waiting = { ...recentRequest, dueDate: null,
+  comments: [{ ...recentRequest.comments[0], body: blockedRequest }],
+  intelligence: { ...recentRequest.intelligence, evidenceReferences: [{ source_type: 'COMMENT', source_id: '6', excerpt: blockedRequest }] }
+};
+assert.ok(decisionPriority(waiting, clock).tier < decisionPriority({ ...recentRequest, dueDate: null }, clock).tier);
+assert.equal(decisionPriority({ ...waiting, comments: recentRequest.comments }, clock).evidenceAt, 0);

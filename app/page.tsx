@@ -59,11 +59,10 @@ export default async function Home() {
       <div className="panel-heading"><div><p className="eyebrow">1 · START HERE</p><h2 id="start-title">{brief.actions.length ? `Your next ${brief.actions.length} decision${brief.actions.length === 1 ? '' : 's'}` : brief.checks.length ? `Your next ${brief.checks.length} practical check${brief.checks.length === 1 ? '' : 's'}` : 'No current check is available'}</h2><p>{brief.actions.length ? 'Only current, evidence-backed requests where you are the next actor appear here.' : brief.checks.length ? 'Source facts to check while AI verification catches up. These are not AI-classified decisions.' : 'No verified decision or current source fact is available yet.'}</p></div><a href="/attention">Open My Decisions →</a></div>
       {brief.actions.length ? <div className="brief-task-list">{brief.actions.map(task => {
         const intel = task.intelligence!;
-        const reasons = Array.isArray(intel.priorityReasons) ? intel.priorityReasons.filter((reason): reason is string => typeof reason === 'string') : [];
         return <article className="brief-task-row command-action" key={task.itemKey}><div className="brief-task-main">
           <div className="brief-task-meta"><span>{task.client.name}</span><span className="brief-tag">{intel.priorityLevel ?? 'Current'} priority</span>{task.dueDate && <span>Due {dateTime(task.dueDate)}</span>}</div>
           <h3>{intel.amiAction || task.name}</h3><p><strong>Task:</strong> {task.name}</p>
-          {reasons[0] && <small><strong>Why now:</strong> {reasons[0]}</small>}
+          <small><strong>Why now:</strong> {task.prioritySignal.reason}</small>
         </div><div className="brief-task-actions"><TaskDetailsButton taskId={task.id} label="Evidence" />{task.clickupUrl && <a href={task.clickupUrl} target="_blank" rel="noopener noreferrer">Open ClickUp ↗</a>}<DoneToday itemKey={task.itemKey} taskId={task.id} fingerprint={task.fingerprint} /></div></article>;
       })}</div> : brief.checks.length ? <div className="brief-task-list">{brief.checks.map(check => <article className="brief-task-row command-action source-fact-check" key={check.itemKey}><div className="brief-task-main">
         <div className="brief-task-meta"><span>{check.client.name}</span><span className="brief-tag source-fact-tag">{check.label}</span>{check.dueDate && <span>Due {dateTime(check.dueDate)}</span>}<span>Not AI-classified</span></div>

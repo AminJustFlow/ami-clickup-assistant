@@ -4,10 +4,10 @@ import { groupClientFolders } from '@/lib/clients/grouping';
 import { AppNav } from '../components/app-nav';
 import { TaskDetailsButton } from '../components/task-details';
 import { setAttentionDecision } from './actions';
-import { compareAttentionPriority, dailyBrief } from '@/lib/attention/daily-brief';
-import { attentionFingerprint, attentionVerificationReasons, isClosedClickUpStatus, isOpenAttentionTask } from '@/lib/attention/triage';
+import { compareAttentionPriority } from '@/lib/attention/daily-brief';
+import { attentionFingerprint } from '@/lib/attention/triage';
 import { groupedInsightRepresentatives } from '@/lib/tasks/insight-groups';
-import { briefItemKey, workday } from '@/lib/brief/workday';
+import { loadDecisionInbox, decisionScope } from '@/lib/attention/inbox';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +45,6 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const requestedPage = Number(params.page);
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 100000) : 1;
   const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 86400000);
 
   const folders = await prisma.client.findMany({
     where: { active: true, space: { name: 'JF Corporate' } },
@@ -55,57 +54,12 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
   const selectedGroup = groups.find(group => group.canonical.slug === client);
   const activeFilters = { client: selectedGroup ? client : '', priority, q, view };
 
-  const scope = { deleted: false, client: { active: true, space: { name: 'JF Corporate' } } } as const;
-  const currentWorkday = workday(now);
-  const [candidates, analyzedCount, importedCount, todayReviews] = await Promise.all([
-    prisma.task.findMany({
-      where: {
-        ...scope,
-        intelligence: { is: { needsAmi: true } },
-        ...(selectedGroup ? { clientId: { in: selectedGroup.folders.map(folder => folder.id) } } : {}),
-        ...(q ? { OR: [
-          { name: { contains: q, mode: 'insensitive' as const } },
-          { intelligence: { is: { needsAmi: true, amiAction: { contains: q, mode: 'insensitive' as const } } } }
-        ] } : {}),
-        ...(priority === 'recent' ? { clickupUpdatedAt: { gte: weekAgo } } : {}),
-        ...(priority === 'high' ? { intelligence: { is: { needsAmi: true, amiAttentionScore: { gte: 70 } } } } : {}),
-        ...(priority === 'overdue' ? { dueDate: { lt: now } } : {})
-      },
-      select: {
-        id: true, clickupTaskId: true, rawPayload: true, name: true, dueDate: true, clickupUpdatedAt: true, clickupUrl: true, clickupStatus: true,
-        client: { select: { name: true } },
-        comments: { select: { clickupCreatedAt: true, clickupUpdatedAt: true } },
-        events: { orderBy: { occurredAt: 'desc' }, take: 1, select: { occurredAt: true } },
-        attentionDisposition: { select: { decision: true, reason: true, sourceFingerprint: true, updatedAt: true } },
-        intelligence: { select: {
-          amiAction: true, currentSummary: true, agentState: true, waitingOnName: true,
-          needsAmi: true, amiAttentionScore: true, analyzedAt: true, sourceFingerprint: true, confidence: true, lastMeaningfulChangeAt: true,
-          nextActor: true, unresolvedRequest: true, priorityLevel: true, priorityReasons: true,
-          evidenceReferences: true, freshnessStatus: true, verificationStatus: true, verificationReasons: true
-        } }
-      },
-      orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
-    }),
-    prisma.task.count({ where: { ...scope, intelligence: { isNot: null } } }),
-    prisma.task.count({ where: scope }),
-    prisma.briefItemReview.findMany({ where: { day: currentWorkday.day, decision: 'DONE_TODAY' }, select: { itemKey: true } })
+  const [{ categorized, active, brief }, analyzedCount, importedCount] = await Promise.all([
+    loadDecisionInbox(now, { clientIds: selectedGroup?.folders.map(folder => folder.id), priority, q }),
+    prisma.task.count({ where: { ...decisionScope, intelligence: { isNot: null } } }),
+    prisma.task.count({ where: decisionScope })
   ]);
-  const reviewedToday = new Set(todayReviews.map(review => review.itemKey));
-
-  const categorized = candidates.map(task => {
-    const intel = task.intelligence!;
-    const closed = intel.agentState === 'COMPLETED' || isClosedClickUpStatus(task.clickupStatus);
-    const fingerprint = attentionFingerprint(intel);
-    const recorded = task.attentionDisposition?.decision === 'DISMISSED' && task.attentionDisposition.sourceFingerprint === fingerprint
-      ? 'DISMISSED' : reviewedToday.has(briefItemKey('ACTION', task.id, fingerprint)) ? 'REVIEWED' : null;
-    const overdue = !closed && !!task.dueDate && task.dueDate < now;
-    const verificationReasons = attentionVerificationReasons(task);
-    const urgency = verificationReasons.length ? 'Verify recommendation' : `${intel.priorityLevel ?? 'Normal'} priority`;
-    return { ...task, closed, recorded, overdue, urgency, verificationReasons };
-  });
-  const active = groupedInsightRepresentatives(categorized, categorized.filter(task => !task.recorded && isOpenAttentionTask(task)), (a, b) => compareAttentionPriority(a, b, now));
   const history = groupedInsightRepresentatives(categorized, categorized.filter(task => task.closed || !!task.recorded), (a, b) => compareAttentionPriority(a, b, now));
-  const brief = dailyBrief(active, now);
   const featuredIds = new Set(brief.topReady.map(task => task.id));
   const selected = (view === 'active' ? active.filter(task => !featuredIds.has(task.id)) : history)
     .filter(task => (priority !== 'overdue' || task.overdue) && (priority !== 'verify' || task.verificationReasons.length > 0))
@@ -165,7 +119,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
                 <p className="attention-action-label">Recommended next action</p>
                 <p className="attention-row-action attention-featured-action">{task.intelligence?.amiAction || 'Review current task context.'}</p>
                 <h3 className="attention-featured-task-title">Task: {task.name}</h3>
-                {stringList(task.intelligence?.priorityReasons).length > 0 && <details className="task-extra"><summary>Why this priority?</summary><ul>{stringList(task.intelligence?.priorityReasons).map(reason => <li key={reason}>{reason}</li>)}</ul></details>}
+                <p className="dashboard-note"><strong>Why now:</strong> {task.prioritySignal.reason}</p>
                 {evidenceList(task.intelligence?.evidenceReferences).slice(0, 1).map((evidence, evidenceIndex) => <p className="dashboard-note" key={evidenceIndex}><strong>Based on:</strong> {evidence.excerpt}{evidence.author ? ` — ${evidence.author}` : ''}{evidence.occurred_at ? `, ${dateLabel(new Date(evidence.occurred_at))}` : ''}</p>)}
                 {!!task.insightGroupMembers?.length && <details className="task-extra"><summary>{task.insightGroupMembers.length} related subtask decision{task.insightGroupMembers.length === 1 ? '' : 's'}</summary><ul>{task.insightGroupMembers.map(member => <li key={member.id}><strong>{member.name}</strong> — {member.intelligence?.amiAction || member.intelligence?.currentSummary || 'Review task evidence.'} <TaskDetailsButton taskId={member.id} label="Evidence" /></li>)}</ul></details>}
                 <div className="attention-meta">{task.dueDate && <span>Due: {dateLabel(task.dueDate)}</span>}</div>
@@ -214,7 +168,7 @@ export default async function AttentionPage({ searchParams }: { searchParams: Pr
     </section>
     <section className="clean-panel attention-panel attention-queue-panel" aria-labelledby="inbox-title">
       <div className="panel-heading">
-        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Done today & dismissed'}</h2><p>{view === 'active' ? 'Additional decisions, newest evidence first. Priority labels explain impact without hiding recent work.' : 'Today’s acknowledged items and fingerprint-specific dismissals.'}</p></div>
+        <div><p className="eyebrow">ACTION QUEUE</p><h2 id="inbox-title">{view === 'active' ? 'Other open decisions' : 'Done today & dismissed'}</h2><p>{view === 'active' ? 'Additional decisions in priority order.' : 'Today’s acknowledged items and fingerprint-specific dismissals.'}</p></div>
         <span className="panel-count">{total}</span>
       </div>
       <nav className="attention-view-tabs" aria-label="Inbox view">

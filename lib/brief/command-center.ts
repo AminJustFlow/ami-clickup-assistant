@@ -1,5 +1,6 @@
+import { loadDecisionInbox } from '../attention/inbox';
 import { prisma } from '@/lib/db/prisma';
-import { isClosedClickUpStatus, attentionVerificationReasons, isOpenAttentionTask } from '@/lib/attention/triage';
+import { isClosedClickUpStatus } from '@/lib/attention/triage';
 import { compareRecentFirst } from '@/lib/tasks/recency';
 import { operationalReadiness, operationalScopeWhere } from '@/lib/operations/readiness';
 import { AMI_EMPLOYEE_NAME } from '@/lib/operations/identity';
@@ -22,19 +23,6 @@ const taskSelect = {
     freshnessStatus: true, nextActor: true, unresolvedRequest: true, verificationReasons: true, verificationStatus: true, evidenceReferences: true, classificationVersion: true, confidence: true
   } }
 } as const;
-
-async function loadActionCandidates(now: Date) {
-  return prisma.task.findMany({
-    where: { AND: [operationalScopeWhere(now), { intelligence: { is: { needsAmi: true, verificationStatus: 'VERIFIED', classificationVersion: 'TASK_ANALYZER_V14_EVIDENCE' } } }] },
-    select: taskSelect, orderBy: [{ intelligence: { amiAttentionScore: 'desc' } }, { clickupUpdatedAt: 'desc' }, { id: 'asc' }]
-  });
-}
-
-type CommandTask = Awaited<ReturnType<typeof loadActionCandidates>>[number];
-
-function activeAction(task: CommandTask): boolean {
-  return isOpenAttentionTask(task) && attentionVerificationReasons(task).length === 0;
-}
 
 export async function loadCommandCenter(now = new Date()) {
   const current = workday(now);
@@ -65,9 +53,9 @@ export async function loadCommandCenter(now = new Date()) {
   const deadlineEnd = new Date(now.getTime() + 7 * 86_400_000);
   const corroborationStart = new Date(now.getTime() - 7 * 86_400_000);
   const newTaskStart = new Date(now.getTime() - 30 * 86_400_000);
-  const [readiness, actionRows, updates, riskRows, reviews, brief, deadlineRows, activityRows] = await Promise.all([
+  const [readiness, inbox, updates, riskRows, reviews, brief, deadlineRows, activityRows] = await Promise.all([
     operationalReadiness(now),
-    loadActionCandidates(now),
+    loadDecisionInbox(now),
     prisma.operationalUpdate.findMany({
       where: { verified: true, OR: [
         { evidenceAt: { gte: since } },
@@ -108,12 +96,8 @@ export async function loadCommandCenter(now = new Date()) {
     })
   ]);
   const reviewed = new Set(reviews.map(item => item.itemKey));
-  const actions = actionRows.filter(activeAction).map(task => {
-    const fingerprint = task.intelligence?.sourceFingerprint ?? null;
-    return { ...task, itemKey: briefItemKey('ACTION', task.id, fingerprint), fingerprint };
-  });
-  const visibleActions = actions.filter(item => !reviewed.has(item.itemKey));
-  const actionIds = new Set(actions.map(item => item.id));
+  const visibleActions = inbox.brief.orderedReady;
+  const actionIds = new Set(inbox.categorized.filter(task => !task.closed && task.recorded !== 'DISMISSED' && !task.verificationReasons.length).map(task => task.id));
   const changeItems = updates
     .filter(update => !actionIds.has(update.taskId) || update.kind === 'DECISION_RESOLVED')
     .map(update => ({ ...update, itemKey: briefItemKey('CHANGE', update.taskId, update.sourceFingerprint), fingerprint: update.sourceFingerprint }))
@@ -202,7 +186,7 @@ export async function loadCommandCenter(now = new Date()) {
 
   return {
     current, since, readiness, completedAt: brief?.completedAt ?? null,
-    actions: visibleActions.slice(0, 3), actionTotal: visibleActions.length,
+    actions: inbox.brief.topReady, actionTotal: visibleActions.length,
     changes: changeItems.slice(0, 5), changeTotal: changeItems.length,
     risks: risks.slice(0, 3), riskTotal: risks.length,
     checks: visibleChecks.slice(0, 3), checkTotal: visibleChecks.length,
