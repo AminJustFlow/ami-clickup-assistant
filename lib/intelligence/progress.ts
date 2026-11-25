@@ -35,3 +35,10 @@ export function progressSignal(input: {
   }
   return { kind: 'unknown', label: 'Progress unverified', detail: 'Recent task updates alone do not demonstrate progress.' };
 }
+
+/** A new analysis fingerprint alone does not establish a milestone. */
+export function hasNewProgress(meaningful: boolean, at: unknown, previous: Date | null | undefined, summary: unknown): boolean {
+  if (!meaningful || !(at instanceof Date) || !(at.getTime() > (previous?.getTime() ?? 0))) return false;
+  if (typeof summary !== 'string' || !summary.trim()) return false;
+  return !/^no (?:substantive|meaningful|material|documented|recorded|new|actual) (?:work|progress|execution|operational|change|activity)\b/i.test(summary.trim());
+}

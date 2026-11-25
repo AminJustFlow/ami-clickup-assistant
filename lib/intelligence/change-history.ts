@@ -1,3 +1,4 @@
+import { hasNewProgress } from './progress';
 import { prisma } from '../db/prisma';
 import type { AgentState, WaitingOnType, Prisma } from '@prisma/client';
 
@@ -35,7 +36,7 @@ function updateKind(
  * Serializable isolation and P2034 retries prevent racing analyzers from
  * recording transitions against stale state.
  */
-export async function saveTaskIntelligence(taskId: number, next: IntelligenceRecord & IntelligenceUpdate) {
+export async function saveTaskIntelligence(taskId: number, next: IntelligenceRecord & IntelligenceUpdate, meaningfulChange: boolean) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await prisma.$transaction(async tx => {
@@ -68,6 +69,9 @@ export async function saveTaskIntelligence(taskId: number, next: IntelligenceRec
             select: { eventType: true }
           }) : null;
           const kind = updateKind(prior, next, observed?.eventType);
+          if (kind === 'PROGRESS' && !hasNewProgress(meaningfulChange, next.lastMeaningfulChangeAt, prior?.lastMeaningfulChangeAt, next.lastMeaningfulChange)) {
+            return { changed: Boolean(changed) };
+          }
           await tx.operationalUpdate.upsert({
             where: { taskId_sourceFingerprint: { taskId, sourceFingerprint: fingerprint } },
             create: {

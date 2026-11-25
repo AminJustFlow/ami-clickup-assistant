@@ -98,7 +98,6 @@ export async function loadCommandCenter(now = new Date()) {
     }),
     prisma.task.findMany({
       where: { AND: [openCurrentWhere, { OR: [
-        { clickupCreatedAt: { gte: since } },
         { comments: { some: { OR: [{ clickupCreatedAt: { gte: since } }, { clickupUpdatedAt: { gte: since } }] } } },
         { AND: [
           { clickupUpdatedAt: { gte: since } },
@@ -139,11 +138,8 @@ export async function loadCommandCenter(now = new Date()) {
     const createdAt = task.clickupCreatedAt?.getTime() ?? 0;
     const dueAt = task.dueDate?.getTime() ?? 0;
     const deadline = deadlineIds.has(task.id) && dueAt > 0;
-    let label = 'New ClickUp task';
-    let summary = 'Created in ClickUp since the prior workday.';
-    let sourceAt = createdAt;
-    let priority = 2;
-    let sourceKind = 'created';
+    let label: string, summary: string, sourceKind: string;
+    let sourceAt: number, priority: number;
     if (commentAt >= eventAt && commentAt >= createdAt && comment) {
       label = 'Recent human comment';
       const body = comment.body.replace(/\s+/g, ' ').trim();
@@ -164,10 +160,10 @@ export async function loadCommandCenter(now = new Date()) {
       sourceAt = dueAt;
       priority = 3;
       sourceKind = 'due';
-    }
+    } else return null;
     const fingerprint = `${sourceKind}-${new Date(sourceAt || now.getTime()).toISOString()}`;
     return { ...task, label, summary, sourceAt, priority, fingerprint, itemKey: briefItemKey('CHECK', task.id, fingerprint) };
-  }).filter(item => !reviewed.has(item.itemKey)).sort((a, b) =>
+  }).filter(item => item !== null).filter(item => !reviewed.has(item.itemKey)).sort((a, b) =>
     a.priority - b.priority || (a.priority < 3 ? b.sourceAt - a.sourceAt : a.sourceAt - b.sourceAt) || a.id - b.id);
   const groupedChecks = new Map<string, typeof checks[number]>();
   for (const check of checks) {

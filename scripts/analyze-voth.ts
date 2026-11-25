@@ -43,7 +43,7 @@ async function main(): Promise<void> {
         confidence: result.confidence,
         promptVersion: 'RULE_ENGINE_V1',
         analyzedAt: new Date()
-    });
+    }, result.meaningfulChange);
   }
 
   console.log(`Analyzed ${tasks.length} VOTH tasks.`);

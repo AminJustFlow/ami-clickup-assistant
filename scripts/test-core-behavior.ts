@@ -1,3 +1,4 @@
+import { hasNewProgress } from '../lib/intelligence/progress';
 import { intelligenceCoverage } from '../lib/intelligence/coverage';
 import { TASK_ANALYZER_PROMPT_VERSION } from '../lib/intelligence/prompt';
 import assert from 'node:assert/strict';
@@ -145,3 +146,12 @@ const answered = { clickupUpdatedAt: analyzedAt, clickupStatus: 'open', attentio
   comments: [{ clickupCreatedAt: new Date(analyzedAt.getTime() + 1), clickupUpdatedAt: null }] };
 assert.equal(isVerifiedOpenAttentionTask(answered), false);
 assert.ok(attentionVerificationReasons(answered).includes('ClickUp changed after the AI analysis'));
+
+const milestone = new Date('2026-11-25T15:00:00Z');
+for (const summary of ['No substantive work or comment activity is recorded', 'No meaningful progress or operational change is documented', 'No meaningful execution change is documented', 'No meaningful progress is recorded']) {
+  assert.equal(hasNewProgress(true, milestone, null, summary), false);
+}
+assert.equal(hasNewProgress(true, milestone, null, 'Flyer proof delivered to client'), true);
+assert.equal(hasNewProgress(false, milestone, null, 'Task reviewed'), false);
+assert.equal(hasNewProgress(true, milestone, milestone, 'Flyer proof delivered to client'), false);
+assert.equal(hasNewProgress(true, null, null, 'Task remains To Do'), false);
